@@ -110,13 +110,13 @@ def web_search(query):
             "https://api.tavily.com/search",
             json={
                 "api_key": TAVILY_API_KEY,
-                "query": f"Brawl Stars BRAWL BALL current LIVE map PREV NEXT {query} site:brawlify.com/gamemodes/48000005",
+                "query": f"Brawl Stars current Brawl Ball map Current Events {query} site:noff.gg/brawl-stars/maps",
                 "search_depth": "advanced",
                 "max_results": 8,
                 "include_answer": True,
                 "include_raw_content": True,
                 "include_images": False,
-                "include_domains": ["brawlify.com"],
+                "include_domains": ["noff.gg"],
             },
             timeout=20
         )
