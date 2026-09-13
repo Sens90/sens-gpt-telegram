@@ -844,9 +844,6 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             flags=re.I
         ).strip()
 
-        if "current_map" in locals() and current_map:
-            if not final_text.lower().startswith(current_map.lower()):
-                final_text = f"{current_map}\n\n{final_text}"
 
         await context.bot.send_message(
             chat_id=message.chat_id,
@@ -868,8 +865,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                     await context.bot.send_photo(
                         chat_id=message.chat_id,
-                        photo=image_response.content,
-                        caption=current_map
+                        photo=image_response.content
                     )
 
             except Exception as e:
