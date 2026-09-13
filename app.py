@@ -246,31 +246,102 @@ def search_map_comp(map_name):
 
 def get_noff_map_image(map_name):
     try:
-        slug = re.sub(r"[^a-z0-9]+", "-", map_name.lower()).strip("-")
-        page_url = f"https://www.noff.gg/brawl-stars/map/{slug}"
-
-        response = requests.get(
-            page_url,
-            headers={"User-Agent": "Mozilla/5.0"},
-            timeout=15
+        response = requests.post(
+            "https://api.tavily.com/search",
+            json={
+                "api_key": TAVILY_API_KEY,
+                "query": f"\"{map_name}\" Brawl Stars map",
+                "search_depth": "advanced",
+                "max_results": 6,
+                "include_answer": False,
+                "include_raw_content": False,
+                "include_images": True
+            },
+            timeout=20
         )
+
         response.raise_for_status()
+        data = response.json()
 
-        match = re.search(
-            r"(/brawl-stars/res/img/maps/[^\"\x27 >]+\.(?:webp|png|jpg|jpeg))",
-            response.text,
-            re.I
+        map_key = re.sub(
+            r"[^a-z0-9]+",
+            "",
+            map_name.lower()
         )
 
-        if match:
-            image_url = "https://www.noff.gg" + match.group(1)
-            print("IMMAGINE NOFF TROVATA:", image_url, flush=True)
-            return image_url
+        for image in data.get("images", []):
+            if isinstance(image, dict):
+                image_url = image.get("url") or image.get("image_url")
+                description = (
+                    image.get("description")
+                    or image.get("title")
+                    or ""
+                )
+            else:
+                image_url = image
+                description = ""
 
-        print("IMMAGINE NOFF NON TROVATA:", map_name, flush=True)
+            if not image_url:
+                continue
+
+            image_key = re.sub(
+                r"[^a-z0-9]+",
+                "",
+                (description + " " + image_url).lower()
+            )
+
+            if map_key not in image_key:
+                print(
+                    "IMMAGINE MAPPA SCARTATA:",
+                    image_url,
+                    description,
+                    flush=True
+                )
+                continue
+
+            try:
+                check = requests.get(
+                    image_url,
+                    headers={"User-Agent": "Mozilla/5.0"},
+                    timeout=15
+                )
+
+                content_type = check.headers.get(
+                    "Content-Type",
+                    ""
+                ).lower()
+
+                if (
+                    check.status_code == 200
+                    and content_type.startswith("image/")
+                ):
+                    print(
+                        "IMMAGINE MAPPA TROVATA:",
+                        map_name,
+                        image_url,
+                        flush=True
+                    )
+                    return image_url
+
+            except Exception as e:
+                print(
+                    "ERRORE CONTROLLO IMMAGINE MAPPA:",
+                    repr(e),
+                    flush=True
+                )
+
+        print(
+            "IMMAGINE ESATTA MAPPA NON TROVATA:",
+            map_name,
+            flush=True
+        )
 
     except Exception as e:
-        print("ERRORE IMMAGINE NOFF:", repr(e), flush=True)
+        print(
+            "ERRORE RICERCA IMMAGINE MAPPA:",
+            repr(e),
+            flush=True
+        )
 
     return None
 
@@ -374,47 +445,23 @@ async def send_relevant_images(context, chat_id, question, images):
 
 def get_noff_brawler_image(brawler_name):
     try:
-        slug = re.sub(r"[^a-z0-9]+", "-", brawler_name.lower()).strip("-")
-        page_url = f"https://www.noff.gg/brawl-stars/brawler/{slug}"
+        slug = re.sub(r"[^a-z0-9]+", "_", brawler_name.lower()).strip("_")
+        image_url = f"https://www.noff.gg/brawl-stars/res/img/brawlers/{slug}.webp"
 
         response = requests.get(
-            page_url,
+            image_url,
             headers={"User-Agent": "Mozilla/5.0"},
             timeout=15
         )
-        response.raise_for_status()
 
-        patterns = [
-            r"(/brawl-stars/res/img/brawlers/[^\"\x27 >]+\.(?:webp|png|jpg|jpeg))",
-            r"(/brawl-stars/res/img/brawler/[^\"\x27 >]+\.(?:webp|png|jpg|jpeg))"
-        ]
+        if response.status_code == 200 and response.headers.get("Content-Type", "").lower().startswith("image/"):
+            print("IMMAGINE BRAWLER TROVATA:", brawler_name, image_url, flush=True)
+            return image_url
 
-        for pattern in patterns:
-            match = re.search(pattern, response.text, re.I)
-
-            if match:
-                image_url = "https://www.noff.gg" + match.group(1)
-                print(
-                    "IMMAGINE BRAWLER TROVATA:",
-                    brawler_name,
-                    image_url,
-                    flush=True
-                )
-                return image_url
-
-        print(
-            "IMMAGINE BRAWLER NON TROVATA:",
-            brawler_name,
-            flush=True
-        )
+        print("IMMAGINE BRAWLER NON TROVATA:", brawler_name, response.status_code, flush=True)
 
     except Exception as e:
-        print(
-            "ERRORE IMMAGINE BRAWLER:",
-            brawler_name,
-            repr(e),
-            flush=True
-        )
+        print("ERRORE IMMAGINE BRAWLER:", brawler_name, repr(e), flush=True)
 
     return None
 
@@ -765,6 +812,24 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 comp_brawlers,
                 flush=True
             )
+
+        final_text = re.split(
+            r"\n\s*(?:Fonti|Fonti utilizzate|Sources)\s*:?\s*",
+            final_text,
+            maxsplit=1,
+            flags=re.I
+        )[0].strip()
+
+        final_text = re.sub(
+            r"https?://\S+",
+            "",
+            final_text,
+            flags=re.I
+        ).strip()
+
+        if "current_map" in locals() and current_map:
+            if not final_text.lower().startswith(current_map.lower()):
+                final_text = f"{current_map}\n\n{final_text}"
 
         await context.bot.send_message(
             chat_id=message.chat_id,
