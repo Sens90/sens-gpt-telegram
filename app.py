@@ -815,8 +815,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                     await context.bot.send_photo(
                         chat_id=message.chat_id,
-                        photo=image_response.content,
-                        caption=current_map
+                        photo=image_response.content
                     )
 
                     map_photo_sent = True
@@ -836,6 +835,20 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 count=1,
                 flags=re.I
             ).strip()
+
+            final_text = re.sub(
+                r"Per\s+la\s+mappa\s+" + re.escape(current_map),
+                "Per questa mappa",
+                final_text,
+                flags=re.I
+            )
+
+            final_text = re.sub(
+                re.escape(current_map),
+                "questa mappa",
+                final_text,
+                flags=re.I
+            )
 
         await context.bot.send_message(
             chat_id=message.chat_id,
