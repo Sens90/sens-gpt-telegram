@@ -420,7 +420,7 @@ def get_noff_brawler_image(brawler_name):
 
 
 async def send_comp_brawler_images(context, chat_id, brawler_names):
-    for brawler_name in brawler_names[:3]:
+    for brawler_name in brawler_names:
         try:
             image_url = get_noff_brawler_image(brawler_name)
 
@@ -682,7 +682,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Non inventare informazioni mancanti.\n"
                 "- Se non sei sicuro di un dato, dichiaralo chiaramente.\n"
                 "- Usa le fonti web internamente per verificare i dati, ma NON mostrare fonti, URL, link o una sezione Fonti nella risposta.\n"
-                "- Se proponi esattamente 3 Brawler come composizione consigliata, aggiungi come ULTIMA riga: BRAWLERS_IMMAGINI: Nome1|Nome2|Nome3.\n" "- Usa in BRAWLERS_IMMAGINI esclusivamente i 3 Brawler realmente consigliati nella risposta.\n" "- Se non puoi determinare una composizione affidabile, NON aggiungere BRAWLERS_IMMAGINI.\n" "- La riga BRAWLERS_IMMAGINI è un dato tecnico e verrà rimossa prima di mostrare la risposta all utente.\n" "- La risposta deve sembrare scritta da un assistente ufficiale della community, non da un chatbot che cerca di essere simpatico.\n\n"
+                "- Se proponi uno o più Brawler consigliati per la mappa, aggiungi come ULTIMA riga: BRAWLERS_IMMAGINI: Nome1|Nome2|Nome3|Nome4|Nome5...\n" "- Usa in BRAWLERS_IMMAGINI esclusivamente i Brawler realmente consigliati nella risposta.\n" "- Se non puoi determinare una composizione affidabile, NON aggiungere BRAWLERS_IMMAGINI.\n" "- La riga BRAWLERS_IMMAGINI è un dato tecnico e verrà rimossa prima di mostrare la risposta all utente.\n" "- La risposta deve sembrare scritta da un assistente ufficiale della community, non da un chatbot che cerca di essere simpatico.\n\n"
                 "FONTE PRIORITARIA PER LE MAPPE:\n"
                 "- Per la rotazione delle mappe attuali usa Brawl Insights come fonte primaria.\n"
                 "- La fonte primaria per la rotazione è https://brawlinsights.com/en/tools/map_rotation.\n"
@@ -751,7 +751,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 name.strip()
                 for name in match_brawlers.group(1).split("|")
                 if name.strip()
-            ][:3]
+            ]
 
             final_text = re.sub(
                 r"^BRAWLERS_IMMAGINI:\s*.+$",
