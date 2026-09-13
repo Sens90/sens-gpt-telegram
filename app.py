@@ -29,52 +29,45 @@ def home():
 
 def needs_web_search(question):
     keywords = [
-        "oggi",
-        "attuale",
-        "attualmente",
-        "ultimo",
-        "ultimi",
-        "nuovo",
-        "nuova",
-        "novità",
-        "aggiornamento",
-        "aggiornamenti",
-        "patch",
-        "buff",
-        "nerf",
-        "bilanciamento",
-        "meta",
-        "stagione",
-        "evento",
-        "eventi",
-        "classifica",
-        "classifiche",
-        "quando esce",
-        "uscito",
-        "uscita",
-        "prezzo",
-        "quanto costa"
+        "oggi", "ieri", "domani", "attuale", "attualmente", "adesso",
+        "ora", "ultimo", "ultimi", "ultima", "nuovo", "nuova",
+        "novità", "novita", "aggiornamento", "aggiornamenti",
+        "patch", "buff", "nerf", "bilanciamento", "meta", "stagione",
+        "evento", "eventi", "classifica", "classifiche",
+        "quando esce", "uscito", "uscita", "rilascio", "prezzo",
+        "quanto costa", "nuovo brawler", "nuovi brawler",
+        "nuova modalità", "nuove modalità"
     ]
 
     question_lower = question.lower()
-
     return any(keyword in question_lower for keyword in keywords)
 
 
 def web_search(query):
+    search_query = (
+        f"Brawl Stars {query} "
+        f"ultime notizie aggiornamenti ufficiali"
+    )
+
     response = requests.post(
         "https://api.tavily.com/search",
         json={
             "api_key": TAVILY_API_KEY,
-            "query": query,
+            "query": search_query,
             "search_depth": "basic",
-            "max_results": 5
+            "max_results": 5,
+            "include_answer": False,
+            "include_raw_content": False,
+            "include_images": False,
+            "include_domains": [
+                "supercell.com",
+                "brawlstars.com"
+            ]
         },
         timeout=15
     )
 
     response.raise_for_status()
-
     return response.json()
 
 
@@ -85,6 +78,9 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     bot_username = context.bot.username
+
+    if not bot_username:
+        return
 
     if f"@{bot_username.lower()}" not in message.text.lower():
         return
@@ -105,6 +101,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     web_context = ""
+    web_sources = []
 
     if needs_web_search(question):
         try:
@@ -115,11 +112,21 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 content = result.get("content", "")
                 url = result.get("url", "")
 
-                web_context += (
-                    f"\nTitolo: {title}\n"
-                    f"Contenuto: {content}\n"
-                    f"Fonte: {url}\n"
-                )
+                if title or content:
+                    web_context += (
+                        f"\nTitolo: {title}\n"
+                        f"Contenuto: {content}\n"
+                        f"Fonte: {url}\n"
+                        f"---\n"
+                    )
+
+                if url:
+                    web_sources.append(url)
+
+            print(
+                f"TAVILY: trovati {len(web_sources)} risultati",
+                flush=True
+            )
 
         except Exception as e:
             print(
@@ -129,27 +136,44 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
     try:
-        response = client.models.generate_content(
-            model="gemini-3.5-flash-lite",
-            contents=(
+        if web_context:
+            instructions = (
                 "Sei Sens GPT, l'intelligenza artificiale ufficiale "
-                "della community TITANI ABUSIVI. "
+                "della community TITANI ABUSIVI.\n\n"
                 "Sei specializzato soprattutto in Brawl Stars. "
                 "Rispondi sempre in italiano, in modo competente, "
-                "diretto, chiaro e utile. "
-                "Non inventare informazioni.\n\n"
-
-                "Se sono presenti informazioni provenienti dal web, "
-                "usale per rispondere alle domande che riguardano "
-                "informazioni attuali. "
-                "Considera le informazioni web come fonti da verificare "
-                "e non inventare dati che non sono presenti.\n\n"
-
-                f"Informazioni aggiornate dal web:\n"
-                f"{web_context}\n\n"
-
-                f"Domanda dell'utente: {question}"
+                "diretto, chiaro e utile.\n\n"
+                "Sono state effettuate ricerche web per questa domanda. "
+                "Devi utilizzare le informazioni trovate per rispondere.\n\n"
+                "IMPORTANTE:\n"
+                "- Non inventare informazioni.\n"
+                "- Dai priorità alle fonti ufficiali di Supercell e Brawl Stars.\n"
+                "- Se le fonti sono in contrasto, segnalalo.\n"
+                "- Se una informazione non è verificabile, dichiaralo chiaramente.\n"
+                "- Per informazioni relative a oggi, usa solo dati effettivamente recenti.\n"
+                "- Non dire che non sono state fornite informazioni dal web "
+                "se i risultati contengono informazioni pertinenti.\n"
+                "- Alla fine aggiungi una sezione chiamata 'Fonti:' con le URL "
+                "delle fonti effettivamente utilizzate.\n\n"
+                f"RISULTATI DELLA RICERCA WEB:\n{web_context}\n\n"
+                f"DOMANDA DELL'UTENTE:\n{question}"
             )
+        else:
+            instructions = (
+                "Sei Sens GPT, l'intelligenza artificiale ufficiale "
+                "della community TITANI ABUSIVI.\n\n"
+                "Sei specializzato soprattutto in Brawl Stars. "
+                "Rispondi sempre in italiano, in modo competente, "
+                "diretto, chiaro e utile.\n\n"
+                "Non inventare informazioni. "
+                "Se non conosci con certezza una informazione, "
+                "dillo chiaramente.\n\n"
+                f"DOMANDA DELL'UTENTE:\n{question}"
+            )
+
+        response = client.models.generate_content(
+            model="gemini-3.5-flash-lite",
+            contents=instructions
         )
 
         await context.bot.send_message(
@@ -194,4 +218,4 @@ if __name__ == "__main__":
         daemon=True
     ).start()
 
-    main()                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
+    main()
