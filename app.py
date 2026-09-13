@@ -35,12 +35,13 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"@{bot_username}", ""
     ).strip()
 
-    await context.bot.send_message(
-    chat_id=message.chat_id,
-    text=response.text
-)
-            "Sono Sens GPT, l'AI ufficiale dei TITANI ABUSIVI. "
-            "Fammi una domanda su Brawl Stars."
+    if not question:
+        await context.bot.send_message(
+            chat_id=message.chat_id,
+            text=(
+                "Sono Sens GPT, l'AI ufficiale dei TITANI ABUSIVI. "
+                "Fammi una domanda su Brawl Stars."
+            )
         )
         return
 
@@ -57,16 +58,20 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         )
 
-        await message.reply_text(response.text)
+        await context.bot.send_message(
+            chat_id=message.chat_id,
+            text=response.text
+        )
 
     except Exception as e:
         print("Errore:", e)
-        await message.reply_text(
-            "Ho avuto un problema con il sistema AI. "
-            "Riprova tra poco."
+        await context.bot.send_message(
+            chat_id=message.chat_id,
+            text=(
+                "Ho avuto un problema con il sistema AI. "
+                "Riprova tra poco."
+            )
         )
-
-
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
