@@ -109,7 +109,7 @@ def web_search(query):
             "https://api.tavily.com/search",
             json={
                 "api_key": TAVILY_API_KEY,
-                "query": f"Brawl Stars {query} site:brawlify.com/it/maps current live rotation",
+                "query": f"Brawl Stars FOOTBRAWL {query} site:brawlify.com/it/events Attivo ora LIVE mappa corrente",
                 "search_depth": "advanced",
                 "max_results": 8,
                 "include_answer": False,
