@@ -550,7 +550,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Sono state effettuate ricerche web specifiche per "
                 "rispondere alla domanda dell'utente.\n\n"
 
-                "USA LE INFORMAZIONI WEB FORNITE.\n\n"
+                "USA LE INFORMAZIONI WEB FORNITE.\nNON MOSTRARE MAI LE FONTI, GLI URL O I LINK ALL UTENTE.\n\n"
 
                 + (
                     f"MAPPA CORRENTE IDENTIFICATA DAL SISTEMA: {current_map}\n"
@@ -599,7 +599,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Non aggiungere conclusioni inutili o frasi come \"Spero di esserti stato utile\".\n"
                 "- Non inventare informazioni mancanti.\n"
                 "- Se non sei sicuro di un dato, dichiaralo chiaramente.\n"
-                "- Quando utilizzi fonti web, inserisci le fonti alla fine della risposta in modo semplice e ordinato.\n"
+                "- Usa le fonti web internamente per verificare i dati, ma NON mostrare fonti, URL, link o una sezione Fonti nella risposta.\n"
                 "- La risposta deve sembrare scritta da un assistente ufficiale della community, non da un chatbot che cerca di essere simpatico.\n\n"
                 "FONTE PRIORITARIA PER LE MAPPE:\n"
                 "- Per la rotazione delle mappe attuali usa Brawl Insights come fonte primaria.\n"
