@@ -89,30 +89,64 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not bot_username:
         return
 
-    if f"@{bot_username.lower()}" not in message.text.lower():
+    mentioned = (
+        f"@{bot_username.lower()}" in message.text.lower()
+    )
+
+    is_reply = message.reply_to_message is not None
+
+    if not mentioned and not is_reply:
         return
 
-    question = message.text.replace(
-        f"@{bot_username}",
-        ""
-    ).strip()
+    question = message.text
+
+    if mentioned:
+        question = question.replace(
+            f"@{bot_username}",
+            ""
+        ).strip()
+
+    original_message = ""
+
+    if is_reply:
+        replied_message = message.reply_to_message
+
+        if replied_message and replied_message.text:
+            original_message = replied_message.text.strip()
 
     if not question:
-        await context.bot.send_message(
-            chat_id=message.chat_id,
-            text=(
-                "Sono Sens GPT, l'AI ufficiale dei TITANI ABUSIVI. "
-                "Fammi una domanda su Brawl Stars."
+        if original_message:
+            question = (
+                "Analizza e rispondi al seguente messaggio:\n"
+                f"{original_message}"
             )
+        else:
+            await context.bot.send_message(
+                chat_id=message.chat_id,
+                text=(
+                    "Sono Sens GPT, l'AI ufficiale dei TITANI ABUSIVI. "
+                    "Fammi una domanda su Brawl Stars."
+                )
+            )
+            return
+
+    if original_message and question:
+        question_for_ai = (
+            "L'utente sta rispondendo a questo messaggio:\n"
+            f"\"{original_message}\"\n\n"
+            "La sua domanda o risposta è:\n"
+            f"\"{question}\"\n\n"
+            "Usa il messaggio originale come contesto."
         )
-        return
+    else:
+        question_for_ai = question
 
     web_context = ""
     web_sources = []
 
-    if needs_web_search(question):
+    if needs_web_search(question_for_ai):
         try:
-            search_data = web_search(question)
+            search_data = web_search(question_for_ai)
 
             for result in search_data.get("results", []):
                 title = result.get("title", "")
@@ -161,8 +195,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Non affermare che un Brawler, modalità, evento o "
                 "funzione non esiste solamente perché non compare "
                 "in una fonte ufficiale.\n"
-                "- Considera anche Reddit, YouTube, wiki e siti "
-                "specializzati di Brawl Stars.\n"
+                "- Considera Reddit, YouTube, wiki e siti specializzati "
+                "di Brawl Stars.\n"
                 "- Dai priorità alle fonti ufficiali quando si parla "
                 "di informazioni ufficialmente annunciate.\n"
                 "- Usa fonti della community per informazioni storiche, "
@@ -185,8 +219,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"RISULTATI DELLA RICERCA WEB:\n"
                 f"{web_context}\n\n"
 
-                f"DOMANDA DELL'UTENTE:\n"
-                f"{question}"
+                f"DOMANDA E CONTESTO:\n"
+                f"{question_for_ai}"
             )
 
         else:
@@ -202,7 +236,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Se non conosci con certezza una informazione, "
                 "dillo chiaramente.\n\n"
 
-                f"DOMANDA DELL'UTENTE:\n{question}"
+                f"DOMANDA E CONTESTO:\n"
+                f"{question_for_ai}"
             )
 
         response = client.models.generate_content(
