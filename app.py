@@ -1,5 +1,6 @@
 import os
 import requests
+import re
 import threading
 
 from flask import Flask
@@ -128,6 +129,22 @@ def web_search(query):
         data["results"].extend(fallback_data.get("results", []))
 
     return data
+
+
+def brawlify_live_events():
+    response = requests.get(
+        "https://brawlify.com/it/events",
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=20
+    )
+    response.raise_for_status()
+
+    text = re.sub(r"<script.*?</script>", " ", response.text, flags=re.S | re.I)
+    text = re.sub(r"<style.*?</style>", " ", text, flags=re.S | re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text)
+
+    return text[:20000]
 
 
 def image_search(query):
@@ -323,6 +340,20 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if url:
                     web_sources.append(url)
 
+            if any(k in question_for_ai.lower() for k in ["mappa", "mappe", "rotazione", "footbrawl", "brawl ball"]):
+                try:
+                    brawlify_text = brawlify_live_events()
+                    web_context += (
+                        "\nFONTE LIVE BRAWLIFY:\n"
+                        f"{brawlify_text}\n"
+                        "Fonte: https://brawlify.com/it/events\n"
+                        "---\n"
+                    )
+                    web_sources.append("https://brawlify.com/it/events")
+                    print("BRAWLIFY DIRETTO: contenuto caricato", flush=True)
+                except Exception as e:
+                    print("ERRORE BRAWLIFY DIRETTO:", repr(e), flush=True)
+
             try:
                 image_data = image_search(question_for_ai)
                 for image in image_data.get("images", []):
@@ -453,6 +484,20 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if any(k in question_for_ai.lower() for k in ["mappa", "mappe", "rotazione"]):
+            if any(k in question_for_ai.lower() for k in ["mappa", "mappe", "rotazione", "footbrawl", "brawl ball"]):
+                try:
+                    brawlify_text = brawlify_live_events()
+                    web_context += (
+                        "\nFONTE LIVE BRAWLIFY:\n"
+                        f"{brawlify_text}\n"
+                        "Fonte: https://brawlify.com/it/events\n"
+                        "---\n"
+                    )
+                    web_sources.append("https://brawlify.com/it/events")
+                    print("BRAWLIFY DIRETTO: contenuto caricato", flush=True)
+                except Exception as e:
+                    print("ERRORE BRAWLIFY DIRETTO:", repr(e), flush=True)
+
             try:
                 map_image_data = image_search(f"{question_for_ai} {response.text}")
                 web_images = []
