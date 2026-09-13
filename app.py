@@ -100,7 +100,11 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"@{bot_username.lower()}" in message.text.lower()
     )
 
-    is_reply = message.reply_to_message is not None
+    is_reply = (
+        message.reply_to_message is not None
+        and message.reply_to_message.from_user is not None
+        and message.reply_to_message.from_user.id == context.bot.id
+    )
 
     if not mentioned and not is_reply:
         return
