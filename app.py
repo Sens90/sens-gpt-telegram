@@ -244,6 +244,37 @@ def search_map_comp(map_name):
     return fallback_response.json()
 
 
+def get_noff_map_image(map_name):
+    try:
+        slug = re.sub(r"[^a-z0-9]+", "-", map_name.lower()).strip("-")
+        page_url = f"https://www.noff.gg/brawl-stars/map/{slug}"
+
+        response = requests.get(
+            page_url,
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=15
+        )
+        response.raise_for_status()
+
+        match = re.search(
+            r"(/brawl-stars/res/img/maps/[^\"\x27 >]+\.(?:webp|png|jpg|jpeg))",
+            response.text,
+            re.I
+        )
+
+        if match:
+            image_url = "https://www.noff.gg" + match.group(1)
+            print("IMMAGINE NOFF TROVATA:", image_url, flush=True)
+            return image_url
+
+        print("IMMAGINE NOFF NON TROVATA:", map_name, flush=True)
+
+    except Exception as e:
+        print("ERRORE IMMAGINE NOFF:", repr(e), flush=True)
+
+    return None
+
+
 def image_search(query):
     search_query = (
         f"Brawl Stars {query} "
@@ -630,7 +661,29 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             disable_web_page_preview=True
         )
 
-        if any(k in question_for_ai.lower() for k in ["mappa", "mappe", "rotazione"]):
+        if "current_map" in locals() and current_map:
+            try:
+                noff_image = get_noff_map_image(current_map)
+
+                if noff_image:
+                    image_response = requests.get(
+                        noff_image,
+                        headers={"User-Agent": "Mozilla/5.0"},
+                        timeout=15
+                    )
+                    image_response.raise_for_status()
+
+                    await context.bot.send_photo(
+                        chat_id=message.chat_id,
+                        photo=image_response.content,
+                        caption=current_map
+                    )
+
+            except Exception as e:
+                print("ERRORE INVIO MAPPA NOFF:", repr(e), flush=True)
+
+
+        if False and any(k in question_for_ai.lower() for k in ["mappa", "mappe", "rotazione"]):
             try:
                 web_images = []
                 if current_map:
