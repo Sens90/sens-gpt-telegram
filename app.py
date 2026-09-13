@@ -35,8 +35,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"@{bot_username}", ""
     ).strip()
 
-    if not question:
-        await message.reply_text(
+    await context.bot.send_message(
+    chat_id=message.chat_id,
+    text=response.text
+)
             "Sono Sens GPT, l'AI ufficiale dei TITANI ABUSIVI. "
             "Fammi una domanda su Brawl Stars."
         )
