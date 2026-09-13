@@ -820,6 +820,23 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             flags=re.I
         )[0].strip()
 
+        if comp_brawlers:
+            comp_brawlers = [
+                name
+                for name in comp_brawlers
+                if re.search(
+                    r"(?<![A-Za-z0-9])" + re.escape(name) + r"(?![A-Za-z0-9])",
+                    final_text,
+                    re.I
+                )
+            ][:3]
+
+            print(
+                "BRAWLERS IMMAGINI CONFERMATI NELLA RISPOSTA:",
+                comp_brawlers,
+                flush=True
+            )
+
         final_text = re.sub(
             r"https?://\S+",
             "",
