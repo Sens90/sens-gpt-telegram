@@ -492,6 +492,28 @@ async def send_relevant_images(context, chat_id, question, images):
 
 
 
+BRAWLER_NAMES_IT = {
+    "Amber": "Ambra",
+    "Rico": "Stecca",
+    "Crow": "Corvo",
+    "Gene": "Eugenio",
+    "Barley": "Bombardino",
+    "Poco": "Pocho",
+    "Darryl": "Barryl",
+    "Sprout": "Semino",
+    "Surge": "Energetik",
+    "Gale": "Gelindo",
+    "Max": "Maxine",
+    "Nani": "Iris",
+    "Ruffs": "Ringhio",
+    "Colonel Ruffs": "Ringhio"
+}
+
+
+def brawler_name_it(name):
+    return BRAWLER_NAMES_IT.get(name, name)
+
+
 def get_noff_brawler_image(brawler_name):
     try:
         slug = re.sub(r"[^a-z0-9]+", "_", brawler_name.lower()).strip("_")
@@ -541,7 +563,7 @@ async def send_comp_brawler_images(context, chat_id, brawler_names):
             await context.bot.send_photo(
                 chat_id=chat_id,
                 photo=image_response.content,
-                caption=brawler_name
+                caption=brawler_name_it(brawler_name)
             )
 
         except Exception as e:
@@ -903,7 +925,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             final_text = (
                 "Per questa mappa, la composizione consigliata è:\n\n"
                 + "\n\n".join(
-                    f"- {name}"
+                    f"- {brawler_name_it(name)}"
                     for name in comp_brawlers
                 )
             )
