@@ -64,7 +64,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     except Exception as e:
-        print("Errore:", e)
+        print("ERRORE GEMINI:", repr(e), flush=True)
         await context.bot.send_message(
             chat_id=message.chat_id,
             text=(
