@@ -7,94 +7,60 @@ from telegram.ext import Application, MessageHandler, ContextTypes, filters
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-app = Flask(__name__)
-
+client = OpenAI(api_key=OPENAI_API_KEY)app = Flask(__name__)
 
 @app.route("/")
-def home():
-    return "Sens GPT - TITANI ABUSIVI ONLINE"
+def home(): 
+     return "Sens GPT - TITANI ABUSIVI ONLINE"
 
-
-    async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = update.effective_message
-
-            if not message or not message.text:
+    if not message or not message.text:
                     return
 
-                        bot_username = context.bot.username
-
+            bot_username = context.bot.username
                             if f"@{bot_username.lower()}" not in message.text.lower():
                                     return
 
                                         question = message.text
+                                            question = question.replace(f"@{bot_username}", "").strip()
 
-                                            question = question.replace(
-                                                    f"@{bot_username}", ""
-                                                        ).strip()
+                                                if not question:
+                                                        await message.reply_text(
+                                                                    "Sono Sens GPT, l'AI ufficiale dei TITANI ABUSIVI. "
+                                                                                "Fammi una domanda su Brawl Stars."
+                                                                                        )
+                                                                                                return
 
-                                                            if not question:
-                                                                    await message.reply_text(
-                                                                                "Sono Sens GPT, l'AI ufficiale dei TITANI ABUSIVI. "
-                                                                                            "Fammi una domanda su Brawl Stars."
-                                                                                                    )
-                                                                                                            return
+                                                                                                    try:
+                                                                                                            response = client.responses.create(
+                                                                                                                        model="gpt-5-mini",
+                                                                                                                                    instructions=(
+                                                                                                                                                    "Sei Sens GPT, l'intelligenza artificiale ufficiale "
+                                                                                                                                                                    "della community TITANI ABUSIVI. "
+                                                                                                                                                                                    "Sei specializzato soprattutto in Brawl Stars. "
+                                                                                                                                                                                                    "Rispondi sempre in italiano, in modo competente, "
+                                                                                                                                                                                                                    "diretto, chiaro e utile. Non inventare informazioni."
+                                                                                                                                                                                                                                ),
+                                                                                                                                                                                                                                            input=question
+                                                                                                                                                                                                                                                    )
 
-                                                                                                                system_prompt = """
-                                                                                                                Sei Sens GPT, l'intelligenza artificiale ufficiale
-                                                                                                                della community TITANI ABUSIVI.
+                                                                                                                                                                                                                                                            await message.reply_text(response.output_text)
 
-                                                                                                                Sei specializzato soprattutto in Brawl Stars.
-
-                                                                                                                Rispondi sempre in italiano.
-
-                                                                                                                Il tuo stile deve essere:
-                                                                                                                - competente
-                                                                                                                - diretto
-                                                                                                                - chiaro
-                                                                                                                - utile
-                                                                                                                - amichevole
-                                                                                                                - coerente con la community TITANI ABUSIVI
-
-                                                                                                                Quando la domanda riguarda Brawl Stars,
-                                                                                                                fornisci consigli concreti e spiegazioni semplici.
-
-                                                                                                                Non inventare informazioni quando non sei sicuro.
-                                                                                                                """
-
-                                                                                                                    try:
-                                                                                                                            response = client.responses.create(
-                                                                                                                                        model="gpt-5-mini",
-                                                                                                                                                    instructions=system_prompt,
-                                                                                                                                                                input=question
-                                                                                                                                                                        )
-
-                                                                                                                                                                                await message.reply_text(response.output_text)
-
-                                                                                                                                                                                    except Exception as e:
-                                                                                                                                                                                            print("Errore:", e)
-                                                                                                                                                                                                    await message.reply_text(
-                                                                                                                                                                                                                "Ho avuto un problema con il sistema AI. "
-                                                                                                                                                                                                                            "Riprova tra poco."
-                                                                                                                                                                                                                                    )
-
-
-                                                                                                                                                                                                                                    def main():
-                                                                                                                                                                                                                                        application = Application.builder().token(
-                                                                                                                                                                                                                                                TELEGRAM_TOKEN
-                                                                                                                                                                                                                                                    ).build()
-
-                                                                                                                                                                                                                                                        application.add_handler(
-                                                                                                                                                                                                                                                                MessageHandler(
-                                                                                                                                                                                                                                                                            filters.TEXT & ~filters.COMMAND,
-                                                                                                                                                                                                                                                                                        answer
-                                                                                                                                                                                                                                                                                                )
+                                                                                                                                                                                                                                                                except Exception as e:
+                                                                                                                                                                                                                                                                        print("Errore:", e)
+                                                                                                                                                                                                                                                                                await message.reply_text(
+                                                                                                                                                                                                                                                                                            "Ho avuto un problema con il sistema AI. Riprova tra poco."
                                                                                                                                                                                                                                                                                                     )
 
-                                                                                                                                                                                                                                                                                                        application.run_polling()
+                                                                                                                                                                                                                                                                                                    def main():
+                                                                                                                                                                                                                                                                                                        application = Application.builder().token(TELEGRAM_TOKEN).build()
 
+                                                                                                                                                                                                                                                                                                            application.add_handler(
+                                                                                                                                                                                                                                                                                                                    MessageHandler(filters.TEXT & ~filters.COMMAND, answer)
+                                                                                                                                                                                                                                                                                                                        )
 
-                                                                                                                                                                                                                                                                                                        if __name__ == "__main__":
-                                                                                                            Non inventare informazioni 
-                                                                                                                                                                                                                                                                                                            main()
+                                                                                                                                                                                                                                                                                                                            application.run_polling()
+
+                                                                                                                                                                                                                                                                                                                            if __name__ == "__main__":
+                                                                                                                                                                                                                                                                                                                                main()
