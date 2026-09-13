@@ -172,17 +172,76 @@ def search_map_comp(map_name):
         "https://api.tavily.com/search",
         json={
             "api_key": TAVILY_API_KEY,
-            "query": f"Brawl Stars {map_name} Brawl Ball specific map best brawlers best teams win rate",
+            "query": f"\"{map_name}\" Brawl Stars Brawl Ball",
             "search_depth": "advanced",
-            "max_results": 6,
-            "include_answer": True,
+            "max_results": 8,
+            "include_answer": False,
+            "include_raw_content": True,
+            "include_images": False,
+            "include_domains": [
+                "noff.gg"
+            ]
+        },
+        timeout=20
+    )
+    response.raise_for_status()
+
+    data = response.json()
+
+    specific_results = []
+
+    map_key = re.sub(r"[^a-z0-9]+", "-", map_name.lower()).strip("-")
+
+    for result in data.get("results", []):
+        url = (result.get("url") or "").lower()
+        title = (result.get("title") or "").lower()
+        content = (
+            (result.get("content") or "")
+            + "\n"
+            + (result.get("raw_content") or "")
+        ).lower()
+
+        if (
+            f"/brawl-stars/map/{map_key}" in url
+            or (
+                map_name.lower() in title
+                and "brawl ball" in content
+            )
+        ):
+            specific_results.append(result)
+
+    if specific_results:
+        print(
+            "NOFF MAPPA SPECIFICA TROVATA:",
+            map_name,
+            flush=True
+        )
+        return {
+            "results": specific_results
+        }
+
+    print(
+        "NOFF MAPPA SPECIFICA NON TROVATA, USO FALLBACK:",
+        map_name,
+        flush=True
+    )
+
+    fallback_response = requests.post(
+        "https://api.tavily.com/search",
+        json={
+            "api_key": TAVILY_API_KEY,
+            "query": f"\"{map_name}\" \"Brawl Ball\" Brawl Stars best brawlers win rate",
+            "search_depth": "advanced",
+            "max_results": 8,
+            "include_answer": False,
             "include_raw_content": True,
             "include_images": False
         },
         timeout=20
     )
-    response.raise_for_status()
-    return response.json()
+
+    fallback_response.raise_for_status()
+    return fallback_response.json()
 
 
 def image_search(query):
@@ -462,7 +521,16 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 "USA LE INFORMAZIONI WEB FORNITE.\n\n"
 
-                "Regole fondamentali:\n"
+                + (
+                    f"MAPPA CORRENTE IDENTIFICATA DAL SISTEMA: {current_map}\n"
+                    "- Se la domanda riguarda la mappa corrente, scrivi sempre questo nome esatto nella risposta.\n"
+                    "- Non sostituire questa mappa con nomi trovati in altre fonti.\n"
+                    "- Se proponi una composizione, deve riferirsi esclusivamente a questa mappa e alla modalità richiesta.\n\n"
+                    if "current_map" in locals() and current_map
+                    else ""
+                )
+
+                + "Regole fondamentali:\n"
                 "- Non inventare informazioni.\n"
                 "- Non affermare che un Brawler, modalità, evento o "
                 "funzione non esiste solamente perché non compare "
@@ -580,10 +648,33 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         if not image_url or not image_url.startswith("http"):
                             continue
                         image_url_key = re.sub(r"[^a-z0-9]+", "", image_url.lower())
-                        if map_key and map_key in image_url_key:
-                            web_images.append({"url": image_url, "description": description})
+                        description_key = re.sub(r"[^a-z0-9]+", "", description.lower())
+
+                        if (
+                            map_key
+                            and (
+                                map_key in image_url_key
+                                or map_key in description_key
+                            )
+                        ):
+                            web_images.append({
+                                "url": image_url,
+                                "description": description
+                            })
+                            print(
+                                "IMMAGINE MAPPA ACCETTATA:",
+                                current_map,
+                                image_url,
+                                flush=True
+                            )
                             break
-                        print("IMMAGINE MAPPA SCARTATA:", image_url, description, flush=True)
+
+                        print(
+                            "IMMAGINE MAPPA SCARTATA:",
+                            image_url,
+                            description,
+                            flush=True
+                        )
             except Exception as e:
                 print("ERRORE IMMAGINE MAPPA:", repr(e), flush=True)
 
