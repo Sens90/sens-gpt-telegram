@@ -51,11 +51,27 @@ def needs_web_search(question):
 
 
 def web_search(query):
-    if any(x in query.lower() for x in ["mappa", "mappe", "miglior comp", "migliore comp", "composizione", "composizione migliore", "mappa attuale", "mappa di oggi"]):
+    query_lower = query.lower()
+
+    is_map_query = any(x in query_lower for x in [
+        "mappa", "mappe", "rotazione", "mappa attuale",
+        "mappa di oggi", "mappe attuali", "mappa corrente"
+    ])
+
+    is_image_subject_query = any(x in query_lower for x in [
+        "brawler", "brawlers", "skin", "skins", "costume"
+    ])
+
+    if is_map_query:
         search_query = (
             f"Brawl Stars {query} "
-            f"site:brawlinsights.com/en/tools/map_rotation "
-            f"Brawl Insights map rotation current maps"
+            f"(site:brawlinsights.com/en/tools/map_rotation OR site:brawlify.com/it/maps) "
+            f"Brawl Insights current map rotation"
+        )
+    elif is_image_subject_query:
+        search_query = (
+            f"Brawl Stars {query} "
+            f"site:brawlstars.wiki"
         )
     else:
         search_query = (
@@ -74,16 +90,47 @@ def web_search(query):
             "include_raw_content": True,
             "include_images": True,
             "exclude_domains": [
-                "pinterest.com"
+                "pinterest.com",
+                "youtube.com",
+                "youtu.be",
+                "ytimg.com",
+                "tiktok.com",
+                "vimeo.com"
             ]
         },
         timeout=20
     )
 
     response.raise_for_status()
-
     return response.json()
 
+
+def image_search(query):
+    search_query = (
+        f"Brawl Stars {query} "
+        f"site:liquipedia.net/brawlstars "
+        f"map brawler skin image"
+    )
+
+    response = requests.post(
+        "https://api.tavily.com/search",
+        json={
+            "api_key": TAVILY_API_KEY,
+            "query": search_query,
+            "search_depth": "advanced",
+            "max_results": 5,
+            "include_answer": False,
+            "include_raw_content": False,
+            "include_images": True,
+            "include_domains": [
+                "liquipedia.net"
+            ]
+        },
+        timeout=20
+    )
+
+    response.raise_for_status()
+    return response.json()
 
 
 async def send_relevant_images(context, chat_id, question, images):
@@ -91,7 +138,6 @@ async def send_relevant_images(context, chat_id, question, images):
 
     image_keywords = [
         "mappa", "mappe", "mappa attuale", "mappa di oggi",
-        "miglior comp", "migliore comp", "composizione", "team",
         "brawler", "brawlers", "skin", "skins", "costume"
     ]
 
@@ -101,7 +147,21 @@ async def send_relevant_images(context, chat_id, question, images):
     sent = 0
     seen = set()
 
-    for image_url in images:
+    for image in images:
+        if isinstance(image, dict):
+            image_url = image.get("url")
+            description = (image.get("description") or "").lower()
+        else:
+            image_url = image
+            description = ""
+        if any(k in question_lower for k in ["brawler", "brawlers", "skin", "skins", "costume"]):
+            ignored_words = {"brawler", "brawlers", "skin", "skins", "costume", "parlami", "dimmi", "qual", "quale", "della", "delle", "del", "dei", "degli", "una", "uno", "con", "per", "che", "come", "migliore", "miglior"}
+            search_terms = [word.strip(".,!?():;") for word in question_lower.split() if len(word.strip(".,!?():;")) >= 3 and word.strip(".,!?():;") not in ignored_words]
+            image_text = f"{description} {image_url or ''}".lower()
+            if search_terms and not any(term in image_text for term in search_terms):
+                print("IMMAGINE NON PERTINENTE:", image_url, description, flush=True)
+                continue
+
         if not image_url or image_url in seen:
             continue
 
@@ -133,7 +193,7 @@ async def send_relevant_images(context, chat_id, question, images):
 
             sent += 1
 
-            if sent >= 3:
+            if sent >= 1:
                 break
 
         except Exception as e:
@@ -238,14 +298,19 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if url:
                     web_sources.append(url)
 
-            for image in search_data.get("images", []):
-                if isinstance(image, str) and image.startswith("http"):
-                    web_images.append(image)
-                elif isinstance(image, dict):
-                    image_url = image.get("url") or image.get("image_url")
-                    if image_url and image_url.startswith("http"):
-                        web_images.append(image_url)
+            try:
+                image_data = image_search(question_for_ai)
+                for image in image_data.get("images", []):
+                    if isinstance(image, str) and image.startswith("http"):
+                        web_images.append({"url": image, "description": ""})
+                    elif isinstance(image, dict):
+                        image_url = image.get("url") or image.get("image_url")
+                        description = image.get("description") or image.get("title") or ""
+                        if image_url and image_url.startswith("http"):
+                            web_images.append({"url": image_url, "description": description})
 
+            except Exception as e:
+                print("ERRORE RICERCA IMMAGINI:", repr(e), flush=True)
             print(
                 f"TAVILY: trovati {len(web_sources)} risultati e {len(web_images)} immagini",
                 flush=True
@@ -315,6 +380,9 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "FONTE PRIORITARIA PER LE MAPPE:\n"
                 "- Per la rotazione delle mappe attuali usa Brawl Insights come fonte primaria.\n"
                 "- La fonte primaria per la rotazione è https://brawlinsights.com/en/tools/map_rotation.\n"
+                "- Se Brawl Insights non permette di verificare la mappa corrente, usa Brawlify come fonte di fallback live.\n"
+                "- Per il fallback live usa https://brawlify.com/it/maps.\n"
+                "- Usa Brawlify solo se mostra chiaramente la rotazione corrente; non usare mappe storiche come se fossero attive.\n"
                 "- Non usare mappe storiche o risultati provenienti da altre fonti per dichiarare quale mappa è attiva se Brawl Insights fornisce il dato.\n"
                 "- Se la rotazione attuale non è verificabile, dichiaralo chiaramente e non indovinare.\n\n"
 
@@ -358,6 +426,21 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=message.chat_id,
             text=response.text
         )
+
+        if any(k in question_for_ai.lower() for k in ["mappa", "mappe", "rotazione"]):
+            try:
+                map_image_data = image_search(f"{question_for_ai} {response.text}")
+                web_images = []
+                for image in map_image_data.get("images", []):
+                    if isinstance(image, str) and image.startswith("http"):
+                        web_images.append({"url": image, "description": ""})
+                    elif isinstance(image, dict):
+                        image_url = image.get("url") or image.get("image_url")
+                        description = image.get("description") or image.get("title") or ""
+                        if image_url and image_url.startswith("http"):
+                            web_images.append({"url": image_url, "description": description})
+            except Exception as e:
+                print("ERRORE IMMAGINE MAPPA:", repr(e), flush=True)
 
         await send_relevant_images(
             context,
