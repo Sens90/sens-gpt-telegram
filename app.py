@@ -363,14 +363,24 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                     web_context += f"\nDATI META PER MAPPA: {current_map}\n"
 
-                    if comp_data.get("answer"):
-                        web_context += "Risposta ricerca: " + str(comp_data.get("answer", "")) + "\n"
 
                     for result in comp_data.get("results", []):
                         title = result.get("title", "")
                         content = result.get("content", "")
                         raw_content = result.get("raw_content", "") or ""
                         url = result.get("url", "")
+
+                        combined_text = (title + "\n" + content + "\n" + raw_content).lower()
+                        map_name_lower = current_map.lower()
+                        url_lower = url.lower()
+
+                        if map_name_lower not in combined_text or "brawl ball" not in combined_text:
+                            print("FONTE COMP SCARTATA:", url, flush=True)
+                            continue
+
+                        if "brawltime.ninja/tier-list/mode/brawl-ball" in url_lower and "/map/" not in url_lower:
+                            print("FONTE COMP GENERICA SCARTATA:", url, flush=True)
+                            continue
 
                         if title or content:
                             web_context += (
