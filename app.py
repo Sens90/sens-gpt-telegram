@@ -47,7 +47,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash-lite",
+            model="gemini-3.5-flash-lite",
             contents=(
                 "Sei Sens GPT, l'intelligenza artificiale ufficiale "
                 "della community TITANI ABUSIVI. "
