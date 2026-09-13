@@ -167,6 +167,101 @@ def extract_brawl_ball_map(search_data):
     return None
 
 
+def get_verified_map_comp(map_name):
+    try:
+        response = requests.post(
+            "https://api.tavily.com/search",
+            json={
+                "api_key": TAVILY_API_KEY,
+                "query": f"\"{map_name}\" Brawl Ball Top Brawlers",
+                "search_depth": "advanced",
+                "max_results": 5,
+                "include_answer": False,
+                "include_raw_content": True,
+                "include_images": False,
+                "include_domains": [
+                    "powerleagueprodigy.com"
+                ]
+            },
+            timeout=20
+        )
+
+        response.raise_for_status()
+        data = response.json()
+
+        for result in data.get("results", []):
+            text = (
+                (result.get("raw_content") or "")
+                + "\n"
+                + (result.get("content") or "")
+            )
+
+            section_match = re.search(
+                r"##\s*" + re.escape(map_name) +
+                r"\s*(.*?)(?=\n##\s|\Z)",
+                text,
+                re.I | re.S
+            )
+
+            if not section_match:
+                continue
+
+            section = section_match.group(1)
+
+            if (
+                "brawl ball" not in section.lower()
+                or "top brawlers" not in section.lower()
+            ):
+                continue
+
+            top_section = section.split("Top Brawlers", 1)[1]
+
+            names = re.findall(
+                r"Image:\s*([^\n]+)\s*\n+\s*\1\s*\n",
+                top_section,
+                re.I
+            )
+
+            clean_names = []
+
+            for name in names:
+                name = name.strip()
+
+                if name and name.lower() not in [
+                    "brawl ball",
+                    map_name.lower()
+                ]:
+                    if name not in clean_names:
+                        clean_names.append(name)
+
+            if len(clean_names) >= 3:
+                verified = clean_names[:3]
+
+                print(
+                    "COMP VERIFICATA:",
+                    map_name,
+                    verified,
+                    flush=True
+                )
+
+                return verified
+
+        print(
+            "COMP VERIFICATA NON TROVATA:",
+            map_name,
+            flush=True
+        )
+
+    except Exception as e:
+        print(
+            "ERRORE COMP VERIFICATA:",
+            repr(e),
+            flush=True
+        )
+
+    return []
+
+
 def search_map_comp(map_name):
     response = requests.post(
         "https://api.tavily.com/search",
@@ -552,6 +647,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     web_sources.append(url)
 
             current_map = extract_brawl_ball_map(search_data)
+            verified_comp = []
+
+            if current_map:
+                verified_comp = get_verified_map_comp(current_map)
 
             if current_map:
                 try:
