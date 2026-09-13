@@ -556,8 +556,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             continue
                         if not image_url or not image_url.startswith("http"):
                             continue
-                        image_text = re.sub(r"[^a-z0-9]+", "", f"{description} {image_url}".lower())
-                        if map_key in image_text:
+                        image_url_key = re.sub(r"[^a-z0-9]+", "", image_url.lower())
+                        if map_key and map_key in image_url_key:
                             web_images.append({"url": image_url, "description": description})
                             break
                         print("IMMAGINE MAPPA SCARTATA:", image_url, description, flush=True)
