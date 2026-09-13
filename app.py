@@ -110,12 +110,13 @@ def web_search(query):
             "https://api.tavily.com/search",
             json={
                 "api_key": TAVILY_API_KEY,
-                "query": f"Brawl Stars FOOTBRAWL {query} site:brawlify.com/it/events Attivo ora LIVE mappa corrente",
+                "query": f"Brawl Stars {query} site:brawlify.com/it/maps FOOTBRAWL LIVE rotazione corrente",
                 "search_depth": "advanced",
                 "max_results": 8,
                 "include_answer": False,
                 "include_raw_content": True,
-                "include_images": False
+                "include_images": False,
+                "include_domains": ["brawlify.com"],
             },
             timeout=20
         )
@@ -130,44 +131,6 @@ def web_search(query):
 
     return data
 
-
-def brawlify_live_events():
-    response = requests.get(
-        "https://brawlify.com/it/events",
-        headers={"User-Agent": "Mozilla/5.0"},
-        timeout=20
-    )
-    response.raise_for_status()
-
-    text = re.sub(r"<script.*?</script>", " ", response.text, flags=re.S | re.I)
-    text = re.sub(r"<style.*?</style>", " ", text, flags=re.S | re.I)
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = re.sub(r"\s+", " ", text)
-
-    text_lower = text.lower()
-    keywords = ["footbrawl", "brawl ball", "attivo ora", "live"]
-    chunks = []
-
-    for keyword in keywords:
-        start = 0
-        while True:
-            pos = text_lower.find(keyword, start)
-            if pos == -1:
-                break
-
-            chunk_start = max(0, pos - 500)
-            chunk_end = min(len(text), pos + 1000)
-            chunk = text[chunk_start:chunk_end].strip()
-
-            if chunk and chunk not in chunks:
-                chunks.append(chunk)
-
-            start = pos + len(keyword)
-
-    if chunks:
-        return "\n---\n".join(chunks[:8])
-
-    return text[:5000]
 
 
 def image_search(query):
@@ -363,20 +326,6 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if url:
                     web_sources.append(url)
 
-            if any(k in question_for_ai.lower() for k in ["mappa", "mappe", "rotazione", "footbrawl", "brawl ball"]):
-                try:
-                    brawlify_text = brawlify_live_events()
-                    print("BRAWLIFY TESTO ESTRATTO:", brawlify_text[:3000], flush=True)
-                    web_context += (
-                        "\nFONTE LIVE BRAWLIFY:\n"
-                        f"{brawlify_text}\n"
-                        "Fonte: https://brawlify.com/it/events\n"
-                        "---\n"
-                    )
-                    web_sources.append("https://brawlify.com/it/events")
-                    print("BRAWLIFY DIRETTO: contenuto caricato", flush=True)
-                except Exception as e:
-                    print("ERRORE BRAWLIFY DIRETTO:", repr(e), flush=True)
 
             try:
                 image_data = image_search(question_for_ai)
@@ -508,20 +457,6 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if any(k in question_for_ai.lower() for k in ["mappa", "mappe", "rotazione"]):
-            if any(k in question_for_ai.lower() for k in ["mappa", "mappe", "rotazione", "footbrawl", "brawl ball"]):
-                try:
-                    brawlify_text = brawlify_live_events()
-                    print("BRAWLIFY TESTO ESTRATTO:", brawlify_text[:3000], flush=True)
-                    web_context += (
-                        "\nFONTE LIVE BRAWLIFY:\n"
-                        f"{brawlify_text}\n"
-                        "Fonte: https://brawlify.com/it/events\n"
-                        "---\n"
-                    )
-                    web_sources.append("https://brawlify.com/it/events")
-                    print("BRAWLIFY DIRETTO: contenuto caricato", flush=True)
-                except Exception as e:
-                    print("ERRORE BRAWLIFY DIRETTO:", repr(e), flush=True)
 
             try:
                 map_image_data = image_search(f"{question_for_ai} {response.text}")
