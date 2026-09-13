@@ -135,12 +135,35 @@ def web_search(query):
 
 def extract_brawl_ball_map(search_data):
     for result in search_data.get("results", []):
-        text = ((result.get("content") or "") + "\n" + (result.get("raw_content") or ""))
-        match = re.search(r"Brawl Ball\s*([^\n]{2,60}?)(?=\n\s*\nNew Event in:)", text, re.I)
+        url = (result.get("url") or "").lower()
+
+        if "noff.gg/brawl-stars/maps" not in url:
+            continue
+
+        text = (
+            (result.get("content") or "")
+            + "\n"
+            + (result.get("raw_content") or "")
+        )
+
+        match = re.search(
+            r"Brawl Ball\s*([^\n]{2,60}?)(?=\n\s*\nNew Event in:)",
+            text,
+            re.I
+        )
+
         if match:
-            candidate = match.group(1).strip()
+            candidate = re.sub(r"\s+", " ", match.group(1)).strip()
+
             if candidate:
+                print(
+                    "MAPPA BRAWL BALL DA NOFF:",
+                    candidate,
+                    flush=True
+                )
                 return candidate
+
+    print("MAPPA BRAWL BALL NON TROVATA SU NOFF", flush=True)
     return None
 
 
