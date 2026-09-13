@@ -133,6 +133,35 @@ def web_search(query):
 
 
 
+def extract_brawl_ball_map(search_data):
+    for result in search_data.get("results", []):
+        text = ((result.get("content") or "") + "\n" + (result.get("raw_content") or ""))
+        match = re.search(r"Brawl Ball\s*([^\n]{2,60}?)(?=\n\s*\nNew Event in:)", text, re.I)
+        if match:
+            candidate = match.group(1).strip()
+            if candidate:
+                return candidate
+    return None
+
+
+def search_map_comp(map_name):
+    response = requests.post(
+        "https://api.tavily.com/search",
+        json={
+            "api_key": TAVILY_API_KEY,
+            "query": f"Brawl Stars {map_name} Brawl Ball best brawlers win rate tier list",
+            "search_depth": "advanced",
+            "max_results": 6,
+            "include_answer": True,
+            "include_raw_content": True,
+            "include_images": False
+        },
+        timeout=20
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def image_search(query):
     search_query = (
         f"Brawl Stars {query} "
@@ -325,6 +354,40 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 if url:
                     web_sources.append(url)
+
+            current_map = extract_brawl_ball_map(search_data)
+
+            if current_map:
+                try:
+                    comp_data = search_map_comp(current_map)
+
+                    web_context += f"\nDATI META PER MAPPA: {current_map}\n"
+
+                    if comp_data.get("answer"):
+                        web_context += "Risposta ricerca: " + str(comp_data.get("answer", "")) + "\n"
+
+                    for result in comp_data.get("results", []):
+                        title = result.get("title", "")
+                        content = result.get("content", "")
+                        raw_content = result.get("raw_content", "") or ""
+                        url = result.get("url", "")
+
+                        if title or content:
+                            web_context += (
+                                f"Titolo: {title}\n"
+                                f"Contenuto: {content}\n"
+                                f"Contenuto completo: {raw_content[:5000]}\n"
+                                f"Fonte: {url}\n"
+                                f"---\n"
+                            )
+
+                        if url:
+                            web_sources.append(url)
+
+                    print("MAPPA ESTRATTA:", current_map, flush=True)
+
+                except Exception as e:
+                    print("ERRORE RICERCA COMP MAPPA:", repr(e), flush=True)
 
 
             try:
