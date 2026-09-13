@@ -417,6 +417,9 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 "- Non inventare traduzioni di nomi ufficiali.\n"
                 "- Per una miglior composizione identifica prima la mappa corrente e poi scegli i Brawler più adatti a quella specifica mappa.\n\n"
+                "- Quando l utente chiede la miglior comp, indica esattamente 3 Brawler specifici.\n"
+                "- Non rispondere con categorie generiche come tank, tiratori, supporti o brawler da mischia.\n"
+                "- Se i dati disponibili non permettono di determinare una comp affidabile, dichiaralo chiaramente e non inventare.\n"
 
                 "Alla fine della risposta aggiungi:\n"
                 "Fonti:\n"
