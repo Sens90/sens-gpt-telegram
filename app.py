@@ -85,6 +85,48 @@ def web_search(query):
     return response.json()
 
 
+
+async def send_relevant_images(context, chat_id, question, images):
+    question_lower = question.lower()
+
+    image_keywords = [
+        "mappa", "mappe", "mappa attuale", "mappa di oggi",
+        "miglior comp", "migliore comp", "composizione", "team",
+        "brawler", "brawlers", "skin", "skins", "costume"
+    ]
+
+    if not any(keyword in question_lower for keyword in image_keywords):
+        return
+
+    sent = 0
+    seen = set()
+
+    for image_url in images:
+        if not image_url or image_url in seen:
+            continue
+
+        seen.add(image_url)
+
+        try:
+            await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=image_url
+            )
+
+            sent += 1
+
+            if sent >= 3:
+                break
+
+        except Exception as e:
+            print(
+                "ERRORE INVIO IMMAGINE:",
+                repr(e),
+                flush=True
+            )
+
+
+
 async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
 
