@@ -897,6 +897,37 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             flags=re.I
         ).strip()
 
+        if "verified_comp" in locals() and len(verified_comp) == 3:
+            comp_brawlers = verified_comp[:3]
+
+            final_text = (
+                "Per questa mappa, la composizione consigliata è:\n\n"
+                + "\n\n".join(
+                    f"- {name}"
+                    for name in comp_brawlers
+                )
+            )
+
+            print(
+                "RISPOSTA COMP BLOCCATA SU:",
+                comp_brawlers,
+                flush=True
+            )
+
+            final_text = (
+                "Per questa mappa, la composizione consigliata è:\n\n"
+                + "\n\n".join(
+                    f"- {name}"
+                    for name in comp_brawlers
+                )
+            )
+
+            print(
+                "RISPOSTA COMP BLOCCATA SU:",
+                comp_brawlers,
+                flush=True
+            )
+
 
         map_photo_sent = False
 
