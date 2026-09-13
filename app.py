@@ -29,24 +29,31 @@ def home():
 
 def needs_web_search(question):
     keywords = [
-        "oggi", "ieri", "domani", "attuale", "attualmente", "adesso",
-        "ora", "ultimo", "ultimi", "ultima", "nuovo", "nuova",
-        "novità", "novita", "aggiornamento", "aggiornamenti",
-        "patch", "buff", "nerf", "bilanciamento", "meta", "stagione",
-        "evento", "eventi", "classifica", "classifiche",
-        "quando esce", "uscito", "uscita", "rilascio", "prezzo",
-        "quanto costa", "nuovo brawler", "nuovi brawler",
-        "nuova modalità", "nuove modalità"
+        "oggi", "ieri", "domani", "attuale", "attualmente",
+        "adesso", "ora", "ultimo", "ultimi", "ultima",
+        "nuovo", "nuova", "novità", "novita",
+        "aggiornamento", "aggiornamenti", "patch",
+        "buff", "nerf", "bilanciamento", "meta",
+        "stagione", "evento", "eventi",
+        "classifica", "classifiche",
+        "quando esce", "uscito", "uscita", "rilascio",
+        "prezzo", "quanto costa",
+        "brawler", "brawlers",
+        "modalità", "modalita",
+        "gadget", "ingranaggio", "star power",
+        "ipercarica", "overdrive",
+        "shade", "leon", "mortis"
     ]
 
     question_lower = question.lower()
+
     return any(keyword in question_lower for keyword in keywords)
 
 
 def web_search(query):
     search_query = (
         f"Brawl Stars {query} "
-        f"ultime notizie aggiornamenti ufficiali"
+        f"brawler aggiornamenti notizie informazioni"
     )
 
     response = requests.post(
@@ -54,20 +61,20 @@ def web_search(query):
         json={
             "api_key": TAVILY_API_KEY,
             "query": search_query,
-            "search_depth": "basic",
-            "max_results": 5,
+            "search_depth": "advanced",
+            "max_results": 8,
             "include_answer": False,
             "include_raw_content": False,
             "include_images": False,
-            "include_domains": [
-                "supercell.com",
-                "brawlstars.com"
+            "exclude_domains": [
+                "pinterest.com"
             ]
         },
-        timeout=15
+        timeout=20
     )
 
     response.raise_for_status()
+
     return response.json()
 
 
@@ -140,34 +147,61 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             instructions = (
                 "Sei Sens GPT, l'intelligenza artificiale ufficiale "
                 "della community TITANI ABUSIVI.\n\n"
-                "Sei specializzato soprattutto in Brawl Stars. "
-                "Rispondi sempre in italiano, in modo competente, "
-                "diretto, chiaro e utile.\n\n"
-                "Sono state effettuate ricerche web per questa domanda. "
-                "Devi utilizzare le informazioni trovate per rispondere.\n\n"
-                "IMPORTANTE:\n"
+
+                "Sei specializzato in Brawl Stars e devi conoscere "
+                "il gioco in modo approfondito.\n\n"
+
+                "Sono state effettuate ricerche web specifiche per "
+                "rispondere alla domanda dell'utente.\n\n"
+
+                "USA LE INFORMAZIONI WEB FORNITE.\n\n"
+
+                "Regole fondamentali:\n"
                 "- Non inventare informazioni.\n"
-                "- Dai priorità alle fonti ufficiali di Supercell e Brawl Stars.\n"
-                "- Se le fonti sono in contrasto, segnalalo.\n"
-                "- Se una informazione non è verificabile, dichiaralo chiaramente.\n"
-                "- Per informazioni relative a oggi, usa solo dati effettivamente recenti.\n"
-                "- Non dire che non sono state fornite informazioni dal web "
-                "se i risultati contengono informazioni pertinenti.\n"
-                "- Alla fine aggiungi una sezione chiamata 'Fonti:' con le URL "
-                "delle fonti effettivamente utilizzate.\n\n"
-                f"RISULTATI DELLA RICERCA WEB:\n{web_context}\n\n"
-                f"DOMANDA DELL'UTENTE:\n{question}"
+                "- Non affermare che un Brawler, modalità, evento o "
+                "funzione non esiste solamente perché non compare "
+                "in una fonte ufficiale.\n"
+                "- Considera anche Reddit, YouTube, wiki e siti "
+                "specializzati di Brawl Stars.\n"
+                "- Dai priorità alle fonti ufficiali quando si parla "
+                "di informazioni ufficialmente annunciate.\n"
+                "- Usa fonti della community per informazioni storiche, "
+                "guide, statistiche e informazioni consolidate.\n"
+                "- Distingui chiaramente informazioni ufficiali, "
+                "informazioni della community e rumor/leak.\n"
+                "- Se trovi fonti discordanti, spiegalo.\n"
+                "- Se una informazione è vecchia, considera la data "
+                "della fonte prima di rispondere.\n"
+                "- Per domande su un Brawler specifico, cerca e usa "
+                "le informazioni relative a quel Brawler anche se "
+                "non sono presenti sul sito ufficiale di Supercell.\n"
+                "- Non dire che non esiste un Brawler solo perché "
+                "non lo trovi nelle fonti ufficiali.\n\n"
+
+                "Alla fine della risposta aggiungi:\n"
+                "Fonti:\n"
+                "e indica le fonti web realmente utilizzate.\n\n"
+
+                f"RISULTATI DELLA RICERCA WEB:\n"
+                f"{web_context}\n\n"
+
+                f"DOMANDA DELL'UTENTE:\n"
+                f"{question}"
             )
+
         else:
             instructions = (
                 "Sei Sens GPT, l'intelligenza artificiale ufficiale "
                 "della community TITANI ABUSIVI.\n\n"
-                "Sei specializzato soprattutto in Brawl Stars. "
+
+                "Sei specializzato in Brawl Stars. "
                 "Rispondi sempre in italiano, in modo competente, "
                 "diretto, chiaro e utile.\n\n"
+
                 "Non inventare informazioni. "
                 "Se non conosci con certezza una informazione, "
                 "dillo chiaramente.\n\n"
+
                 f"DOMANDA DELL'UTENTE:\n{question}"
             )
 
