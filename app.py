@@ -149,7 +149,7 @@ def search_map_comp(map_name):
         "https://api.tavily.com/search",
         json={
             "api_key": TAVILY_API_KEY,
-            "query": f"Brawl Stars {map_name} Brawl Ball best brawlers win rate tier list",
+            "query": f"site:brawltime.ninja/tier-list/mode/brawl-ball/map Brawl Ball {map_name} best brawlers best teams",
             "search_depth": "advanced",
             "max_results": 6,
             "include_answer": True,
@@ -480,6 +480,9 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 "- Non inventare traduzioni di nomi ufficiali.\n"
                 "- Per una miglior composizione identifica prima la mappa corrente e poi scegli i Brawler più adatti a quella specifica mappa.\n\n"
+                "- Se è stata identificata una mappa specifica, usa solo dati e statistiche relativi a quella mappa per scegliere la composizione.\n"
+                "- Non usare tier list, win rate o composizioni generali della modalità come prova della miglior comp per una mappa specifica.\n"
+                "- Se non trovi dati affidabili per quella specifica mappa, dichiaralo chiaramente invece di sostituirli con dati generali della modalità.\n"
                 "- Quando l utente chiede la miglior comp, indica esattamente 3 Brawler specifici.\n"
                 "- Non rispondere con categorie generiche come tank, tiratori, supporti o brawler da mischia.\n"
                 "- Se i dati disponibili non permettono di determinare una comp affidabile, dichiaralo chiaramente e non inventare.\n"
