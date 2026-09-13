@@ -54,8 +54,8 @@ def web_search(query):
     if any(x in query.lower() for x in ["mappa", "mappe", "miglior comp", "migliore comp", "composizione", "composizione migliore", "mappa attuale", "mappa di oggi"]):
         search_query = (
             f"Brawl Stars {query} "
-            f"site:brawlify.com/it/events OR site:brawlify.com/it/maps "
-            f"Brawlify eventi live mappa attuale migliori brawler migliori team"
+            f"site:brawlinsights.com/en/tools/map_rotation "
+            f"Brawl Insights map rotation current maps"
         )
     else:
         search_query = (
@@ -250,11 +250,12 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Se non sei sicuro di un dato, dichiaralo chiaramente.\n"
                 "- Quando utilizzi fonti web, inserisci le fonti alla fine della risposta in modo semplice e ordinato.\n"
                 "- La risposta deve sembrare scritta da un assistente ufficiale della community, non da un chatbot che cerca di essere simpatico.\n\n"
-                "REGOLE SPECIALI PER MAPPE ED EVENTI LIVE:\n"
-                "- Per mappa attuale, mappa di oggi o rotazione corrente usa solo informazioni esplicitamente indicate come live, attuali o correnti.\n"
-                "- Non presentare mappe recenti o storiche come se fossero attive.\n"
-                "- Se non puoi verificare con certezza la mappa corrente, dichiaralo chiaramente invece di indovinare.\n"
-                "- Per le mappe usa il nome italiano ufficiale quando disponibile.\n"
+                "FONTE PRIORITARIA PER LE MAPPE:\n"
+                "- Per la rotazione delle mappe attuali usa Brawl Insights come fonte primaria.\n"
+                "- La fonte primaria per la rotazione è https://brawlinsights.com/en/tools/map_rotation.\n"
+                "- Non usare mappe storiche o risultati provenienti da altre fonti per dichiarare quale mappa è attiva se Brawl Insights fornisce il dato.\n"
+                "- Se la rotazione attuale non è verificabile, dichiaralo chiaramente e non indovinare.\n\n"
+
                 "- Non inventare traduzioni di nomi ufficiali.\n"
                 "- Per una miglior composizione identifica prima la mappa corrente e poi scegli i Brawler più adatti a quella specifica mappa.\n\n"
 
