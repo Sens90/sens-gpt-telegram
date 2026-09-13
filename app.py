@@ -87,7 +87,7 @@ def web_search(query):
             "query": search_query,
             "search_depth": "advanced",
             "max_results": 8,
-            "include_answer": False,
+            "include_answer": True,
             "include_raw_content": True,
             "include_images": True,
             "exclude_domains": [
@@ -110,10 +110,10 @@ def web_search(query):
             "https://api.tavily.com/search",
             json={
                 "api_key": TAVILY_API_KEY,
-                "query": f"Brawl Stars {query} site:brawlify.com/it/maps FOOTBRAWL LIVE rotazione corrente",
+                "query": f"Brawl Stars BRAWL BALL current LIVE map PREV NEXT {query} site:brawlify.com/gamemodes/48000005",
                 "search_depth": "advanced",
                 "max_results": 8,
-                "include_answer": False,
+                "include_answer": True,
                 "include_raw_content": True,
                 "include_images": False,
                 "include_domains": ["brawlify.com"],
