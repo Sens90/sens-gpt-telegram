@@ -144,7 +144,30 @@ def brawlify_live_events():
     text = re.sub(r"<[^>]+>", " ", text)
     text = re.sub(r"\s+", " ", text)
 
-    return text[:20000]
+    text_lower = text.lower()
+    keywords = ["footbrawl", "brawl ball", "attivo ora", "live"]
+    chunks = []
+
+    for keyword in keywords:
+        start = 0
+        while True:
+            pos = text_lower.find(keyword, start)
+            if pos == -1:
+                break
+
+            chunk_start = max(0, pos - 500)
+            chunk_end = min(len(text), pos + 1000)
+            chunk = text[chunk_start:chunk_end].strip()
+
+            if chunk and chunk not in chunks:
+                chunks.append(chunk)
+
+            start = pos + len(keyword)
+
+    if chunks:
+        return "\n---\n".join(chunks[:8])
+
+    return text[:5000]
 
 
 def image_search(query):
@@ -343,6 +366,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if any(k in question_for_ai.lower() for k in ["mappa", "mappe", "rotazione", "footbrawl", "brawl ball"]):
                 try:
                     brawlify_text = brawlify_live_events()
+                    print("BRAWLIFY TESTO ESTRATTO:", brawlify_text[:3000], flush=True)
                     web_context += (
                         "\nFONTE LIVE BRAWLIFY:\n"
                         f"{brawlify_text}\n"
@@ -487,6 +511,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if any(k in question_for_ai.lower() for k in ["mappa", "mappe", "rotazione", "footbrawl", "brawl ball"]):
                 try:
                     brawlify_text = brawlify_live_events()
+                    print("BRAWLIFY TESTO ESTRATTO:", brawlify_text[:3000], flush=True)
                     web_context += (
                         "\nFONTE LIVE BRAWLIFY:\n"
                         f"{brawlify_text}\n"
