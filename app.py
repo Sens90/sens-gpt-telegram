@@ -124,7 +124,7 @@ def web_search(query):
         fallback_response.raise_for_status()
         fallback_data = fallback_response.json()
 
-        print("BRAWLIFY FALLBACK:", [{"title": r.get("title"), "url": r.get("url"), "content": (r.get("content") or "")[:500]} for r in fallback_data.get("results", [])], flush=True)
+        print("BRAWLIFY FALLBACK:", [{"title": r.get("title"), "url": r.get("url"), "content": (r.get("content") or "")[:500], "raw_content": (r.get("raw_content") or "")[:3000]} for r in fallback_data.get("results", [])], flush=True)
 
         data.setdefault("results", [])
         data["results"].extend(fallback_data.get("results", []))
