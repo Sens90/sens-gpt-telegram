@@ -525,24 +525,35 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await context.bot.send_message(
             chat_id=message.chat_id,
-            text=response.text
+            text=response.text,
+            disable_web_page_preview=True
         )
 
         if any(k in question_for_ai.lower() for k in ["mappa", "mappe", "rotazione"]):
-
             try:
-                map_image_data = image_search(f"{question_for_ai} {response.text}")
                 web_images = []
-                for image in map_image_data.get("images", []):
-                    if isinstance(image, str) and image.startswith("http"):
-                        web_images.append({"url": image, "description": ""})
-                    elif isinstance(image, dict):
-                        image_url = image.get("url") or image.get("image_url")
-                        description = image.get("description") or image.get("title") or ""
-                        if image_url and image_url.startswith("http"):
+                if current_map:
+                    map_image_data = image_search(f"Brawl Stars map {current_map}")
+                    map_key = re.sub(r"[^a-z0-9]+", "", current_map.lower())
+                    for image in map_image_data.get("images", []):
+                        if isinstance(image, str):
+                            image_url = image
+                            description = ""
+                        elif isinstance(image, dict):
+                            image_url = image.get("url") or image.get("image_url")
+                            description = image.get("description") or image.get("title") or ""
+                        else:
+                            continue
+                        if not image_url or not image_url.startswith("http"):
+                            continue
+                        image_text = re.sub(r"[^a-z0-9]+", "", f"{description} {image_url}".lower())
+                        if map_key in image_text:
                             web_images.append({"url": image_url, "description": description})
+                            break
+                        print("IMMAGINE MAPPA SCARTATA:", image_url, description, flush=True)
             except Exception as e:
                 print("ERRORE IMMAGINE MAPPA:", repr(e), flush=True)
+
 
         await send_relevant_images(
             context,
