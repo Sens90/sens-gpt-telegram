@@ -53,8 +53,9 @@ def needs_web_search(question):
 def web_search(query):
     if any(x in query.lower() for x in ["mappa", "mappe", "miglior comp", "migliore comp", "composizione", "composizione migliore", "mappa attuale", "mappa di oggi"]):
         search_query = (
-            f"Brawl Stars {query} Brawlify mappe eventi live "
-            f"mappa attuale migliori brawler migliori team"
+            f"Brawl Stars {query} "
+            f"site:brawlify.com/it/events OR site:brawlify.com/it/maps "
+            f"Brawlify eventi live mappa attuale migliori brawler migliori team"
         )
     else:
         search_query = (
@@ -217,6 +218,14 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "non sono presenti sul sito ufficiale di Supercell.\n"
                 "- Non dire che non esiste un Brawler solo perché "
                 "non lo trovi nelle fonti ufficiali.\n\n"
+
+                "REGOLE SPECIALI PER MAPPE ED EVENTI LIVE:\n"
+                "- Per mappa attuale, mappa di oggi o rotazione corrente usa solo informazioni esplicitamente indicate come live, attuali o correnti.\n"
+                "- Non presentare mappe recenti o storiche come se fossero attive.\n"
+                "- Se non puoi verificare con certezza la mappa corrente, dichiaralo chiaramente invece di indovinare.\n"
+                "- Per le mappe usa il nome italiano ufficiale quando disponibile.\n"
+                "- Non inventare traduzioni di nomi ufficiali.\n"
+                "- Per una miglior composizione identifica prima la mappa corrente e poi scegli i Brawler più adatti a quella specifica mappa.\n\n"
 
                 "Alla fine della risposta aggiungi:\n"
                 "Fonti:\n"
