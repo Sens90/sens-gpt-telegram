@@ -1,6 +1,7 @@
 import os
 from flask import Flask
 from google import genai
+from google.genai import types
 from telegram import Update
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
 
@@ -53,8 +54,21 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "della community TITANI ABUSIVI. "
                 "Sei specializzato soprattutto in Brawl Stars. "
                 "Rispondi sempre in italiano, in modo competente, "
-                "diretto, chiaro e utile. Non inventare informazioni.\n\n"
+                "diretto, chiaro e utile. "
+                "Non inventare informazioni. "
+                "Quando la domanda riguarda informazioni attuali, "
+                "aggiornamenti, bilanciamenti, nuovi Brawler, modalità, "
+                "meta, eventi o qualsiasi informazione che potrebbe essere "
+                "cambiata recentemente, usa la ricerca Google per verificare "
+                "le informazioni prima di rispondere.\n\n"
                 f"Domanda dell'utente: {question}"
+            ),
+            config=types.GenerateContentConfig(
+                tools=[
+                    types.Tool(
+                        google_search=types.GoogleSearch()
+                    )
+                ]
             )
         )
 
@@ -72,6 +86,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Riprova tra poco."
             )
         )
+
+
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
