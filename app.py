@@ -38,7 +38,7 @@ def needs_web_search(question):
         "classifica", "classifiche",
         "quando esce", "uscito", "uscita", "rilascio",
         "prezzo", "quanto costa",
-        "brawler", "brawlers",
+        "brawler", "brawlers", "mappa attuale", "mappe attuali", "mappa corrente", "mappe correnti", "mappa di oggi", "mappe di oggi", "miglior comp", "migliore comp", "composizione", "composizione migliore",
         "modalità", "modalita",
         "gadget", "ingranaggio", "star power",
         "ipercarica", "overdrive",
@@ -51,10 +51,16 @@ def needs_web_search(question):
 
 
 def web_search(query):
-    search_query = (
-        f"Brawl Stars {query} "
-        f"brawler aggiornamenti notizie informazioni"
-    )
+    if any(x in query.lower() for x in ["mappa", "mappe", "miglior comp", "migliore comp", "composizione", "composizione migliore", "mappa attuale", "mappa di oggi"]):
+        search_query = (
+            f"Brawl Stars {query} Brawlify mappe eventi live "
+            f"mappa attuale migliori brawler migliori team"
+        )
+    else:
+        search_query = (
+            f"Brawl Stars {query} "
+            f"brawler aggiornamenti notizie informazioni"
+        )
 
     response = requests.post(
         "https://api.tavily.com/search",
