@@ -246,99 +246,53 @@ def search_map_comp(map_name):
 
 def get_noff_map_image(map_name):
     try:
-        response = requests.post(
-            "https://api.tavily.com/search",
-            json={
-                "api_key": TAVILY_API_KEY,
-                "query": f"\"{map_name}\" Brawl Stars map",
-                "search_depth": "advanced",
-                "max_results": 6,
-                "include_answer": False,
-                "include_raw_content": False,
-                "include_images": True
-            },
+        response = requests.get(
+            "https://api.brawlapi.com/v1/maps",
+            headers={"User-Agent": "Mozilla/5.0"},
             timeout=20
         )
-
         response.raise_for_status()
+
         data = response.json()
 
-        map_key = re.sub(
+        target = re.sub(
             r"[^a-z0-9]+",
             "",
             map_name.lower()
         )
 
-        for image in data.get("images", []):
-            if isinstance(image, dict):
-                image_url = image.get("url") or image.get("image_url")
-                description = (
-                    image.get("description")
-                    or image.get("title")
-                    or ""
-                )
-            else:
-                image_url = image
-                description = ""
+        for map_data in data.get("list", []):
+            name = map_data.get("name") or ""
 
-            if not image_url:
-                continue
-
-            image_key = re.sub(
+            name_key = re.sub(
                 r"[^a-z0-9]+",
                 "",
-                (description + " " + image_url).lower()
+                name.lower()
             )
 
-            if map_key not in image_key:
-                print(
-                    "IMMAGINE MAPPA SCARTATA:",
-                    image_url,
-                    description,
-                    flush=True
-                )
+            if name_key != target:
                 continue
 
-            try:
-                check = requests.get(
-                    image_url,
-                    headers={"User-Agent": "Mozilla/5.0"},
-                    timeout=15
-                )
+            image_url = map_data.get("imageUrl")
 
-                content_type = check.headers.get(
-                    "Content-Type",
-                    ""
-                ).lower()
-
-                if (
-                    check.status_code == 200
-                    and content_type.startswith("image/")
-                ):
-                    print(
-                        "IMMAGINE MAPPA TROVATA:",
-                        map_name,
-                        image_url,
-                        flush=True
-                    )
-                    return image_url
-
-            except Exception as e:
+            if image_url:
                 print(
-                    "ERRORE CONTROLLO IMMAGINE MAPPA:",
-                    repr(e),
+                    "IMMAGINE MAPPA TROVATA:",
+                    name,
+                    image_url,
                     flush=True
                 )
+                return image_url
 
         print(
-            "IMMAGINE ESATTA MAPPA NON TROVATA:",
+            "IMMAGINE MAPPA NON TROVATA:",
             map_name,
             flush=True
         )
 
     except Exception as e:
         print(
-            "ERRORE RICERCA IMMAGINE MAPPA:",
+            "ERRORE IMMAGINE MAPPA:",
             repr(e),
             flush=True
         )
@@ -845,19 +799,15 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ).strip()
 
 
-        await context.bot.send_message(
-            chat_id=message.chat_id,
-            text=final_text,
-            disable_web_page_preview=True
-        )
+        map_photo_sent = False
 
         if "current_map" in locals() and current_map:
             try:
-                noff_image = get_noff_map_image(current_map)
+                map_image = get_noff_map_image(current_map)
 
-                if noff_image:
+                if map_image:
                     image_response = requests.get(
-                        noff_image,
+                        map_image,
                         headers={"User-Agent": "Mozilla/5.0"},
                         timeout=15
                     )
@@ -865,11 +815,33 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                     await context.bot.send_photo(
                         chat_id=message.chat_id,
-                        photo=image_response.content
+                        photo=image_response.content,
+                        caption=current_map
                     )
 
+                    map_photo_sent = True
+
             except Exception as e:
-                print("ERRORE INVIO MAPPA NOFF:", repr(e), flush=True)
+                print(
+                    "ERRORE INVIO IMMAGINE MAPPA:",
+                    repr(e),
+                    flush=True
+                )
+
+        if "current_map" in locals() and current_map:
+            final_text = re.sub(
+                r"^" + re.escape(current_map) + r"\s*",
+                "",
+                final_text,
+                count=1,
+                flags=re.I
+            ).strip()
+
+        await context.bot.send_message(
+            chat_id=message.chat_id,
+            text=final_text,
+            disable_web_page_preview=True
+        )
 
         if comp_brawlers:
             await send_comp_brawler_images(
