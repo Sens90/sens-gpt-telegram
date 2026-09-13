@@ -102,7 +102,30 @@ def web_search(query):
     )
 
     response.raise_for_status()
-    return response.json()
+    data = response.json()
+
+    if is_map_query:
+        fallback_response = requests.post(
+            "https://api.tavily.com/search",
+            json={
+                "api_key": TAVILY_API_KEY,
+                "query": f"Brawl Stars {query} site:brawlify.com/it/maps current live rotation",
+                "search_depth": "advanced",
+                "max_results": 8,
+                "include_answer": False,
+                "include_raw_content": True,
+                "include_images": False
+            },
+            timeout=20
+        )
+
+        fallback_response.raise_for_status()
+        fallback_data = fallback_response.json()
+
+        data.setdefault("results", [])
+        data["results"].extend(fallback_data.get("results", []))
+
+    return data
 
 
 def image_search(query):
