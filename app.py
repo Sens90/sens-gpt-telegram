@@ -1,13 +1,13 @@
 import os
 from flask import Flask
-from openai import OpenAI
+from google import genai
 from telegram import Update
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 app = Flask(__name__)
 import threading
 
@@ -43,19 +43,19 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        response = client.responses.create(
-            model="gpt-5-mini",
-            instructions=(
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=(
                 "Sei Sens GPT, l'intelligenza artificiale ufficiale "
                 "della community TITANI ABUSIVI. "
                 "Sei specializzato soprattutto in Brawl Stars. "
                 "Rispondi sempre in italiano, in modo competente, "
-                "diretto, chiaro e utile. Non inventare informazioni."
-            ),
-            input=question
+                "diretto, chiaro e utile. Non inventare informazioni.\n\n"
+                f"Domanda dell'utente: {question}"
+            )
         )
 
-        await message.reply_text(response.output_text)
+        await message.reply_text(response.text)
 
     except Exception as e:
         print("Errore:", e)
