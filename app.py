@@ -108,9 +108,27 @@ async def send_relevant_images(context, chat_id, question, images):
         seen.add(image_url)
 
         try:
+            image_response = requests.get(
+                image_url,
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=10
+            )
+
+            image_response.raise_for_status()
+
+            content_type = image_response.headers.get("Content-Type", "").lower()
+
+            if not content_type.startswith("image/"):
+                print("IMMAGINE SCARTATA:", image_url, content_type, flush=True)
+                continue
+
+            if len(image_response.content) > 10 * 1024 * 1024:
+                print("IMMAGINE TROPPO GRANDE:", image_url, flush=True)
+                continue
+
             await context.bot.send_photo(
                 chat_id=chat_id,
-                photo=image_url
+                photo=image_response.content
             )
 
             sent += 1
@@ -119,11 +137,11 @@ async def send_relevant_images(context, chat_id, question, images):
                 break
 
         except Exception as e:
-            print(
-                "ERRORE INVIO IMMAGINE:",
-                repr(e),
-                flush=True
-            )
+            print("ERRORE INVIO IMMAGINE:", repr(e), flush=True)
+
+
+
+
 
 
 
