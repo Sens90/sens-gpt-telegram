@@ -72,7 +72,7 @@ def web_search(query):
             "max_results": 8,
             "include_answer": False,
             "include_raw_content": False,
-            "include_images": False,
+            "include_images": True,
             "exclude_domains": [
                 "pinterest.com"
             ]
@@ -154,6 +154,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     web_context = ""
     web_sources = []
+    web_images = []
 
     if needs_web_search(question_for_ai):
         try:
@@ -175,8 +176,16 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if url:
                     web_sources.append(url)
 
+            for image in search_data.get("images", []):
+                if isinstance(image, str) and image.startswith("http"):
+                    web_images.append(image)
+                elif isinstance(image, dict):
+                    image_url = image.get("url") or image.get("image_url")
+                    if image_url and image_url.startswith("http"):
+                        web_images.append(image_url)
+
             print(
-                f"TAVILY: trovati {len(web_sources)} risultati",
+                f"TAVILY: trovati {len(web_sources)} risultati e {len(web_images)} immagini",
                 flush=True
             )
 
@@ -285,6 +294,13 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=message.chat_id,
             text=response.text
+        )
+
+        await send_relevant_images(
+            context,
+            message.chat_id,
+            question_for_ai,
+            web_images
         )
 
     except Exception as e:
