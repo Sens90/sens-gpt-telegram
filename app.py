@@ -9,7 +9,11 @@ OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 app = Flask(__name__)
+import threading
 
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
 
 @app.route("/")
 def home():
@@ -75,4 +79,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
+    threading.Thread(target=run_web, daemon=True).start()
+    main()                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
