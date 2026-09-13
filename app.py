@@ -38,7 +38,7 @@ def needs_web_search(question):
         "classifica", "classifiche",
         "quando esce", "uscito", "uscita", "rilascio",
         "prezzo", "quanto costa",
-        "brawler", "brawlers", "mappa attuale", "mappe attuali", "mappa corrente", "mappe correnti", "mappa di oggi", "mappe di oggi", "miglior comp", "migliore comp", "composizione", "composizione migliore",
+        "brawler", "brawlers", "rotazione", "rotazione attuale", "mappa attuale", "mappe attuali", "mappa corrente", "mappe correnti", "mappa di oggi", "mappe di oggi", "miglior comp", "migliore comp", "composizione", "composizione migliore",
         "modalità", "modalita",
         "gadget", "ingranaggio", "star power",
         "ipercarica", "overdrive",
@@ -71,7 +71,7 @@ def web_search(query):
             "search_depth": "advanced",
             "max_results": 8,
             "include_answer": False,
-            "include_raw_content": False,
+            "include_raw_content": True,
             "include_images": True,
             "exclude_domains": [
                 "pinterest.com"
@@ -163,12 +163,14 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for result in search_data.get("results", []):
                 title = result.get("title", "")
                 content = result.get("content", "")
+                raw_content = result.get("raw_content", "") or ""
                 url = result.get("url", "")
 
                 if title or content:
                     web_context += (
                         f"\nTitolo: {title}\n"
                         f"Contenuto: {content}\n"
+                        f"Contenuto completo: {raw_content[:6000]}\n"
                         f"Fonte: {url}\n"
                         f"---\n"
                     )
