@@ -1,13 +1,12 @@
 import os
 from flask import Flask
 from google import genai
-from google.genai import types
 from telegram import Update
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-
+TAVILY_API_KEY = os.environ["TAVILY_API_KEY"]
 client = genai.Client(api_key=GEMINI_API_KEY)
 app = Flask(__name__)
 import threading
@@ -20,7 +19,20 @@ def run_web():
 def home():
     return "Sens GPT - TITANI ABUSIVI ONLINE"
 
+def web_search(query):
+    response = requests.post(
+        "https://api.tavily.com/search",
+        json={
+            "api_key": TAVILY_API_KEY,
+            "query": query,
+            "search_depth": "basic",
+            "max_results": 5
+        },
+        timeout=15
+    )
 
+    response.raise_for_status()
+    return response.json()
 async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
 
@@ -63,13 +75,6 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "le informazioni prima di rispondere.\n\n"
                 f"Domanda dell'utente: {question}"
             ),
-            config=types.GenerateContentConfig(
-                tools=[
-                    types.Tool(
-                        google_search=types.GoogleSearch()
-                    )
-                ]
-            )
         )
 
         await context.bot.send_message(
