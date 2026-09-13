@@ -1,4 +1,5 @@
 import os
+import requests
 from flask import Flask
 from google import genai
 from telegram import Update
@@ -18,7 +19,18 @@ def run_web():
 @app.route("/")
 def home():
     return "Sens GPT - TITANI ABUSIVI ONLINE"
+def needs_web_search(question):
+    keywords = [
+        "oggi", "attuale", "attualmente", "ultimo", "ultimi",
+        "nuovo", "nuova", "novità", "aggiornamento", "aggiornamenti",
+        "patch", "buff", "nerf", "bilanciamento", "meta",
+        "stagione", "evento", "eventi", "classifica", "classifiche",
+        "quando esce", "uscito", "uscita", "prezzo", "quanto costa"
+    ]
 
+    question_lower = question.lower()
+
+    return any(keyword in question_lower for keyword in keywords)
 def web_search(query):
     response = requests.post(
         "https://api.tavily.com/search",
@@ -58,6 +70,26 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    web_context = ""
+
+    if needs_web_search(question):
+        try:
+            search_data = web_search(question)
+
+            for result in search_data.get("results", []):
+                title = result.get("title", "")
+                content = result.get("content", "")
+                url = result.get("url", "")
+
+                web_context += (
+                    f"\nTitolo: {title}\n"
+                    f"Contenuto: {content}\n"
+                    f"Fonte: {url}\n"
+                )
+
+        except Exception as e:
+            print("ERRORE TAVILY:", repr(e), flush=True)
+
     try:
         response = client.models.generate_content(
             model="gemini-3.5-flash-lite",
@@ -67,12 +99,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Sei specializzato soprattutto in Brawl Stars. "
                 "Rispondi sempre in italiano, in modo competente, "
                 "diretto, chiaro e utile. "
-                "Non inventare informazioni. "
-                "Quando la domanda riguarda informazioni attuali, "
-                "aggiornamenti, bilanciamenti, nuovi Brawler, modalità, "
-                "meta, eventi o qualsiasi informazione che potrebbe essere "
-                "cambiata recentemente, usa la ricerca Google per verificare "
-                "le informazioni prima di rispondere.\n\n"
+                "Non inventare informazioni.\n\n"
+                f"Informazioni aggiornate dal web:\n{web_context}\n\n"
                 f"Domanda dell'utente: {question}"
             ),
         )
@@ -91,9 +119,6 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Riprova tra poco."
             )
         )
-
-
-def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     application.add_handler(
