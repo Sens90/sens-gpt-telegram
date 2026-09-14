@@ -1627,12 +1627,36 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 print("ERRORE IMMAGINE MAPPA:", repr(e), flush=True)
 
 
-        await send_relevant_images(
-            context,
-            message.chat_id,
-            question_for_ai,
-            web_images
+        explicit_image_request = any(
+            k in question_for_ai.lower()
+            for k in [
+                "foto",
+                "immagine",
+                "immagini",
+                "mostrami",
+                "fammi vedere"
+            ]
         )
+
+        is_map_or_comp_request = any(
+            k in question_for_ai.lower()
+            for k in [
+                "mappa",
+                "mappe",
+                "rotazione",
+                "miglior comp",
+                "migliore comp",
+                "composizione"
+            ]
+        )
+
+        if explicit_image_request and not is_map_or_comp_request:
+            await send_relevant_images(
+                context,
+                message.chat_id,
+                question_for_ai,
+                web_images
+            )
 
     except Exception as e:
         print(
