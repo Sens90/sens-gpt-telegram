@@ -146,7 +146,7 @@ def extract_brawl_ball_map(search_data):
                 "DATI ROTAZIONE DA",
                 domain,
                 ":",
-                text[:6000],
+                text[text.find("| Date and Time (UTC) | Mode | Map |"):][:12000] if "| Date and Time (UTC) | Mode | Map |" in text else text[-12000:],
                 flush=True
             )
 
