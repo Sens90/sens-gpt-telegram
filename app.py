@@ -778,8 +778,8 @@ def automatic_trophy_monitor():
                         )
 
                         print(
-                            f"TROFEI AGGIORNATI: {player[name]} "
-                            f"{player[trophies]}",
+                            f"TROFEI AGGIORNATI: {player["name"]} "
+                            f"{player["trophies"]}",
                             flush=True
                         )
 
@@ -1035,9 +1035,9 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=message.chat_id,
             photo=chart,
             caption=(
-                f"Andamento trofei di {player[name]}\n"
+                f"Andamento trofei di {player["name"]}\n"
                 f"Periodo: ultimi {days} giorni\n"
-                f"Trofei attuali: {format_number_it(player[trophies])}"
+                f"Trofei attuali: {format_number_it(player["trophies"])}"
             )
         )
         return
