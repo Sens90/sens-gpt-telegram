@@ -78,6 +78,18 @@ def is_current_meta_query(question):
     return any(keyword in question_lower for keyword in meta_keywords)
 
 
+def meta_source_priority(url):
+    url_lower = (url or "").lower()
+
+    if "supercell.com" in url_lower or "brawlstars.com" in url_lower:
+        return 0
+    if "brawlify.com" in url_lower or "brawltime.ninja" in url_lower:
+        return 1
+    if "noff.gg" in url_lower:
+        return 2
+    return 3
+
+
 def web_search(query):
     query_lower = query.lower()
     today = datetime.now(timezone.utc).date().isoformat()
@@ -102,7 +114,8 @@ def web_search(query):
         search_query = (
             f"Brawl Stars current meta {today} {query} "
             f"latest balance changes tier list ranked competitive "
-            f"win rates pick rates best brawlers"
+            f"win rates pick rates best brawlers "
+            f"Supercell Brawlify Brawl Time Ninja Noff"
         )
     elif is_image_subject_query:
         search_query = (
@@ -1244,7 +1257,17 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             search_data = web_search(question_for_ai)
 
-            for result in search_data.get("results", []):
+            search_results = search_data.get("results", [])
+
+            if is_current_meta_query(question_for_ai):
+                search_results = sorted(
+                    search_results,
+                    key=lambda result: meta_source_priority(
+                        result.get("url", "")
+                    )
+                )
+
+            for result in search_results:
                 title = result.get("title", "")
                 content = result.get("content", "")
                 raw_content = result.get("raw_content", "") or ""
@@ -1353,6 +1376,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Se la domanda riguarda meta, tier list, Ranked, migliori Brawler, pick rate, win rate, buff, nerf o bilanciamenti attuali, considera la ricerca web come obbligatoria.\n"
                 "- Per affermazioni sul meta attuale NON usare la memoria interna del modello come fonte principale.\n"
                 "- Dai priorità ai risultati più recenti e coerenti con l'ultima patch o stagione verificabile.\n"
+                "- Gerarchia fonti per il meta: 1) Supercell/Brawl Stars ufficiale per patch, buff, nerf e modifiche; 2) Brawlify e Brawl Time Ninja per statistiche, tier list e andamento competitivo; 3) Noff come supporto; 4) altre fonti community solo come conferma secondaria.\n"
+                "- Una fonte ufficiale stabilisce cosa è cambiato, ma il meta reale va valutato anche con statistiche e dati competitivi aggiornati.\n"
                 "- Confronta più risultati quando possibile: non dichiarare un Brawler 'meta' basandoti su una sola fonte debole.\n"
                 "- Se i risultati web non permettono di verificare il meta attuale con sufficiente affidabilità, dichiaralo chiaramente invece di indovinare.\n\n"
 
