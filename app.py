@@ -116,65 +116,45 @@ def web_search(query):
     response.raise_for_status()
     data = response.json()
 
-    if is_map_query:
-        fallback_response = requests.post(
-            "https://api.tavily.com/search",
-            json={
-                "api_key": TAVILY_API_KEY,
-                "query": f"Brawl Stars current Brawl Ball map Current Events {query} site:noff.gg/brawl-stars/maps",
-                "search_depth": "advanced",
-                "max_results": 8,
-                "include_answer": True,
-                "include_raw_content": True,
-                "include_images": False,
-                "include_domains": ["noff.gg"],
-            },
-            timeout=20
-        )
-
-        fallback_response.raise_for_status()
-        fallback_data = fallback_response.json()
-
-        print("BRAWLIFY FALLBACK:", [{"title": r.get("title"), "url": r.get("url"), "content": (r.get("content") or "")[:500], "raw_content": (r.get("raw_content") or "")[:3000]} for r in fallback_data.get("results", [])], flush=True)
-
-        data.setdefault("results", [])
-        data["results"].extend(fallback_data.get("results", []))
 
     return data
 
 
 
 def extract_brawl_ball_map(search_data):
-    for result in search_data.get("results", []):
-        url = (result.get("url") or "").lower()
+    results = search_data.get("results", [])
 
-        if "noff.gg/brawl-stars/maps" not in url:
-            continue
+    for domain in [
+        "brawlinsights.com",
+        "brawlify.com"
+    ]:
+        for result in results:
+            url = (result.get("url") or "").lower()
 
-        text = (
-            (result.get("content") or "")
-            + "\n"
-            + (result.get("raw_content") or "")
-        )
+            if domain not in url:
+                continue
 
-        match = re.search(
-            r"Brawl Ball\s*([^\n]{2,60}?)(?=\n\s*\nNew Event in:)",
-            text,
-            re.I
-        )
+            text = (
+                (result.get("title") or "")
+                + "\n"
+                + (result.get("content") or "")
+                + "\n"
+                + (result.get("raw_content") or "")
+            )
 
-        if match:
-            candidate = re.sub(r"\s+", " ", match.group(1)).strip()
+            print(
+                "DATI ROTAZIONE DA",
+                domain,
+                ":",
+                text[:6000],
+                flush=True
+            )
 
-            if candidate:
-                print(
-                    "MAPPA BRAWL BALL DA NOFF:",
-                    candidate,
-                    flush=True
-                )
-                return candidate
+    print(
+        "MAPPA BRAWL BALL LIVE NON ANCORA ESTRATTA",
+        flush=True
+    )
 
-    print("MAPPA BRAWL BALL NON TROVATA SU NOFF", flush=True)
     return None
 
 
