@@ -802,6 +802,73 @@ def automatic_trophy_monitor():
         time.sleep(6 * 60 * 60)
 
 
+
+def create_trophy_chart(player_tag, player_name, history, days=30):
+    try:
+        if not history or len(history) < 2:
+            return None
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+        dates = []
+        trophies = []
+
+        for row in history:
+            try:
+                dt = datetime.fromisoformat(
+                    row["recorded_at"].replace("Z", "+00:00")
+                )
+
+                if dt >= cutoff:
+                    dates.append(dt)
+                    trophies.append(int(row["trophies"]))
+
+            except Exception:
+                continue
+
+        if len(dates) < 2:
+            return None
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+
+        ax.plot(
+            dates,
+            trophies,
+            marker="o",
+            linewidth=2
+        )
+
+        ax.set_title(
+            f"Andamento trofei - {player_name}"
+        )
+
+        ax.set_xlabel("Data")
+        ax.set_ylabel("Trofei")
+        ax.grid(True, alpha=0.3)
+
+        fig.autofmt_xdate()
+        fig.tight_layout()
+
+        image = io.BytesIO()
+
+        fig.savefig(
+            image,
+            format="png",
+            dpi=150
+        )
+
+        plt.close(fig)
+
+        image.seek(0)
+        image.name = f"{player_tag}_trofei.png"
+
+        return image
+
+    except Exception as e:
+        print("ERRORE GRAFICO TROFEI:", repr(e), flush=True)
+        return None
+
+
 def get_brawlzone_player(player_tag):
     try:
         tag = player_tag.upper().replace("#", "").strip()
@@ -911,6 +978,69 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"@{bot_username}",
             ""
         ).strip()
+
+    chart_match = re.fullmatch(
+        r"grafico(?:\s+(7|15|30|90))?\s+#?([0289PYLQGRJCUV]{3,15})",
+        question.strip(),
+        re.I
+    )
+
+    if chart_match:
+        days = int(chart_match.group(1) or 30)
+        player_tag = chart_match.group(2).upper()
+
+        await context.bot.send_chat_action(
+            chat_id=message.chat_id,
+            action="upload_photo"
+        )
+
+        player = get_brawlzone_player(player_tag)
+
+        if not player:
+            await context.bot.send_message(
+                chat_id=message.chat_id,
+                text="Giocatore non trovato."
+            )
+            return
+
+        save_trophy_snapshot(
+            player["tag"],
+            player["name"],
+            player["trophies"]
+        )
+
+        history = get_trophy_history(
+            player["tag"],
+            days=max(days, 90)
+        )
+
+        chart = create_trophy_chart(
+            player["tag"],
+            player["name"],
+            history,
+            days=days
+        )
+
+        if not chart:
+            await context.bot.send_message(
+                chat_id=message.chat_id,
+                text=(
+                    f"Non ci sono ancora abbastanza dati per creare "
+                    f"il grafico degli ultimi {days} giorni."
+                )
+            )
+            return
+
+        await context.bot.send_photo(
+            chat_id=message.chat_id,
+            photo=chart,
+            caption=(
+                f"Andamento trofei di {player[name]}\n"
+                f"Periodo: ultimi {days} giorni\n"
+                f"Trofei attuali: {format_number_it(player[trophies])}"
+            )
+        )
+        return
 
     stats_match = re.fullmatch(
         r"stats\s+#?([0289PYLQGRJCUV]{3,15})",
