@@ -46,6 +46,8 @@ def needs_web_search(question):
         "nuovo", "nuova", "novità", "novita",
         "aggiornamento", "aggiornamenti", "patch",
         "buff", "nerf", "bilanciamento", "meta",
+        "tier list", "tierlist", "miglior brawler", "migliori brawler",
+        "ranked", "competitivo", "pick rate", "win rate",
         "stagione", "evento", "eventi",
         "classifica", "classifiche",
         "quando esce", "uscito", "uscita", "rilascio",
@@ -62,8 +64,24 @@ def needs_web_search(question):
     return any(keyword in question_lower for keyword in keywords)
 
 
+def is_current_meta_query(question):
+    question_lower = question.lower()
+
+    meta_keywords = [
+        "meta", "tier list", "tierlist",
+        "miglior brawler", "migliori brawler",
+        "ranked", "competitivo",
+        "pick rate", "win rate",
+        "buff", "nerf", "bilanciamento"
+    ]
+
+    return any(keyword in question_lower for keyword in meta_keywords)
+
+
 def web_search(query):
     query_lower = query.lower()
+    today = datetime.now(timezone.utc).date().isoformat()
+    is_meta_query = is_current_meta_query(query)
 
     is_map_query = any(x in query_lower for x in [
         "mappa", "mappe", "rotazione", "mappa attuale",
@@ -79,6 +97,12 @@ def web_search(query):
             f"Brawl Stars {query} "
             f"(site:brawlinsights.com/en/tools/map_rotation OR site:brawlify.com/it/maps) "
             f"Brawl Insights current map rotation"
+        )
+    elif is_meta_query:
+        search_query = (
+            f"Brawl Stars current meta {today} {query} "
+            f"latest balance changes tier list ranked competitive "
+            f"win rates pick rates best brawlers"
         )
     elif is_image_subject_query:
         search_query = (
@@ -1325,6 +1349,12 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "rispondere alla domanda dell'utente.\n\n"
 
                 "USA LE INFORMAZIONI WEB FORNITE.\nNON MOSTRARE MAI LE FONTI, GLI URL O I LINK ALL UTENTE.\n\n"
+                "REGOLE PER META E DATI ATTUALI:\n"
+                "- Se la domanda riguarda meta, tier list, Ranked, migliori Brawler, pick rate, win rate, buff, nerf o bilanciamenti attuali, considera la ricerca web come obbligatoria.\n"
+                "- Per affermazioni sul meta attuale NON usare la memoria interna del modello come fonte principale.\n"
+                "- Dai priorità ai risultati più recenti e coerenti con l'ultima patch o stagione verificabile.\n"
+                "- Confronta più risultati quando possibile: non dichiarare un Brawler 'meta' basandoti su una sola fonte debole.\n"
+                "- Se i risultati web non permettono di verificare il meta attuale con sufficiente affidabilità, dichiaralo chiaramente invece di indovinare.\n\n"
 
                 + (
                     f"MAPPA CORRENTE IDENTIFICATA DAL SISTEMA: {current_map}\n"
