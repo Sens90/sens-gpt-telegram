@@ -1662,15 +1662,22 @@ def main():
         )
     )
 
-    application.run_polling()
+    port = int(os.environ.get("PORT", 10000))
+
+    base_url = os.environ.get(
+        "RENDER_EXTERNAL_URL",
+        "https://sens-gpt-telegram.onrender.com"
+    ).rstrip("/")
+
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=port,
+        url_path="telegram",
+        webhook_url=f"{base_url}/telegram"
+    )
 
 
 if __name__ == "__main__":
-    threading.Thread(
-        target=run_web,
-        daemon=True
-    ).start()
-
     threading.Thread(
         target=automatic_trophy_monitor,
         daemon=True
