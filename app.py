@@ -1,3 +1,11 @@
+import io
+import html
+from datetime import datetime, timedelta, timezone
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
 import os
 import requests
 import re
@@ -12,6 +20,8 @@ from telegram.ext import Application, MessageHandler, ContextTypes, filters
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 TAVILY_API_KEY = os.environ["TAVILY_API_KEY"]
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -575,6 +585,214 @@ async def send_comp_brawler_images(context, chat_id, brawler_names):
             )
 
 
+
+def save_trophy_snapshot(player_tag, player_name, trophies):
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        print("SUPABASE NON CONFIGURATO", flush=True)
+        return False
+
+    try:
+        tag = player_tag.upper().replace("#", "").strip()
+
+        response = requests.post(
+            f"{SUPABASE_URL}/rest/v1/trophy_history",
+            headers={
+                "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal"
+            },
+            json={
+                "player_tag": tag,
+                "player_name": player_name,
+                "trophies": int(trophies)
+            },
+            timeout=15
+        )
+
+        response.raise_for_status()
+        return True
+
+    except Exception as e:
+        print("ERRORE SALVATAGGIO TROFEI:", repr(e), flush=True)
+        return False
+
+
+def get_trophy_history(player_tag, days=90):
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return []
+
+    try:
+        tag = player_tag.upper().replace("#", "").strip()
+        since = (
+            datetime.now(timezone.utc) - timedelta(days=days)
+        ).isoformat()
+
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/trophy_history",
+            headers={
+                "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"
+            },
+            params={
+                "player_tag": f"eq.{tag}",
+                "recorded_at": f"gte.{since}",
+                "select": "trophies,recorded_at",
+                "order": "recorded_at.asc"
+            },
+            timeout=15
+        )
+
+        response.raise_for_status()
+        return response.json()
+
+    except Exception as e:
+        print("ERRORE LETTURA STORICO:", repr(e), flush=True)
+        return []
+
+
+def trophy_value_at_or_before(history, target_time):
+    selected = None
+
+    for row in history:
+        try:
+            dt = datetime.fromisoformat(
+                row["recorded_at"].replace("Z", "+00:00")
+            )
+
+            if dt <= target_time:
+                selected = int(row["trophies"])
+            else:
+                break
+
+        except Exception:
+            continue
+
+    return selected
+
+
+def calculate_trophy_changes(history, current_trophies):
+    now = datetime.now(timezone.utc)
+
+    start_today = now.replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0
+    )
+
+    targets = {
+        "today": start_today,
+        "7d": now - timedelta(days=7),
+        "15d": now - timedelta(days=15),
+        "30d": now - timedelta(days=30),
+        "90d": now - timedelta(days=90)
+    }
+
+    changes = {}
+
+    for key, target in targets.items():
+        old_value = trophy_value_at_or_before(
+            history,
+            target
+        )
+
+        changes[key] = (
+            current_trophies - old_value
+            if old_value is not None
+            else None
+        )
+
+    return changes
+
+
+def format_trophy_change(value):
+    if value is None:
+        return "Storico non disponibile"
+
+    if value > 0:
+        return f"+{value:,}".replace(",", ".")
+
+    return f"{value:,}".replace(",", ".")
+
+def get_brawlzone_player(player_tag):
+    try:
+        tag = player_tag.upper().replace("#", "").strip()
+
+        if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
+            return None
+
+        response = requests.get(
+            f"https://brawlzone.net/player/{tag}",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=20
+        )
+
+        if response.status_code != 200:
+            return None
+
+        decoded = html.unescape(response.text)
+
+        title_match = re.search(
+            rf"<title>(.*?) \(#{re.escape(tag)}\) · BrawlZone</title>",
+            decoded,
+            re.I | re.S
+        )
+
+        description_match = re.search(
+            r"has ([\d,.]+) trophies and (\d+) brawlers",
+            decoded,
+            re.I
+        )
+
+        if not title_match or not description_match:
+            return None
+
+        def number(value):
+            return int(re.sub(r"\D", "", value))
+
+        def find_stat(label):
+            match = re.search(
+                rf"children\\\":\\\"{re.escape(label)}\\\".*?children\\\":\\\"([\d,.]+)\\\"",
+                decoded,
+                re.I | re.S
+            )
+            return number(match.group(1)) if match else None
+
+        level_match = re.search(
+            r"\\\"Level \\\",\s*(\d+)",
+            decoded
+        )
+
+        prestige_match = re.search(
+            r"\\\"Prestige \\\",\s*\\\"?(\d+)",
+            decoded
+        )
+
+        return {
+            "name": title_match.group(1).strip(),
+            "tag": f"#{tag}",
+            "trophies": number(description_match.group(1)),
+            "brawlers": int(description_match.group(2)),
+            "level": int(level_match.group(1)) if level_match else None,
+            "prestige": int(prestige_match.group(1)) if prestige_match else None,
+            "wins_3v3": find_stat("3v3 wins"),
+            "wins_solo": find_stat("Solo SD wins"),
+            "wins_duo": find_stat("Duo SD wins")
+        }
+
+    except Exception as e:
+        print("ERRORE BRAWLZONE PLAYER:", repr(e), flush=True)
+        return None
+
+
+def format_number_it(value):
+    if value is None:
+        return "Non disponibile"
+
+    return f"{value:,}".replace(",", ".")
+
+
 async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
 
@@ -606,6 +824,73 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"@{bot_username}",
             ""
         ).strip()
+
+    stats_match = re.fullmatch(
+        r"stats\s+#?([0289PYLQGRJCUV]{3,15})",
+        question.strip(),
+        re.I
+    )
+
+    if stats_match:
+        player_tag = stats_match.group(1).upper()
+
+        await context.bot.send_chat_action(
+            chat_id=message.chat_id,
+            action="typing"
+        )
+
+        player = get_brawlzone_player(player_tag)
+
+        if not player:
+            await context.bot.send_message(
+                chat_id=message.chat_id,
+                text=(
+                    "Non riesco a trovare questo giocatore.\n"
+                    "Controlla che il tag sia corretto e riprova."
+                )
+            )
+            return
+
+        save_trophy_snapshot(
+            player["tag"],
+            player["name"],
+            player["trophies"]
+        )
+
+        history = get_trophy_history(
+            player["tag"],
+            days=91
+        )
+
+        changes = calculate_trophy_changes(
+            history,
+            player["trophies"]
+        )
+
+        text = (
+            f"{player[name]}\n"
+            f"Tag: {player[tag]}\n\n"
+            f"Trofei: {format_number_it(player[trophies])}\n"
+            f"Brawler: {format_number_it(player[brawlers])}\n"
+            f"Livello: {format_number_it(player[level])}\n"
+            f"Prestigio: {format_number_it(player[prestige])}\n\n"
+            f"Vittorie:\n"
+            f"- 3v3: {format_number_it(player[wins_3v3])}\n"
+            f"- Solo: {format_number_it(player[wins_solo])}\n"
+            f"- Duo: {format_number_it(player[wins_duo])}\n\n"
+            f"Andamento trofei:\n"
+            f"- Oggi: {format_trophy_change(changes.get(today))}\n"
+            f"- 7 giorni: {format_trophy_change(changes.get('7d'))}\n"
+            f"- 15 giorni: {format_trophy_change(changes.get('15d'))}\n"
+            f"- 30 giorni: {format_trophy_change(changes.get('30d'))}\n"
+            f"- 90 giorni: {format_trophy_change(changes.get('90d'))}"
+        )
+
+        await context.bot.send_message(
+            chat_id=message.chat_id,
+            text=text
+        )
+        return
 
     original_message = ""
 

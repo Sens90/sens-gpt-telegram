@@ -3,3 +3,4 @@ google-genai
 flask
 gunicorn
 requests
+matplotlib
