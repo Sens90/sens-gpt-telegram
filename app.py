@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 
 import os
 import requests
@@ -838,13 +839,45 @@ def create_trophy_chart(player_tag, player_name, history, days=30):
             linewidth=2
         )
 
+        safe_name = player_name.encode(
+            "ascii",
+            "replace"
+        ).decode("ascii")
+
         ax.set_title(
-            f"Andamento trofei - {player_name}"
+            f"Andamento trofei - {safe_name}"
         )
 
         ax.set_xlabel("Data")
         ax.set_ylabel("Trofei")
         ax.grid(True, alpha=0.3)
+
+        same_day = dates[0].date() == dates[-1].date()
+
+        if same_day:
+            ax.xaxis.set_major_formatter(
+                mdates.DateFormatter("%d/%m %H:%M")
+            )
+        else:
+            ax.xaxis.set_major_formatter(
+                mdates.DateFormatter("%d/%m")
+            )
+
+        min_trophies = min(trophies)
+        max_trophies = max(trophies)
+
+        if min_trophies == max_trophies:
+            margin = 50
+        else:
+            margin = max(
+                20,
+                int((max_trophies - min_trophies) * 0.20)
+            )
+
+        ax.set_ylim(
+            min_trophies - margin,
+            max_trophies + margin
+        )
 
         fig.autofmt_xdate()
         fig.tight_layout()
