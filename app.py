@@ -715,6 +715,93 @@ def format_trophy_change(value):
 
     return f"{value:,}".replace(",", ".")
 
+
+def get_tracked_player_tags():
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return []
+
+    try:
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/trophy_history",
+            headers={
+                "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"
+            },
+            params={
+                "select": "player_tag",
+                "order": "recorded_at.desc",
+                "limit": "5000"
+            },
+            timeout=20
+        )
+
+        response.raise_for_status()
+
+        tags = []
+
+        for row in response.json():
+            tag = str(row.get("player_tag", "")).strip().upper()
+
+            if tag and tag not in tags:
+                tags.append(tag)
+
+        return tags
+
+    except Exception as e:
+        print("ERRORE LETTURA TAG MONITORATI:", repr(e), flush=True)
+        return []
+
+
+def automatic_trophy_monitor():
+    import time
+
+    time.sleep(60)
+
+    while True:
+        try:
+            tags = get_tracked_player_tags()
+
+            print(
+                f"MONITOR TROFEI: {len(tags)} giocatori",
+                flush=True
+            )
+
+            for tag in tags:
+                try:
+                    player = get_brawlzone_player(tag)
+
+                    if player:
+                        save_trophy_snapshot(
+                            player["tag"],
+                            player["name"],
+                            player["trophies"]
+                        )
+
+                        print(
+                            f"TROFEI AGGIORNATI: {player[name]} "
+                            f"{player[trophies]}",
+                            flush=True
+                        )
+
+                    time.sleep(5)
+
+                except Exception as e:
+                    print(
+                        f"ERRORE MONITOR TAG {tag}:",
+                        repr(e),
+                        flush=True
+                    )
+
+        except Exception as e:
+            print(
+                "ERRORE MONITOR TROFEI:",
+                repr(e),
+                flush=True
+            )
+
+        time.sleep(6 * 60 * 60)
+
+
 def get_brawlzone_player(player_tag):
     try:
         tag = player_tag.upper().replace("#", "").strip()
@@ -1391,6 +1478,11 @@ def main():
 if __name__ == "__main__":
     threading.Thread(
         target=run_web,
+        daemon=True
+    ).start()
+
+    threading.Thread(
+        target=automatic_trophy_monitor,
         daemon=True
     ).start()
 
