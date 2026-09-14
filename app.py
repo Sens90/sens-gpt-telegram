@@ -184,13 +184,14 @@ def get_verified_map_comp(map_name):
             "https://api.tavily.com/search",
             json={
                 "api_key": TAVILY_API_KEY,
-                "query": f"\"{map_name}\" Brawl Ball Top Brawlers",
+                "query": f"\"{map_name}\" \"Best Teams\" Brawl Ball",
                 "search_depth": "advanced",
                 "max_results": 5,
                 "include_answer": False,
                 "include_raw_content": True,
                 "include_images": False,
                 "include_domains": [
+                    "brawltime.ninja",
                     "powerleagueprodigy.com"
                 ]
             },
@@ -201,6 +202,52 @@ def get_verified_map_comp(map_name):
         data = response.json()
 
         for result in data.get("results", []):
+            url = (result.get("url") or "").lower()
+            text = (
+                (result.get("raw_content") or "")
+                + "\n"
+                + (result.get("content") or "")
+            )
+
+            if "brawltime.ninja" in url:
+                team_match = re.search(
+                    r"Best Teams.*?\n\s*1\s*\|\s*([^\n|]+(?:,\s*[^\n|]+){2})",
+                    text,
+                    re.I | re.S
+                )
+
+                if not team_match:
+                    team_match = re.search(
+                        r"1\s*\|\s*([^\n|]+(?:,\s*[^\n|]+){2})\s*\|\s*\d+",
+                        text,
+                        re.I
+                    )
+
+                if team_match:
+                    team = [
+                        x.strip()
+                        for x in team_match.group(1).split(",")
+                        if x.strip()
+                    ]
+
+                    if len(team) >= 3:
+                        verified = team[:3]
+
+                        print(
+                            "COMP VERIFICATA BRAWLTIME:",
+                            map_name,
+                            verified,
+                            flush=True
+                        )
+
+                        return verified
+
+        for result in data.get("results", []):
+            url = (result.get("url") or "").lower()
+
+            if "powerleagueprodigy.com" not in url:
+                continue
+
             text = (
                 (result.get("raw_content") or "")
                 + "\n"
@@ -249,7 +296,7 @@ def get_verified_map_comp(map_name):
                 verified = clean_names[:3]
 
                 print(
-                    "COMP VERIFICATA:",
+                    "COMP VERIFICATA FALLBACK:",
                     map_name,
                     verified,
                     flush=True
@@ -271,7 +318,6 @@ def get_verified_map_comp(map_name):
         )
 
     return []
-
 
 def search_map_comp(map_name):
     response = requests.post(
@@ -523,6 +569,15 @@ BRAWLER_NAMES_IT = {
 
 def brawler_name_it(name):
     return BRAWLER_NAMES_IT.get(name, name)
+
+
+MAP_NAMES_IT = {
+    "Sneaky Fields": "Campetto incolto"
+}
+
+
+def map_name_it(name):
+    return MAP_NAMES_IT.get(name, name)
 
 
 def get_noff_brawler_image(brawler_name):
@@ -1457,26 +1512,16 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if "verified_comp" in locals() and len(verified_comp) == 3:
             comp_brawlers = verified_comp[:3]
 
-            final_text = (
-                "Per questa mappa, la composizione consigliata è:\n\n"
-                + "\n\n".join(
-                    f"- {brawler_name_it(name)}"
-                    for name in comp_brawlers
-                )
-            )
-
-            print(
-                "RISPOSTA COMP BLOCCATA SU:",
-                comp_brawlers,
-                flush=True
-            )
+            display_map = map_name_it(current_map)
 
             final_text = (
-                "Per questa mappa, la composizione consigliata è:\n\n"
-                + "\n\n".join(
-                    f"- {name}"
+                f"FOOTBRAWL - {display_map.upper()}\n\n"
+                "Comp consigliata:\n"
+                + "\n".join(
+                    brawler_name_it(name)
                     for name in comp_brawlers
                 )
+                + "\n\nMeta aggiornato."
             )
 
             print(
@@ -1536,6 +1581,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 final_text,
                 flags=re.I
             )
+
+        final_text = final_text.replace("*", "").strip()
 
         await context.bot.send_message(
             chat_id=message.chat_id,
