@@ -10,7 +10,8 @@ source = ast.parse(Path(__file__).with_name('app.py').read_text())
 helpers = ast.Module(body=[node for node in source.body
     if isinstance(node, ast.FunctionDef) and node.name in
     {'italian_planet_url', 'telegram_text_chunks', 'brawlplanet_map_urls',
-     'brawlplanet_rotation_manifest'}], type_ignores=[])
+     'brawlplanet_rotation_manifest', 'compact_source_text',
+     'build_web_context'}], type_ignores=[])
 scope = {'re': re, 'urlsplit': urlsplit, 'urlunsplit': urlunsplit}
 exec(compile(helpers, 'app.py', 'exec'), scope)
 
@@ -54,6 +55,29 @@ class LocalizedStatsTests(unittest.TestCase):
         self.assertEqual([(row['map'], row['mode']) for row in manifest], [
             ('Campetto in erba', 'Footbrawl'), ('Battigia ustionante', 'Rapina')
         ])
+
+    def test_context_is_bounded_and_keeps_primary_and_secondary(self):
+        results = [
+            {
+                'url': 'https://www.brawlplanet.com/it/maps/test',
+                'title': 'Mappa primaria',
+                'raw_content': 'INDIVIDUALI\n' + ('A' * 12000) +
+                               '\nSQUADRE\n' + ('B' * 100),
+            },
+            {
+                'url': 'https://brawlify.com/maps/test',
+                'source_role': 'secondary_fallback',
+                'title': 'Fallback',
+                'raw_content': 'Dati secondari ' + ('C' * 9000),
+            },
+        ]
+        context, sources = scope['build_web_context'](results, exhaustive=True)
+        self.assertLessEqual(len(context), 220000)
+        self.assertIn('INDIVIDUALI', context)
+        self.assertIn('SQUADRE', context)
+        self.assertIn('FONTE PRIMARIA BRAWL PLANET', context)
+        self.assertIn('FONTE SECONDARIA', context)
+        self.assertEqual(len(sources), 2)
 
 
 if __name__ == '__main__':
