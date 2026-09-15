@@ -202,15 +202,19 @@ def invalid_exhaustive_map_answer(
 def meta_source_priority(url):
     url_lower = (url or "").lower()
 
-    if "supercell.com" in url_lower or "brawlstars.com" in url_lower:
+    # BrawlTrack is the primary statistics source for meta/maps/comps.
+    # Official Supercell pages remain authoritative for game announcements only.
+    if "brawltrack.app" in url_lower:
         return 0
-    if "brawlplanet.com" in url_lower or "brawlplanet.nl" in url_lower:
+    if "supercell.com" in url_lower or "brawlstars.com" in url_lower:
         return 1
-    if "brawlify.com" in url_lower or "brawltime.ninja" in url_lower:
+    if "brawlplanet.com" in url_lower or "brawlplanet.nl" in url_lower:
         return 2
-    if "noff.gg" in url_lower:
+    if "brawlify.com" in url_lower or "brawltime.ninja" in url_lower:
         return 3
-    return 4
+    if "noff.gg" in url_lower:
+        return 4
+    return 5
 
 
 def italian_planet_url(url):
@@ -280,13 +284,15 @@ def build_web_context(results, exhaustive=False):
 
     def rank(result):
         url = (result.get("url") or "").lower()
-        if "/it/maps/" in url and "brawlplanet.com" in url:
+        if "brawltrack.app" in url and ("/maps/" in url or "/pro/maps/" in url):
             return 0
-        if italian_planet_url(result.get("url", "")):
+        if "/it/maps/" in url and "brawlplanet.com" in url:
             return 1
+        if italian_planet_url(result.get("url", "")):
+            return 2
         if result.get("source_role") == "secondary_fallback":
-            return 3
-        return 2
+            return 4
+        return 3
 
     ordered = sorted(
         results or [],
@@ -318,15 +324,14 @@ def build_web_context(results, exhaustive=False):
         else:
             raw_limit = 5000
 
-        source_role = (
-            "FONTE SECONDARIA - usare solo se Brawl Planet non ha il dato"
-            if is_secondary
-            else (
-                "FONTE PRIMARIA BRAWL PLANET"
-                if italian_planet_url(url)
-                else "ALTRA FONTE"
-            )
-        )
+        if "brawltrack.app" in url.casefold():
+            source_role = "FONTE PRIMARIA BRAWLTRACK"
+        elif italian_planet_url(url):
+            source_role = "FONTE FALLBACK BRAWL PLANET - usare solo se BrawlTrack non ha il dato"
+        elif is_secondary:
+            source_role = "FONTE SECONDARIA - usare solo se BrawlTrack e Brawl Planet non hanno il dato"
+        else:
+            source_role = "ALTRA FONTE"
         block = (
             f"\nRuolo fonte: {source_role}\n"
             f"Titolo: {compact_source_text(title, 1200)}\n"
@@ -585,16 +590,16 @@ def web_search(query):
 
     if is_map_query:
         search_query = (
-            f"site:brawlplanet.com/it Brawl Stars {query} {today} {context_hint} "
-            f"Active Maps best brawlers win rate pick rate Star Player team comp "
+            f"Brawl Stars {query} {today} {context_hint} "
+            f"site:brawltrack.app/maps OR site:brawltrack.app/pro/maps "
+            f"BrawlTrack map preview Priority Picks win rate use rate Common Final Comps "
             f"trophy ladder Ranked"
         )
     elif is_meta_query:
         search_query = (
             f"Brawl Stars current meta {today} {query} {context_hint} "
-            f"(site:brawlplanet.nl/it/meta OR site:brawlplanet.com/meta OR "
-            f"site:brawlplanet.com/tier-list OR site:brawlplanet.nl/it/tier-list) "
-            f"Brawl Planet tier list meta win rate pick rate Star Player current rotation "
+            f"(site:brawltrack.app/brawlers OR site:brawltrack.app/ranked OR site:brawltrack.app/maps) "
+            f"BrawlTrack tier list meta win rate Meta Usage Star Rate current maps team comps "
             f"latest balance changes competitive "
             f"gadget abilità stellare equipaggiamento overdrive nomi italiani "
             f"Supercell italiano Brawlify Brawl Time Ninja Noff"
@@ -636,6 +641,27 @@ def web_search(query):
     data = response.json()
 
     if is_map_query:
+        # BrawlTrack-first: extract the exact map pages returned by search.
+        track_urls = list(dict.fromkeys(
+            result.get("url") for result in data.get("results", [])
+            if result.get("url") and "brawltrack.app" in result.get("url", "").casefold()
+            and ("/maps/" in result.get("url", "") or "/pro/maps/" in result.get("url", ""))
+        ))[:20]
+        if track_urls:
+            try:
+                extracted = requests.post(
+                    "https://api.tavily.com/extract",
+                    json={"api_key": TAVILY_API_KEY, "urls": track_urls, "extract_depth": "advanced"},
+                    timeout=30
+                )
+                extracted.raise_for_status()
+                for result in extracted.json().get("results", []):
+                    result["source_role"] = "primary_brawltrack"
+                data["results"] = extracted.json().get("results", []) + data.get("results", [])
+            except Exception as e:
+                print("BRAWLTRACK: estrazione mappe non disponibile", repr(e), flush=True)
+
+        # Brawl Planet is retained strictly as fallback when BrawlTrack lacks a field/page.
         # Read localized page contents, not just search snippets. Keep team
         # tables that often appear after the complete individual leaderboard.
         planet_urls = list(dict.fromkeys(
