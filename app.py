@@ -2268,14 +2268,15 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         text = (
             f"{player['name']}\n"
-            f"Tag: {player['tag']}\n\n"
+            f"Tag: {player['tag']}\n"
+            f"Club: {player.get('club') or player.get('club_name') or (member_data or {}).get('club_name') or 'Senza club / non disponibile'}\n\n"
             f"Trofei: {format_number_it(player['trophies'])}\n"
             f"Brawler: {format_number_it(player['brawlers'])}\n"
             f"Livello: {format_number_it(player['level'])}\n"
             f"Prestigio: {format_number_it(player['prestige'])}\n"
             f"Ranked attuale: {ranked_current}\n"
-            f"Massima stagione: {ranked_season_peak}\n"
-            f"Massima carriera: {ranked_peak}\n\n"
+            f"Record stagione: {ranked_season_peak}\n"
+            f"Record massimo: {ranked_peak}\n\n"
             f"Vittorie:\n"
             f"- 3v3: {format_number_it(player['wins_3v3'])}\n"
             f"- Solo: {format_number_it(player['wins_solo'])}\n"
@@ -2317,9 +2318,9 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "",
             f"Attuale: {player.get('ranked_current') or 'Non disponibile'}"
             f" ({format_number_it(player.get('ranked_current_elo'))} ELO)",
-            f"Massima stagione: {player.get('ranked_season_peak') or 'Non disponibile'}"
+            f"Record stagione: {player.get('ranked_season_peak') or 'Non disponibile'}"
             f" ({format_number_it(player.get('ranked_season_peak_elo'))} ELO)",
-            f"Massima carriera: {player.get('ranked_career_peak') or 'Non disponibile'}"
+            f"Record massimo: {player.get('ranked_career_peak') or 'Non disponibile'}"
             f" ({format_number_it(player.get('ranked_career_peak_elo'))} ELO)",
         ]
         wants_history = bool(ranked_history_match) or any(
