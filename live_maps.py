@@ -10,8 +10,10 @@ import io
 import json
 import logging
 import math
+import os
 import re
 import time
+import requests
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from urllib.request import Request, urlopen
@@ -163,8 +165,7 @@ def collect_report(dataset="both", now=None, fetch=safe_get, secondary=None):
             sections = {k: valid_rows(raw.get(k)) for k in SECTIONS}
             entry["datasets"].append({"label": label, "raw": raw, "sections": sections})
         maps.append(entry)
-    missing = [entry for entry in maps if dataset != "ranked" and entry["datasets"] and not any(
-        entry["datasets"][0]["sections"].values())]
+    missing = [entry for entry in maps if dataset != "ranked" and entry["datasets"] and not any(entry["datasets"][0]["sections"].values())]
     if secondary and missing:
         with ThreadPoolExecutor(max_workers=3) as pool:
             alternatives = pool.map(secondary, [entry["event"] for entry in missing])
@@ -230,3 +231,66 @@ def report_csv(report):
                             data["raw"].get("latest_match_time", ""), "Brawl Planet fallback",
                         ])
     return out.getvalue().encode("utf-8-sig")
+
+
+# This module is imported explicitly by app.py on every startup. Install the
+# direct meta command here so it cannot depend on sitecustomize/usercustomize.
+def _install_direct_meta_route():
+    try:
+        import community_features
+        from meta_current import render_current_meta
+    except Exception as exc:
+        print("META IMPORT ROUTE ERRORE:", repr(exc), flush=True)
+        return
+
+    original = community_features.CommunityFeatures.handle_command
+    if getattr(original, "_sens_meta_direct_import", False):
+        return
+
+    async def routed(self, message, context, question):
+        q = re.sub(r"\s+", " ", str(question or "").strip().casefold())
+        if re.fullmatch(r"(?:il\s+)?meta(?:\s+attuale|\s+di\s+adesso|\s+ora)?[?!.]*", q):
+            try:
+                await context.bot.send_chat_action(chat_id=message.chat_id, action="typing")
+                key = os.environ.get("TAVILY_API_KEY")
+                if not key:
+                    raise RuntimeError("TAVILY_API_KEY assente")
+                response = requests.post(
+                    "https://api.tavily.com/search",
+                    json={
+                        "api_key": key,
+                        "query": "Brawl Stars current meta BrawlTrack brawlers win rate usage star rate site:brawltrack.app/brawlers",
+                        "search_depth": "advanced",
+                        "max_results": 12,
+                        "include_raw_content": True,
+                        "include_answer": False,
+                        "include_domains": ["brawltrack.app"],
+                    },
+                    timeout=20,
+                )
+                response.raise_for_status()
+                report = render_current_meta(response.json(), "both")
+                if report:
+                    print("META APP IMPORT: risposta BrawlTrack; Gemini BLOCCATO", flush=True)
+                    await message.reply_text(report)
+                else:
+                    print("META APP IMPORT: dati insufficienti; Gemini BLOCCATO", flush=True)
+                    await message.reply_text(
+                        "META ATTUALE\n\nBrawlTrack non restituisce abbastanza statistiche verificabili in questo momento. "
+                        "Non genero percentuali, tier o bilanciamenti a intuito. Riprova tra poco."
+                    )
+            except Exception as exc:
+                print("META APP IMPORT ERRORE; Gemini BLOCCATO:", repr(exc), flush=True)
+                await message.reply_text(
+                    "META ATTUALE\n\nNon riesco a verificare i dati BrawlTrack in questo momento. "
+                    "Per evitare informazioni inventate non genero una tier list generica."
+                )
+            return True
+        return await original(self, message, context, question)
+
+    routed._sens_meta_direct_import = True
+    community_features.CommunityFeatures.handle_command = routed
+    print("META APP IMPORT ROUTE INSTALLATA", flush=True)
+
+
+_install_direct_meta_route()
