@@ -3,7 +3,6 @@ import os, re, requests
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 import community_features
-from player_tracking import get_live_club
 
 _ALLOWED_TAG=re.compile(r"[0289PYLQGRJCUV]{3,15}",re.I)
 _BRAWLTRACK_PLAYER="https://brawltrack.app/api/player/{tag}"
@@ -45,27 +44,31 @@ def _label(v):
     return None
 
 def _club(data):
-    c=_first(data,"club","activeClub","active_club")
+    c=_first(data,"activeClub","active_club","club")
     if isinstance(c,dict):
         return _label(c.get("name") or c.get("clubName") or c.get("club_name")), _label(c.get("tag") or c.get("clubTag") or c.get("club_tag"))
-    return _label(_first(data,"clubName","club_name","activeClubName","active_club_name")), _label(_first(data,"clubTag","club_tag","activeClubTag","active_club_tag"))
+    return _label(_first(data,"activeClubName","active_club_name","clubName","club_name")), _label(_first(data,"activeClubTag","active_club_tag","clubTag","club_tag"))
 
 def fetch_brawltrack_player(player_tag):
     tag=_clean_tag(player_tag)
     if not tag: return None
     try:
-        r=requests.get(_BRAWLTRACK_PLAYER.format(tag=tag),headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"application/json","Cache-Control":"no-cache"},timeout=15)
+        r=requests.get(_BRAWLTRACK_PLAYER.format(tag=tag),headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"application/json","Cache-Control":"no-cache","Pragma":"no-cache"},params={"_":int(datetime.now(timezone.utc).timestamp())},timeout=15)
         if r.status_code!=200: return None
         data=r.json()
         if not isinstance(data,dict): return None
-        name=_label(_first(data,"name","playerName","player_name")); trophies=_number(_first(data,"trophies","currentTrophies","current_trophies"))
+        root=data.get("player") if isinstance(data.get("player"),dict) else data
+        name=_label(_first(root,"name","playerName","player_name")); trophies=_number(_first(root,"trophies","currentTrophies","current_trophies"))
         if not name or trophies is None: return None
-        club_name,club_tag=_club(data)
-        # Club is highly dynamic: independently refresh it instead of trusting a cached profile payload.
-        live_name,live_tag=get_live_club(tag)
-        if live_name:
-            club_name,club_tag=live_name,live_tag
-        p={"name":name,"tag":"#"+tag,"trophies":trophies,"brawlers":_number(_first(data,"brawlersCount","brawlerCount","brawlers_count","brawler_count")),"level":_number(_first(data,"expLevel","level","accountLevel","account_level")),"prestige":_number(_first(data,"prestige","prestigeLevel","prestige_level")),"wins_3v3":_number(_first(data,"3vs3Victories","3v3Victories","wins3v3","wins_3v3","victories3v3")),"wins_solo":_number(_first(data,"soloVictories","soloWins","wins_solo","solo_wins")),"wins_duo":_number(_first(data,"duoVictories","duoWins","wins_duo","duo_wins")),"club_name":club_name,"club_tag":club_tag,"club":f"{club_name} ({club_tag})" if club_name and club_tag else club_name,"ranked_current":_label(_first(data,"rankedCurrent","ranked_current","currentRank","current_rank")),"ranked_current_elo":_number(_first(data,"rankedCurrentElo","ranked_current_elo","currentElo","current_elo")),"ranked_season_peak":_label(_first(data,"rankedSeasonPeak","ranked_season_peak","seasonPeak","season_peak","bestRankThisSeason")),"ranked_season_peak_elo":_number(_first(data,"rankedSeasonPeakElo","ranked_season_peak_elo","seasonPeakElo","season_peak_elo")),"ranked_career_peak":_label(_first(data,"rankedCareerPeak","ranked_career_peak","careerPeak","career_peak","highestRank","highest_rank")),"ranked_career_peak_elo":_number(_first(data,"rankedCareerPeakElo","ranked_career_peak_elo","careerPeakElo","career_peak_elo","highestElo","highest_elo")),"source":"BrawlTrack"}
+        # BrawlTrack /api/player/{tag} is authoritative for the player's ACTIVE club.
+        # Never overwrite it with a scraped/cached club from another site.
+        club_name,club_tag=_club(root)
+        if not club_name and root is not data:
+            club_name,club_tag=_club(data)
+        if club_tag:
+            clean_club_tag=_clean_tag(club_tag)
+            club_tag="#"+clean_club_tag if clean_club_tag else str(club_tag).strip()
+        p={"name":name,"tag":"#"+tag,"trophies":trophies,"brawlers":_number(_first(root,"brawlersCount","brawlerCount","brawlers_count","brawler_count")),"level":_number(_first(root,"expLevel","level","accountLevel","account_level")),"prestige":_number(_first(root,"prestige","prestigeLevel","prestige_level")),"wins_3v3":_number(_first(root,"3vs3Victories","3v3Victories","wins3v3","wins_3v3","victories3v3")),"wins_solo":_number(_first(root,"soloVictories","soloWins","wins_solo","solo_wins")),"wins_duo":_number(_first(root,"duoVictories","duoWins","wins_duo","duo_wins")),"club_name":club_name,"club_tag":club_tag,"club":f"{club_name} ({club_tag})" if club_name and club_tag else club_name,"ranked_current":_label(_first(root,"rankedCurrent","ranked_current","currentRank","current_rank")),"ranked_current_elo":_number(_first(root,"rankedCurrentElo","ranked_current_elo","currentElo","current_elo")),"ranked_season_peak":_label(_first(root,"rankedSeasonPeak","ranked_season_peak","seasonPeak","season_peak","bestRankThisSeason")),"ranked_season_peak_elo":_number(_first(root,"rankedSeasonPeakElo","ranked_season_peak_elo","seasonPeakElo","season_peak_elo")),"ranked_career_peak":_label(_first(root,"rankedCareerPeak","ranked_career_peak","careerPeak","career_peak","highestRank","highest_rank")),"ranked_career_peak_elo":_number(_first(root,"rankedCareerPeakElo","ranked_career_peak_elo","careerPeakElo","career_peak_elo","highestElo","highest_elo")),"source":"BrawlTrack"}
         p["ranked_peak"]=p.get("ranked_career_peak"); return p
     except Exception as e:
         print("ERRORE BRAWLTRACK PLAYER:",tag,repr(e),flush=True); return None
@@ -76,6 +79,10 @@ def _merge(live,fallback):
     out=dict(fallback)
     for k,v in live.items():
         if v not in (None,"",[],{}): out[k]=v
+    # Club is dynamic and BrawlTrack is authoritative. If the live payload says
+    # no club, do not resurrect a stale club from the legacy fallback.
+    for k in ("club","club_name","club_tag"):
+        out[k]=live.get(k)
     return out
 
 def _parse_history_dt(row):
