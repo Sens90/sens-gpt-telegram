@@ -5,8 +5,8 @@ import requests
 
 RANK_NAMES_IT = {
     "bronze": "Bronzo", "silver": "Argento", "gold": "Oro",
-    "diamond": "Diamante", "mythic": "Mitico", "legendary": "Leggendario",
-    "masters": "Maestri", "master": "Maestri", "pro": "Pro",
+    "diamond": "Diamante", "mythic": "Mito", "legendary": "Leggenda",
+    "masters": "Campione", "master": "Campione", "pro": "Pro",
 }
 BRAWLTRACK_BASE_URL = "https://brawltrack.app"
 
@@ -77,6 +77,7 @@ def get_brawltrack_player(player_tag, timeout=20):
         current_elo = current_elo or _number(_first(root, "ranked.currentElo", "rankedCurrentElo", "currentElo"))
         season_elo = season_elo or _number(_first(root, "ranked.seasonPeakElo", "ranked.seasonBestElo", "seasonPeakElo"))
         career_elo = career_elo or _number(_first(root, "ranked.careerPeakElo", "ranked.allTimeBestElo", "careerPeakElo"))
+        club_name = _club_name(root) or _club_name(data)
         result = {
             "name": _first(root, "name", "playerName", "profile.name") or _first(data, "name", "playerName"),
             "tag": f"#{tag}",
@@ -87,7 +88,8 @@ def get_brawltrack_player(player_tag, timeout=20):
             "wins_3v3": _number(_first(root, "wins3v3", "stats.wins3v3", "battleStats.wins3v3")),
             "wins_solo": _number(_first(root, "winsSolo", "soloVictories", "stats.winsSolo")),
             "wins_duo": _number(_first(root, "winsDuo", "duoVictories", "stats.winsDuo")),
-            "club": _club_name(root) or _club_name(data),
+            "club": club_name,
+            "club_name": club_name,
             "ranked_current": current_rank, "ranked_current_elo": current_elo,
             "ranked_season_peak": season_rank, "ranked_season_peak_elo": season_elo,
             "ranked_career_peak": career_rank, "ranked_career_peak_elo": career_elo,
