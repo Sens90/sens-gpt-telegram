@@ -1,3 +1,4 @@
+import html
 import re
 
 import requests
@@ -9,6 +10,7 @@ RANK_NAMES_IT = {
     "masters": "Campione", "master": "Campione", "pro": "Pro",
 }
 BRAWLTRACK_BASE_URL = "https://brawltrack.app"
+BRAWLIFY_BASE_URL = "https://brawlify.com/it/player"
 
 
 def _number(value):
@@ -38,11 +40,82 @@ def _first(data, *paths):
     return None
 
 
-def _club_name(data):
+def _club(data):
     club = _first(data, "club", "activeClub", "player.club", "profile.club")
-    if isinstance(club, dict): return club.get("name") or club.get("clubName")
-    if isinstance(club, str): return club
-    return _first(data, "clubName", "player.clubName", "profile.clubName")
+    if isinstance(club, dict):
+        return (
+            club.get("name") or club.get("clubName"),
+            club.get("tag") or club.get("clubTag") or club.get("id"),
+        )
+    if isinstance(club, str):
+        return club, _first(data, "clubTag", "player.clubTag", "profile.clubTag")
+    return (
+        _first(data, "clubName", "player.clubName", "profile.clubName"),
+        _first(data, "clubTag", "player.clubTag", "profile.clubTag"),
+    )
+
+
+def _clean_tag(value):
+    if not value:
+        return None
+    tag = str(value).upper().replace("#", "").strip()
+    return f"#{tag}" if re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag) else None
+
+
+def get_live_club(player_tag, timeout=15):
+    """Refresh club independently so a cached BrawlTrack club cannot win.
+
+    Brawlify's player page is backed by the official Brawl Stars player data.
+    The club link contains the club tag. If verification fails, callers keep
+    BrawlTrack's club rather than inventing a value.
+    """
+    tag = str(player_tag or "").upper().replace("#", "").strip()
+    if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
+        return None, None
+    try:
+        response = requests.get(
+            f"{BRAWLIFY_BASE_URL}/{tag}?refresh={int(__import__('time').time())}",
+            headers={
+                "User-Agent": "Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache",
+            },
+            timeout=timeout,
+        )
+        if response.status_code != 200:
+            return None, None
+        page = html.unescape(response.text)
+        # Prefer an explicit club anchor; this gives both live name and tag.
+        anchors = re.findall(
+            r'<a[^>]+href=["\']/(?:it/)?club/(?:%23|#)?([0289PYLQGRJCUV]{3,15})[^"\']*["\'][^>]*>(.*?)</a>',
+            page,
+            re.I | re.S,
+        )
+        for club_tag, body in anchors:
+            name = re.sub(r"<[^>]+>", " ", body)
+            name = re.sub(r"\s+", " ", html.unescape(name)).strip()
+            if name and name.casefold() not in {"club", "visualizza club", "view club"}:
+                return name, _clean_tag(club_tag)
+        # Next.js payload fallback: club name/tag are often serialized together.
+        match = re.search(
+            r'"club"\s*:\s*\{[^{}]{0,1000}?"tag"\s*:\s*"#?([0289PYLQGRJCUV]{3,15})"[^{}]{0,1000}?"name"\s*:\s*"([^"]+)"',
+            page,
+            re.I | re.S,
+        )
+        if not match:
+            match = re.search(
+                r'"club"\s*:\s*\{[^{}]{0,1000}?"name"\s*:\s*"([^"]+)"[^{}]{0,1000}?"tag"\s*:\s*"#?([0289PYLQGRJCUV]{3,15})"',
+                page,
+                re.I | re.S,
+            )
+            if match:
+                return html.unescape(match.group(1)).strip(), _clean_tag(match.group(2))
+        elif match:
+            return html.unescape(match.group(2)).strip(), _clean_tag(match.group(1))
+        return None, None
+    except Exception as error:
+        print("ERRORE CLUB LIVE:", repr(error), flush=True)
+        return None, None
 
 
 def _rank_value(data, *keys):
@@ -55,13 +128,13 @@ def _rank_value(data, *keys):
 
 
 def get_brawltrack_player(player_tag, timeout=20):
-    """Primary live player source: BrawlTrack API."""
+    """Primary player source: BrawlTrack, with independently refreshed club."""
     tag = str(player_tag or "").upper().replace("#", "").strip()
     if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag): return None
     try:
         response = requests.get(
             f"{BRAWLTRACK_BASE_URL}/api/player/{tag}",
-            headers={"User-Agent": "SensGPT-TitaniAbusivi/1.0", "Accept": "application/json"},
+            headers={"User-Agent": "SensGPT-TitaniAbusivi/1.0", "Accept": "application/json", "Cache-Control": "no-cache"},
             timeout=timeout,
         )
         if response.status_code == 404: return None
@@ -77,7 +150,16 @@ def get_brawltrack_player(player_tag, timeout=20):
         current_elo = current_elo or _number(_first(root, "ranked.currentElo", "rankedCurrentElo", "currentElo"))
         season_elo = season_elo or _number(_first(root, "ranked.seasonPeakElo", "ranked.seasonBestElo", "seasonPeakElo"))
         career_elo = career_elo or _number(_first(root, "ranked.careerPeakElo", "ranked.allTimeBestElo", "careerPeakElo"))
-        club_name = _club_name(root) or _club_name(data)
+        club_name, club_tag = _club(root)
+        if not club_name:
+            club_name, club_tag = _club(data)
+        live_name, live_tag = get_live_club(tag)
+        if live_name:
+            club_name, club_tag = live_name, live_tag
+        club_tag = _clean_tag(club_tag)
+        club_display = club_name
+        if club_name and club_tag:
+            club_display = f"{club_name} ({club_tag})"
         result = {
             "name": _first(root, "name", "playerName", "profile.name") or _first(data, "name", "playerName"),
             "tag": f"#{tag}",
@@ -88,8 +170,9 @@ def get_brawltrack_player(player_tag, timeout=20):
             "wins_3v3": _number(_first(root, "wins3v3", "stats.wins3v3", "battleStats.wins3v3")),
             "wins_solo": _number(_first(root, "winsSolo", "soloVictories", "stats.winsSolo")),
             "wins_duo": _number(_first(root, "winsDuo", "duoVictories", "stats.winsDuo")),
-            "club": club_name,
+            "club": club_display,
             "club_name": club_name,
+            "club_tag": club_tag,
             "ranked_current": current_rank, "ranked_current_elo": current_elo,
             "ranked_season_peak": season_rank, "ranked_season_peak_elo": season_elo,
             "ranked_career_peak": career_rank, "ranked_career_peak_elo": career_elo,
@@ -124,7 +207,6 @@ def extract_brawlzone_ranked(page):
     if not tag_match:
         return fallback
     primary = get_brawltrack_player(tag_match.group(1)) or {}
-    # Never let a missing BrawlTrack field erase a valid fallback value.
     merged = {k: v for k, v in primary.items() if v is not None}
     for key, value in fallback.items():
         if merged.get(key) is None: merged[key] = value
