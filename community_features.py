@@ -27,6 +27,7 @@ HELP_TEXT = (
     "- storico ranked #TAG: ultime variazioni automatiche della Classificata\n"
     "- classifica 7 / classifica 15 / classifica 30: crescita interna\n"
     "- club: riepilogo della community registrata\n"
+    "- registrati: elenco dei membri con account Brawl Stars collegato\n"
     "- inattivi: membri a rischio per inattività Telegram\n"
     "- assenza 7: segnala 7 giorni di assenza\n"
     "- eventi: eventi aperti\n"
@@ -319,6 +320,21 @@ class CommunityFeatures:
                 lines.append(f"- {row['name']}: {'+' if row['delta'] > 0 else ''}{row['delta']}")
         else:
             lines.append("Storico trofei ancora insufficiente per il riepilogo competitivo.")
+        return "\n".join(lines)
+
+    def registered_members_text(self, chat_id):
+        """Return the linked accounts for this chat, without exposing Telegram IDs."""
+        registered = [member for member in self.members(chat_id) if member.get("player_tag")]
+        lines = ["TITANI ABUSIVI - ACCOUNT REGISTRATI", ""]
+        if not registered:
+            lines.append("Nessun membro ha ancora collegato un account con registrami #TAG.")
+            return "\n".join(lines)
+        lines.append(f"Account collegati: {len(registered)}")
+        for index, member in enumerate(registered, 1):
+            telegram_name = member.get("display_name") or member.get("telegram_username") or "Membro"
+            player_name = member.get("player_name") or "Nome non disponibile"
+            tag = str(member.get("player_tag") or "").lstrip("#")
+            lines.append(f"{index}. {telegram_name} → {player_name} (#{tag})")
         return "\n".join(lines)
 
     def _parse_dt(self, value):
@@ -686,6 +702,10 @@ class CommunityFeatures:
 
         if ql in ("club", "profilo club", "stato club"):
             await message.reply_text(self.club_summary_text(message.chat_id))
+            return True
+
+        if ql in ("registrati", "membri registrati", "account registrati"):
+            await message.reply_text(self.registered_members_text(message.chat_id))
             return True
 
         if ql in ("inattivi", "inattivita", "inattività"):
