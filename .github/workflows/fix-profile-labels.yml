@@ -1,8 +1,0 @@
-name: Fix profile labels
-on:
-  workflow_dispatch:
-jobs:
-  noop:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Patch completed"
