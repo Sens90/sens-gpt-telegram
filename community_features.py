@@ -680,7 +680,7 @@ class CommunityFeatures:
                     if ranked_current and ranked_peak:
                         await message.reply_text(
                             f"Account collegato: {player['name']} {player['tag']} - "
-                            f"{self.number_formatter(player['trophies'])} trofei.\n"
+                            f"{self.number_formatter(player['trophies'])} trofei.\n"                            f"Club: {club_name}\n"
                             f"Ranked attuale: {ranked_current}\n"
                             f"Ranked massima raggiunta nella stagione: {ranked_season_peak or 'Non disponibile'}\n"
                             f"Ranked massima raggiunta in carriera: {ranked_peak}"
