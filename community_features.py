@@ -27,7 +27,7 @@ HELP_TEXT = (
     "- storico ranked #TAG: ultime variazioni automatiche della Classificata\n"
     "- classifica 7 / classifica 15 / classifica 30: crescita interna\n"
     "- club: riepilogo della community registrata\n"
-    "- registrati: elenco dei membri con account Brawl Stars collegato\n"
+    "- elenco registrati: elenco dei membri con account Brawl Stars collegato\n"
     "- inattivi: membri a rischio per inattività Telegram\n"
     "- assenza 7: segnala 7 giorni di assenza\n"
     "- eventi: eventi aperti\n"
@@ -704,7 +704,7 @@ class CommunityFeatures:
             await message.reply_text(self.club_summary_text(message.chat_id))
             return True
 
-        if ql in ("registrati", "membri registrati", "account registrati"):
+        if ql in ("elenco registrati", "registrati", "membri registrati", "account registrati"):
             await message.reply_text(self.registered_members_text(message.chat_id))
             return True
 
