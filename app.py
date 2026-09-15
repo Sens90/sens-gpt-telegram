@@ -129,6 +129,14 @@ def invalid_exhaustive_map_answer(text):
     if any(name in lowered for name in invented_mode_names):
         return True
 
+    refusal_markers = [
+        "rotazione completa", "non è interamente verificabile",
+        "non e interamente verificabile", "scegliere una singola modalità",
+        "scegli una singola modalità"
+    ]
+    if any(marker in lowered for marker in refusal_markers):
+        return True
+
     # A genuinely map-specific answer should not recycle one identical trio
     # across three or more maps. Order is ignored when comparing trios.
     trios = []
@@ -181,10 +189,9 @@ def web_search(query):
 
     if is_map_query:
         search_query = (
-            f"Brawl Stars {query} {today} {context_hint} "
-            f"Brawl Planet italiano mappe attive win rate pick rate Star Player team comp "
-            f"site:brawlplanet.nl/it OR site:brawlplanet.com/it "
-            f"Brawl Insights Brawlify current live rotation current season"
+            f"site:brawlplanet.com Brawl Stars {query} {today} {context_hint} "
+            f"Active Maps best brawlers win rate pick rate Star Player team comp "
+            f"trophy ladder Ranked"
         )
     elif is_meta_query:
         search_query = (
@@ -213,7 +220,7 @@ def web_search(query):
             "api_key": TAVILY_API_KEY,
             "query": search_query,
             "search_depth": "advanced",
-            "max_results": 8,
+            "max_results": 15 if is_map_query else 8,
             "include_answer": True,
             "include_raw_content": True,
             "include_images": True,
@@ -231,6 +238,37 @@ def web_search(query):
 
     response.raise_for_status()
     data = response.json()
+
+    if is_map_query:
+        secondary_response = requests.post(
+            "https://api.tavily.com/search",
+            json={
+                "api_key": TAVILY_API_KEY,
+                "query": (
+                    f"Brawl Stars {query} {today} {context_hint} current maps "
+                    "best brawlers win rate pick rate team comp"
+                ),
+                "search_depth": "advanced",
+                "max_results": 8,
+                "include_answer": False,
+                "include_raw_content": True,
+                "include_images": False,
+                "include_domains": [
+                    "brawlify.com", "brawltime.ninja", "noff.gg"
+                ]
+            },
+            timeout=20
+        )
+        secondary_response.raise_for_status()
+        secondary_data = secondary_response.json()
+
+        seen_urls = {
+            result.get("url") for result in data.get("results", [])
+        }
+        for result in secondary_data.get("results", []):
+            if result.get("url") not in seen_urls:
+                result["source_role"] = "secondary_fallback"
+                data.setdefault("results", []).append(result)
 
 
     return data
@@ -1738,10 +1776,16 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 content = result.get("content", "")
                 raw_content = result.get("raw_content", "") or ""
                 url = result.get("url", "")
+                source_role = (
+                    "FONTE SECONDARIA - usare solo se Brawl Planet non ha il dato"
+                    if result.get("source_role") == "secondary_fallback"
+                    else "FONTE PRIMARIA BRAWL PLANET"
+                )
 
                 if title or content:
                     web_context += (
-                        f"\nTitolo: {title}\n"
+                        f"\nRuolo fonte: {source_role}\n"
+                        f"Titolo: {title}\n"
                         f"Contenuto: {content}\n"
                         f"Contenuto completo: {raw_content[:6000]}\n"
                         f"Fonte: {url}\n"
@@ -1927,12 +1971,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "FONTE PRIORITARIA PER LE MAPPE E LE STATISTICHE:\n"
                 "- Per nomi italiani delle mappe e statistiche specifiche per mappa usa Brawl Planet come fonte prioritaria quando disponibile.\n"
                 "- Brawl Planet separa Ladder e Classificata: usa sempre il dataset coerente con la domanda dell utente.\n"
-                "- Per verificare la rotazione live delle mappe usa anche Brawl Insights come fonte primaria di rotazione.\n"
-                "- La fonte primaria per la rotazione è https://brawlinsights.com/en/tools/map_rotation.\n"
-                "- Se Brawl Insights non permette di verificare la mappa corrente, usa Brawlify come fonte di fallback live.\n"
-                "- Per il fallback live usa https://brawlify.com/it/maps.\n"
-                "- Usa Brawlify solo se mostra chiaramente la rotazione corrente; non usare mappe storiche come se fossero attive.\n"
-                "- Non usare mappe storiche o risultati provenienti da altre fonti per dichiarare quale mappa è attiva se Brawl Insights fornisce il dato.\n"
+                "- Brawl Planet è la fonte primaria anche per la rotazione live: usa la sezione Active Maps e le pagine specifiche delle mappe.\n"
+                "- Per ogni mappa usa prima i dati Brawl Planet relativi a quella esatta mappa e al dataset corretto, Trophy ladder oppure Ranked.\n"
+                "- Solo quando Brawl Planet non pubblica uno specifico dato, usa nell ordine Brawlify, Brawl Time Ninja e Noff come fonti secondarie.\n"
+                "- Non sostituire mai un dato Brawl Planet disponibile con una fonte secondaria. Non usare mappe storiche come se fossero attive.\n"
                 "- Se la rotazione attuale non è verificabile, dichiaralo chiaramente e non indovinare.\n"
                 "- Quando l utente chiede su quale mappa usare un Brawler, NON proporre mappe storiche, rimosse o fuori dal pool attuale.\n"
                 "- Una mappa può essere consigliata solo se i risultati web aggiornati mostrano che è attualmente disponibile nella rotazione o nel pool della modalità pertinente.\n"
@@ -2089,11 +2131,9 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             and invalid_exhaustive_map_answer(final_text)
         ):
             final_text = (
-                "Non riesco a verificare con sufficiente affidabilità tutte le mappe "
-                "attive e i migliori Brawler specifici per ciascuna mappa in questo "
-                "momento. Non voglio riempire l'elenco con consigli generici. "
-                "Indicami una modalità, per esempio Footbrawl, Rapina o K.O., e "
-                "controllerò solo le mappe attive e i dati relativi a quella modalità."
+                "In questo momento Brawl Planet e le fonti secondarie non mi hanno "
+                "restituito dati completi e verificabili per tutte le mappe attive. "
+                "Riprova tra poco: non inserirò consigli generici o inventati."
             )
             comp_brawlers = []
             recommended_map = None
