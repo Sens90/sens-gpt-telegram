@@ -1,0 +1,766 @@
+import re
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+import requests
+
+ROME = ZoneInfo("Europe/Rome")
+
+FAQ_TEXT = (
+    "TITANI ABUSIVI - INFO RAPIDE\n\n"
+    "- Club competitivo: minimo 100.000 trofei.\n"
+    "- Ranked minimo: Leggenda.\n"
+    "- Se non hai abbastanza coppe puoi essere spostato nel secondo club TAMARRI ABUSIVI.\n"
+    "- Gli eventi dichiarati obbligatori, come il Megasalvadanaio, vanno completati: chi non partecipa può essere espulso indipendentemente da coppe o ruolo.\n"
+    "- Telegram e Discord sono obbligatori quando richiesti per tornei/eventi.\n"
+    "- Se sei assente per studio, lavoro o vacanze avvisa la direzione o usa il comando assenza.\n"
+    "- Reclutamento: titaniabusivi.it"
+)
+
+HELP_TEXT = (
+    "FUNZIONI COMMUNITY\n\n"
+    "- profilo #TAG / stats #TAG: scheda giocatore\n"
+    "- grafico 7|15|30|90 #TAG: andamento trofei\n"
+    "- registrami #TAG: collega il tuo account Brawl Stars\n"
+    "- classifica 7 / classifica 30: crescita interna\n"
+    "- club: riepilogo della community registrata\n"
+    "- inattivi: membri a rischio per inattività Telegram\n"
+    "- assenza 7: segnala 7 giorni di assenza\n"
+    "- eventi: eventi aperti\n"
+    "- evento crea NOME | GG/MM/AAAA HH:MM | obbligatorio: crea evento (admin)\n"
+    "- partecipo ID: conferma partecipazione\n"
+    "- reclutamento: avvia candidatura guidata\n"
+    "- candidature: mostra candidature pendenti (admin)\n"
+    "- regole / faq: regole TITANI ABUSIVI\n"
+    "- report: report operativo immediato\n"
+    "- report giornaliero on|off / report settimanale on|off: report automatici (admin)\n"
+    "- autokick on|off: espulsione automatica oltre soglia (admin)\n"
+    "- soglie inattività 5 10: avviso/kick in giorni (admin)\n"
+    "- push NOME BRAWLER: consiglio personalizzato aggiornato\n"
+    "- cosa pushare adesso?: consigli basati su meta e rotazioni attuali"
+)
+
+
+class CommunityFeatures:
+    def __init__(
+        self,
+        supabase_url,
+        supabase_key,
+        player_fetcher,
+        history_fetcher,
+        change_calculator,
+        number_formatter,
+        change_formatter,
+    ):
+        self.supabase_url = (supabase_url or "").rstrip("/")
+        self.supabase_key = supabase_key or ""
+        self.player_fetcher = player_fetcher
+        self.history_fetcher = history_fetcher
+        self.change_calculator = change_calculator
+        self.number_formatter = number_formatter
+        self.change_formatter = change_formatter
+
+    @property
+    def ready(self):
+        return bool(self.supabase_url and self.supabase_key)
+
+    def _headers(self, prefer=None):
+        headers = {
+            "apikey": self.supabase_key,
+            "Authorization": f"Bearer {self.supabase_key}",
+            "Content-Type": "application/json",
+        }
+        if prefer:
+            headers["Prefer"] = prefer
+        return headers
+
+    def _get(self, table, params=None):
+        if not self.ready:
+            return []
+        response = requests.get(
+            f"{self.supabase_url}/rest/v1/{table}",
+            headers=self._headers(),
+            params=params or {},
+            timeout=15,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def _post(self, table, payload, params=None, prefer="return=representation"):
+        if not self.ready:
+            return []
+        response = requests.post(
+            f"{self.supabase_url}/rest/v1/{table}",
+            headers=self._headers(prefer),
+            params=params or {},
+            json=payload,
+            timeout=15,
+        )
+        response.raise_for_status()
+        if not response.text:
+            return []
+        return response.json()
+
+    def _patch(self, table, payload, params=None, prefer="return=minimal"):
+        if not self.ready:
+            return []
+        response = requests.patch(
+            f"{self.supabase_url}/rest/v1/{table}",
+            headers=self._headers(prefer),
+            params=params or {},
+            json=payload,
+            timeout=15,
+        )
+        response.raise_for_status()
+        if not response.text:
+            return []
+        return response.json()
+
+    def _now_iso(self):
+        return datetime.now(timezone.utc).isoformat()
+
+    def track_activity(self, message):
+        if not self.ready or not message or not message.from_user:
+            return
+        if getattr(message.chat, "type", None) not in ("group", "supergroup"):
+            return
+        user = message.from_user
+        payload = {
+            "chat_id": int(message.chat_id),
+            "telegram_user_id": int(user.id),
+            "telegram_username": user.username,
+            "display_name": user.full_name,
+            "last_seen_at": self._now_iso(),
+            "is_active": True,
+        }
+        try:
+            self._post(
+                "community_members",
+                payload,
+                params={"on_conflict": "chat_id,telegram_user_id"},
+                prefer="resolution=merge-duplicates,return=minimal",
+            )
+        except Exception as exc:
+            print("ERRORE TRACK ATTIVITA:", repr(exc), flush=True)
+
+    def members(self, chat_id, active_only=True):
+        params = {
+            "select": "*",
+            "chat_id": f"eq.{int(chat_id)}",
+            "order": "display_name.asc",
+        }
+        if active_only:
+            params["is_active"] = "eq.true"
+        try:
+            return self._get("community_members", params)
+        except Exception as exc:
+            print("ERRORE LETTURA MEMBRI:", repr(exc), flush=True)
+            return []
+
+    def register_member(self, message, player_tag):
+        player = self.player_fetcher(player_tag)
+        if not player:
+            return None
+        user = message.from_user
+        payload = {
+            "chat_id": int(message.chat_id),
+            "telegram_user_id": int(user.id),
+            "telegram_username": user.username,
+            "display_name": user.full_name,
+            "player_tag": player["tag"].replace("#", ""),
+            "player_name": player["name"],
+            "last_seen_at": self._now_iso(),
+            "is_active": True,
+        }
+        self._post(
+            "community_members",
+            payload,
+            params={"on_conflict": "chat_id,telegram_user_id"},
+            prefer="resolution=merge-duplicates,return=minimal",
+        )
+        return player
+
+    def _member_current_trophies(self, member):
+        tag = member.get("player_tag")
+        if not tag:
+            return None
+        history = self.history_fetcher(tag, days=120)
+        if history:
+            try:
+                return int(history[-1]["trophies"])
+            except Exception:
+                pass
+        player = self.player_fetcher(tag)
+        return player.get("trophies") if player else None
+
+    def ranking(self, chat_id, days=7):
+        rows = []
+        for member in self.members(chat_id):
+            tag = member.get("player_tag")
+            if not tag:
+                continue
+            current = self._member_current_trophies(member)
+            if current is None:
+                continue
+            history = self.history_fetcher(tag, days=max(days + 2, 10))
+            changes = self.change_calculator(history, current)
+            key = "7d" if days == 7 else "30d"
+            delta = changes.get(key)
+            if delta is None:
+                delta = 0
+            rows.append(
+                {
+                    "name": member.get("player_name") or member.get("display_name") or tag,
+                    "tag": tag,
+                    "current": current,
+                    "delta": int(delta),
+                }
+            )
+        rows.sort(key=lambda x: (x["delta"], x["current"]), reverse=True)
+        return rows
+
+    def ranking_text(self, chat_id, days=7):
+        rows = self.ranking(chat_id, days)
+        if not rows:
+            return (
+                "Non ho ancora abbastanza giocatori registrati/storico trofei. "
+                "Ogni membro può usare: registrami #TAG"
+            )
+        lines = [f"CLASSIFICA TITANI ABUSIVI - {days} GIORNI", ""]
+        for index, row in enumerate(rows[:15], 1):
+            sign = "+" if row["delta"] > 0 else ""
+            lines.append(
+                f"{index}. {row['name']} - {self.number_formatter(row['current'])} "
+                f"({sign}{row['delta']})"
+            )
+        return "\n".join(lines)
+
+    def club_summary_text(self, chat_id):
+        members = self.members(chat_id)
+        registered = [m for m in members if m.get("player_tag")]
+        ranking7 = self.ranking(chat_id, 7)
+        total = sum(r["current"] for r in ranking7)
+        growth7 = sum(r["delta"] for r in ranking7)
+        top = ranking7[:3]
+        lines = [
+            "TITANI ABUSIVI - PROFILO CLUB",
+            "",
+            f"Membri Telegram tracciati: {len(members)}",
+            f"Giocatori registrati: {len(registered)}",
+        ]
+        if ranking7:
+            lines.extend(
+                [
+                    f"Trofei registrati complessivi: {self.number_formatter(total)}",
+                    f"Crescita complessiva 7 giorni: {'+' if growth7 > 0 else ''}{growth7}",
+                    "",
+                    "Top crescita 7 giorni:",
+                ]
+            )
+            for row in top:
+                lines.append(f"- {row['name']}: {'+' if row['delta'] > 0 else ''}{row['delta']}")
+        else:
+            lines.append("Storico trofei ancora insufficiente per il riepilogo competitivo.")
+        return "\n".join(lines)
+
+    def _parse_dt(self, value):
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    def inactivity_rows(self, chat_id):
+        settings = self.get_settings(chat_id)
+        warn_days = int(settings.get("inactivity_warn_days", 5))
+        kick_days = int(settings.get("inactivity_kick_days", 10))
+        now = datetime.now(timezone.utc)
+        rows = []
+        for member in self.members(chat_id):
+            last_seen = self._parse_dt(member.get("last_seen_at"))
+            if not last_seen:
+                continue
+            vacation_until = self._parse_dt(member.get("vacation_until"))
+            if vacation_until and vacation_until > now:
+                continue
+            days = int((now - last_seen).total_seconds() // 86400)
+            if days >= warn_days:
+                rows.append((member, days, days >= kick_days))
+        rows.sort(key=lambda x: x[1], reverse=True)
+        return rows
+
+    def inactivity_text(self, chat_id):
+        settings = self.get_settings(chat_id)
+        rows = self.inactivity_rows(chat_id)
+        if not rows:
+            return "Nessun membro tracciato supera attualmente la soglia di inattività."
+        lines = [
+            "REPORT INATTIVITA TELEGRAM",
+            f"Avviso: {settings['inactivity_warn_days']} giorni | Kick: {settings['inactivity_kick_days']} giorni",
+            "",
+        ]
+        for member, days, kick_risk in rows[:30]:
+            name = member.get("display_name") or member.get("telegram_username") or str(member.get("telegram_user_id"))
+            status = "RISCHIO KICK" if kick_risk else "AVVISO"
+            lines.append(f"- {name}: {days} giorni - {status}")
+        lines.append("\nNota: il bot misura l'ultima attività vista nel gruppo, non l'ultimo accesso privato a Telegram.")
+        return "\n".join(lines)
+
+    def set_vacation(self, chat_id, user_id, days):
+        until = datetime.now(timezone.utc) + timedelta(days=days)
+        self._patch(
+            "community_members",
+            {"vacation_until": until.isoformat()},
+            params={
+                "chat_id": f"eq.{int(chat_id)}",
+                "telegram_user_id": f"eq.{int(user_id)}",
+            },
+        )
+        return until
+
+    def get_settings(self, chat_id):
+        defaults = {
+            "chat_id": int(chat_id),
+            "inactivity_warn_days": 5,
+            "inactivity_kick_days": 10,
+            "auto_kick": False,
+            "daily_report_enabled": False,
+            "weekly_report_enabled": False,
+            "report_hour": 9,
+            "last_daily_report_date": None,
+            "last_weekly_report_key": None,
+        }
+        try:
+            rows = self._get(
+                "community_settings",
+                {"select": "*", "chat_id": f"eq.{int(chat_id)}", "limit": 1},
+            )
+            if rows:
+                defaults.update(rows[0])
+        except Exception as exc:
+            print("ERRORE SETTINGS:", repr(exc), flush=True)
+        return defaults
+
+    def set_settings(self, chat_id, **values):
+        payload = {"chat_id": int(chat_id), **values, "updated_at": self._now_iso()}
+        return self._post(
+            "community_settings",
+            payload,
+            params={"on_conflict": "chat_id"},
+            prefer="resolution=merge-duplicates,return=representation",
+        )
+
+    async def is_admin(self, context, chat_id, user_id):
+        try:
+            member = await context.bot.get_chat_member(chat_id, user_id)
+            return member.status in ("administrator", "creator")
+        except Exception:
+            return False
+
+    def create_event(self, chat_id, user_id, name, when_text, mandatory=False):
+        when_text = when_text.strip()
+        parsed = None
+        for fmt in ("%d/%m/%Y %H:%M", "%d/%m/%Y", "%Y-%m-%d %H:%M"):
+            try:
+                parsed = datetime.strptime(when_text, fmt)
+                break
+            except ValueError:
+                continue
+        if parsed is None:
+            raise ValueError("Formato data non valido")
+        local_dt = parsed.replace(tzinfo=ROME)
+        utc_dt = local_dt.astimezone(timezone.utc)
+        rows = self._post(
+            "community_events",
+            {
+                "chat_id": int(chat_id),
+                "name": name.strip(),
+                "event_at": utc_dt.isoformat(),
+                "mandatory": bool(mandatory),
+                "status": "open",
+                "created_by": int(user_id),
+            },
+        )
+        return rows[0] if rows else None
+
+    def open_events(self, chat_id):
+        try:
+            return self._get(
+                "community_events",
+                {
+                    "select": "*",
+                    "chat_id": f"eq.{int(chat_id)}",
+                    "status": "eq.open",
+                    "event_at": f"gte.{self._now_iso()}",
+                    "order": "event_at.asc",
+                },
+            )
+        except Exception as exc:
+            print("ERRORE EVENTI:", repr(exc), flush=True)
+            return []
+
+    def events_text(self, chat_id):
+        events = self.open_events(chat_id)
+        if not events:
+            return "Non ci sono eventi aperti."
+        lines = ["EVENTI TITANI ABUSIVI", ""]
+        for event in events[:10]:
+            dt = self._parse_dt(event.get("event_at"))
+            local = dt.astimezone(ROME).strftime("%d/%m/%Y %H:%M") if dt else "Data non disponibile"
+            mandatory = " - OBBLIGATORIO" if event.get("mandatory") else ""
+            lines.append(f"ID {event['id']} - {event['name']} - {local}{mandatory}")
+        lines.append("\nPer confermare: partecipo ID")
+        return "\n".join(lines)
+
+    def confirm_event(self, event_id, user_id):
+        rows = self._get("community_events", {"select": "id", "id": f"eq.{int(event_id)}", "status": "eq.open", "limit": 1})
+        if not rows:
+            return False
+        self._post(
+            "community_event_participants",
+            {
+                "event_id": int(event_id),
+                "telegram_user_id": int(user_id),
+                "status": "confirmed",
+                "updated_at": self._now_iso(),
+            },
+            params={"on_conflict": "event_id,telegram_user_id"},
+            prefer="resolution=merge-duplicates,return=minimal",
+        )
+        return True
+
+    def save_recruitment(self, chat_id, user_id, username, display_name, player_tag, ranked, notes):
+        return self._post(
+            "community_recruitments",
+            {
+                "chat_id": int(chat_id),
+                "telegram_user_id": int(user_id),
+                "telegram_username": username,
+                "display_name": display_name,
+                "player_tag": player_tag.replace("#", "").upper(),
+                "ranked": ranked,
+                "notes": notes,
+                "status": "pending",
+            },
+        )
+
+    def recruitments_text(self, chat_id):
+        rows = self._get(
+            "community_recruitments",
+            {
+                "select": "*",
+                "chat_id": f"eq.{int(chat_id)}",
+                "status": "eq.pending",
+                "order": "created_at.desc",
+                "limit": 20,
+            },
+        )
+        if not rows:
+            return "Nessuna candidatura pendente."
+        lines = ["CANDIDATURE PENDENTI", ""]
+        for row in rows:
+            name = row.get("display_name") or row.get("telegram_username") or str(row.get("telegram_user_id"))
+            lines.append(
+                f"- {name} | #{row.get('player_tag')} | Ranked: {row.get('ranked') or 'n/d'} | {row.get('notes') or '-'}"
+            )
+        return "\n".join(lines)
+
+    async def continue_recruitment(self, message, context):
+        stage = context.user_data.get("recruitment_stage")
+        if not stage:
+            return False
+        text = (message.text or "").strip()
+        if stage == "tag":
+            match = re.search(r"#?([0289PYLQGRJCUV]{3,15})", text, re.I)
+            if not match:
+                await message.reply_text("Tag non valido. Inviami il tuo tag Brawl Stars, per esempio #ABC123.")
+                return True
+            context.user_data["recruitment_tag"] = match.group(1).upper()
+            context.user_data["recruitment_stage"] = "ranked"
+            await message.reply_text("Qual è il tuo livello Ranked attuale?")
+            return True
+        if stage == "ranked":
+            context.user_data["recruitment_ranked"] = text[:80]
+            context.user_data["recruitment_stage"] = "notes"
+            await message.reply_text("Ultima cosa: scrivi eventuali note (orari, obiettivi, esperienza) oppure rispondi 'nessuna'.")
+            return True
+        if stage == "notes":
+            tag = context.user_data.get("recruitment_tag", "")
+            ranked = context.user_data.get("recruitment_ranked", "")
+            notes = "" if text.lower() == "nessuna" else text[:500]
+            self.save_recruitment(
+                message.chat_id,
+                message.from_user.id,
+                message.from_user.username,
+                message.from_user.full_name,
+                tag,
+                ranked,
+                notes,
+            )
+            for key in ("recruitment_stage", "recruitment_tag", "recruitment_ranked"):
+                context.user_data.pop(key, None)
+            await message.reply_text("Candidatura registrata. La direzione potrà consultarla dal bot.")
+            return True
+        return False
+
+    def operational_report_text(self, chat_id, period="weekly"):
+        members = self.members(chat_id)
+        ranking = self.ranking(chat_id, 7)
+        inactive = self.inactivity_rows(chat_id)
+        growth = sum(x["delta"] for x in ranking)
+        title = "REPORT SETTIMANALE" if period == "weekly" else "REPORT GIORNALIERO"
+        lines = [
+            f"TITANI ABUSIVI - {title}",
+            "",
+            f"Membri tracciati: {len(members)}",
+            f"Giocatori registrati: {sum(1 for m in members if m.get('player_tag'))}",
+            f"Crescita trofei (dato 7g disponibile): {'+' if growth > 0 else ''}{growth}",
+            f"Membri sopra soglia inattività: {len(inactive)}",
+        ]
+        if ranking:
+            lines.append("\nTop crescita:")
+            for row in ranking[:5]:
+                lines.append(f"- {row['name']}: {'+' if row['delta'] > 0 else ''}{row['delta']}")
+        if inactive:
+            lines.append("\nDa controllare:")
+            for member, inactive_days, risk in inactive[:8]:
+                name = member.get("display_name") or member.get("telegram_username") or str(member.get("telegram_user_id"))
+                lines.append(f"- {name}: {inactive_days} giorni{' - RISCHIO KICK' if risk else ''}")
+        return "\n".join(lines)
+
+    async def handle_command(self, message, context, question):
+        q = (question or "").strip()
+        ql = q.lower()
+
+        if ql in ("aiuto", "help", "comandi", "funzioni"):
+            await message.reply_text(HELP_TEXT)
+            return True
+
+        if ql in ("regole", "faq", "regolamento"):
+            await message.reply_text(FAQ_TEXT)
+            return True
+
+        match = re.fullmatch(r"registrami\s+#?([0289PYLQGRJCUV]{3,15})", q, re.I)
+        if match:
+            try:
+                player = self.register_member(message, match.group(1))
+                if not player:
+                    await message.reply_text("Non riesco a trovare quel giocatore. Controlla il tag.")
+                else:
+                    await message.reply_text(
+                        f"Account collegato: {player['name']} {player['tag']} - {self.number_formatter(player['trophies'])} trofei."
+                    )
+            except Exception as exc:
+                print("ERRORE REGISTRAZIONE:", repr(exc), flush=True)
+                await message.reply_text("Non riesco a salvare la registrazione. Verifica che lo schema community sia stato creato su Supabase.")
+            return True
+
+        match = re.fullmatch(r"classifica(?:\s+(7|30))?", q, re.I)
+        if match:
+            days = int(match.group(1) or 7)
+            await message.reply_text(self.ranking_text(message.chat_id, days))
+            return True
+
+        if ql in ("club", "profilo club", "stato club"):
+            await message.reply_text(self.club_summary_text(message.chat_id))
+            return True
+
+        if ql in ("inattivi", "inattivita", "inattività"):
+            await message.reply_text(self.inactivity_text(message.chat_id))
+            return True
+
+        match = re.fullmatch(r"assenza\s+(\d{1,3})", q, re.I)
+        if match:
+            days = max(1, min(90, int(match.group(1))))
+            until = self.set_vacation(message.chat_id, message.from_user.id, days)
+            await message.reply_text(f"Assenza registrata fino al {until.astimezone(ROME).strftime('%d/%m/%Y')}. In quel periodo non sarai segnalato come inattivo.")
+            return True
+
+        if ql == "eventi":
+            await message.reply_text(self.events_text(message.chat_id))
+            return True
+
+        match = re.fullmatch(r"partecipo\s+(\d+)", q, re.I)
+        if match:
+            ok = self.confirm_event(int(match.group(1)), message.from_user.id)
+            await message.reply_text("Partecipazione confermata." if ok else "Evento non trovato o non più aperto.")
+            return True
+
+        match = re.fullmatch(r"evento\s+crea\s+(.+?)\s*\|\s*(.+?)(?:\s*\|\s*(obbligatorio))?", q, re.I)
+        if match:
+            if not await self.is_admin(context, message.chat_id, message.from_user.id):
+                await message.reply_text("Questo comando è riservato agli amministratori del gruppo.")
+                return True
+            try:
+                event = self.create_event(
+                    message.chat_id,
+                    message.from_user.id,
+                    match.group(1),
+                    match.group(2),
+                    bool(match.group(3)),
+                )
+                await message.reply_text(f"Evento creato. ID {event['id']}\n{self.events_text(message.chat_id)}")
+            except ValueError:
+                await message.reply_text("Formato: evento crea NOME | GG/MM/AAAA HH:MM | obbligatorio")
+            except Exception as exc:
+                print("ERRORE CREAZIONE EVENTO:", repr(exc), flush=True)
+                await message.reply_text("Non riesco a creare l'evento. Verifica lo schema Supabase.")
+            return True
+
+        if ql == "reclutamento":
+            context.user_data["recruitment_stage"] = "tag"
+            await message.reply_text("Candidatura TITANI ABUSIVI. Inviami il tuo tag Brawl Stars.")
+            return True
+
+        if ql == "candidature":
+            if not await self.is_admin(context, message.chat_id, message.from_user.id):
+                await message.reply_text("Questo comando è riservato agli amministratori del gruppo.")
+            else:
+                await message.reply_text(self.recruitments_text(message.chat_id))
+            return True
+
+        if ql == "report":
+            await message.reply_text(self.operational_report_text(message.chat_id, "weekly"))
+            return True
+
+        match = re.fullmatch(r"report\s+(giornaliero|settimanale)\s+(on|off)", q, re.I)
+        if match:
+            if not await self.is_admin(context, message.chat_id, message.from_user.id):
+                await message.reply_text("Questo comando è riservato agli amministratori del gruppo.")
+                return True
+            key = "daily_report_enabled" if match.group(1).lower() == "giornaliero" else "weekly_report_enabled"
+            enabled = match.group(2).lower() == "on"
+            self.set_settings(message.chat_id, **{key: enabled})
+            await message.reply_text(f"Report {match.group(1).lower()} automatico {'attivato' if enabled else 'disattivato'}.")
+            return True
+
+        match = re.fullmatch(r"autokick\s+(on|off)", q, re.I)
+        if match:
+            if not await self.is_admin(context, message.chat_id, message.from_user.id):
+                await message.reply_text("Questo comando è riservato agli amministratori del gruppo.")
+                return True
+            enabled = match.group(1).lower() == "on"
+            self.set_settings(message.chat_id, auto_kick=enabled)
+            await message.reply_text(f"Auto-kick {'ATTIVO' if enabled else 'disattivato'}. L'auto-kick considera solo l'attività che il bot vede nel gruppo.")
+            return True
+
+        match = re.fullmatch(r"soglie\s+inattivit[àa]\s+(\d+)\s+(\d+)", q, re.I)
+        if match:
+            if not await self.is_admin(context, message.chat_id, message.from_user.id):
+                await message.reply_text("Questo comando è riservato agli amministratori del gruppo.")
+                return True
+            warn = int(match.group(1))
+            kick = int(match.group(2))
+            if warn < 1 or kick <= warn:
+                await message.reply_text("La soglia kick deve essere maggiore della soglia avviso.")
+            else:
+                self.set_settings(message.chat_id, inactivity_warn_days=warn, inactivity_kick_days=kick)
+                await message.reply_text(f"Soglie aggiornate: avviso {warn} giorni, kick {kick} giorni.")
+            return True
+
+        return False
+
+    async def scheduled_jobs(self, context):
+        if not self.ready:
+            return
+        now_utc = datetime.now(timezone.utc)
+        now_rome = now_utc.astimezone(ROME)
+
+        try:
+            events = self._get(
+                "community_events",
+                {
+                    "select": "*",
+                    "status": "eq.open",
+                    "reminder_sent": "eq.false",
+                    "event_at": f"gte.{now_utc.isoformat()}",
+                    "order": "event_at.asc",
+                },
+            )
+            for event in events:
+                dt = self._parse_dt(event.get("event_at"))
+                if not dt or dt - now_utc > timedelta(hours=24):
+                    continue
+                local = dt.astimezone(ROME).strftime("%d/%m/%Y %H:%M")
+                await context.bot.send_message(
+                    chat_id=int(event["chat_id"]),
+                    text=(
+                        f"PROMEMORIA EVENTO\n{event['name']} - {local}"
+                        f"{' - OBBLIGATORIO' if event.get('mandatory') else ''}\n"
+                        f"Conferma con: partecipo {event['id']}"
+                    ),
+                )
+                self._patch("community_events", {"reminder_sent": True}, params={"id": f"eq.{event['id']}"})
+        except Exception as exc:
+            print("ERRORE JOB EVENTI:", repr(exc), flush=True)
+
+        try:
+            settings_rows = self._get("community_settings", {"select": "*"})
+        except Exception as exc:
+            print("ERRORE JOB SETTINGS:", repr(exc), flush=True)
+            settings_rows = []
+
+        for settings in settings_rows:
+            chat_id = int(settings["chat_id"])
+            report_hour = int(settings.get("report_hour") or 9)
+
+            if now_rome.hour == report_hour:
+                today_key = now_rome.strftime("%Y-%m-%d")
+                if settings.get("daily_report_enabled") and settings.get("last_daily_report_date") != today_key:
+                    try:
+                        await context.bot.send_message(chat_id=chat_id, text=self.operational_report_text(chat_id, "daily"))
+                        self.set_settings(chat_id, last_daily_report_date=today_key)
+                    except Exception as exc:
+                        print("ERRORE REPORT GIORNALIERO:", repr(exc), flush=True)
+
+                week_key = f"{now_rome.isocalendar().year}-W{now_rome.isocalendar().week}"
+                if now_rome.weekday() == 0 and settings.get("weekly_report_enabled") and settings.get("last_weekly_report_key") != week_key:
+                    try:
+                        await context.bot.send_message(chat_id=chat_id, text=self.operational_report_text(chat_id, "weekly"))
+                        self.set_settings(chat_id, last_weekly_report_key=week_key)
+                    except Exception as exc:
+                        print("ERRORE REPORT SETTIMANALE:", repr(exc), flush=True)
+
+            try:
+                inactive = self.inactivity_rows(chat_id)
+                warn_days = int(settings.get("inactivity_warn_days") or 5)
+                kick_days = int(settings.get("inactivity_kick_days") or 10)
+                auto_kick = bool(settings.get("auto_kick"))
+                for member, days, risk in inactive:
+                    last_warning = self._parse_dt(member.get("last_warning_at"))
+                    if days >= warn_days and (not last_warning or now_utc - last_warning >= timedelta(hours=24)):
+                        name = member.get("display_name") or member.get("telegram_username") or str(member.get("telegram_user_id"))
+                        await context.bot.send_message(
+                            chat_id=chat_id,
+                            text=f"Avviso inattività: {name} risulta inattivo nel gruppo da {days} giorni. Soglia kick: {kick_days} giorni.",
+                        )
+                        self._patch(
+                            "community_members",
+                            {"last_warning_at": now_utc.isoformat()},
+                            params={
+                                "chat_id": f"eq.{chat_id}",
+                                "telegram_user_id": f"eq.{int(member['telegram_user_id'])}",
+                            },
+                        )
+                    if auto_kick and risk:
+                        user_id = int(member["telegram_user_id"])
+                        try:
+                            chat_member = await context.bot.get_chat_member(chat_id, user_id)
+                            if chat_member.status in ("administrator", "creator"):
+                                continue
+                            await context.bot.ban_chat_member(chat_id, user_id)
+                            await context.bot.unban_chat_member(chat_id, user_id, only_if_banned=True)
+                            self._patch(
+                                "community_members",
+                                {"is_active": False},
+                                params={
+                                    "chat_id": f"eq.{chat_id}",
+                                    "telegram_user_id": f"eq.{user_id}",
+                                },
+                            )
+                            await context.bot.send_message(chat_id=chat_id, text=f"{member.get('display_name') or user_id} rimosso automaticamente per {days} giorni di inattività.")
+                        except Exception as exc:
+                            print("ERRORE AUTOKICK:", repr(exc), flush=True)
+            except Exception as exc:
+                print("ERRORE JOB INATTIVITA:", repr(exc), flush=True)
