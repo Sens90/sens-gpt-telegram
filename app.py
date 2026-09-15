@@ -46,7 +46,7 @@ def needs_web_search(question):
         "adesso", "ora", "ultimo", "ultimi", "ultima",
         "nuovo", "nuova", "novità", "novita",
         "aggiornamento", "aggiornamenti", "patch",
-        "buff", "nerf", "bilanciamento", "meta", "push", "pushare", "pushare adesso",
+        "buff", "nerf", "bilanciamento", "meta", "push", "pushare", "pushare adesso", "cosa giocare", "giocare adesso", "cosa devo giocare",
         "tier list", "tierlist", "miglior brawler", "migliori brawler",
         "ranked", "competitivo", "pick rate", "win rate",
         "stagione", "evento", "eventi",
@@ -69,7 +69,7 @@ def is_current_meta_query(question):
     question_lower = question.lower()
 
     meta_keywords = [
-        "meta", "tier list", "tierlist", "push", "pushare", "cosa pushare",
+        "meta", "tier list", "tierlist", "push", "pushare", "cosa pushare", "cosa giocare", "giocare adesso", "cosa devo giocare",
         "miglior brawler", "migliori brawler",
         "ranked", "competitivo",
         "pick rate", "win rate",
@@ -1399,7 +1399,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Gerarchia fonti per il meta: 1) Supercell/Brawl Stars ufficiale per patch, buff, nerf e modifiche; 2) Brawlify e Brawl Time Ninja per statistiche, tier list e andamento competitivo; 3) Noff come supporto; 4) altre fonti community solo come conferma secondaria.\n"
                 "- Una fonte ufficiale stabilisce cosa è cambiato, ma il meta reale va valutato anche con statistiche e dati competitivi aggiornati.\n"
                 "- Confronta più risultati quando possibile: non dichiarare un Brawler 'meta' basandoti su una sola fonte debole.\n"
-                "- Se i risultati web non permettono di verificare il meta attuale con sufficiente affidabilità, dichiaralo chiaramente invece di indovinare.\n\n"
+                "- Se i risultati web non permettono di verificare il meta attuale con sufficiente affidabilità, dichiaralo chiaramente invece di indovinare.\n"
+                "- Se l'utente chiede cosa pushare o come pushare un Brawler, struttura la risposta con: modalità consigliate, mappe favorevoli attuali se verificabili, build consigliata, comp/sinergie, matchup da evitare e un piano pratico di push.\n\n"
 
                 + (
                     f"MAPPA CORRENTE IDENTIFICATA DAL SISTEMA: {current_map}\n"
