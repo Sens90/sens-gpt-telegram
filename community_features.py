@@ -665,7 +665,7 @@ class CommunityFeatures:
             )
             return True
 
-        match = re.fullmatch(r"registrami\s+#?([0289PYLQGRJCUV]{3,15})", q, re.I)
+        match = re.fullmatch(r"(?:registrami|tegistrami)\s*#?([0289PYLQGRJCUV]{3,15})", q, re.I)
         if match:
             try:
                 player = self.register_member(message, match.group(1))
