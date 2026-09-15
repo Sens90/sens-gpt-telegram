@@ -675,6 +675,7 @@ class CommunityFeatures:
                     ranked_current = player.get("ranked_current")
                     ranked_peak = player.get("ranked_peak")
                     ranked_season_peak = player.get("ranked_season_peak")
+                    club_name = player.get("club_name") or "Senza club / non disponibile"
 
                     if ranked_current and ranked_peak:
                         await message.reply_text(
