@@ -1,6 +1,7 @@
 import io
 import html
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import matplotlib
 matplotlib.use("Agg")
@@ -17,6 +18,7 @@ from google import genai
 from telegram import Update
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
 from community_features import CommunityFeatures
+from player_tracking import extract_brawlzone_ranked
 
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
@@ -24,6 +26,7 @@ GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 TAVILY_API_KEY = os.environ["TAVILY_API_KEY"]
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+ROME = ZoneInfo("Europe/Rome")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -1022,34 +1025,132 @@ def get_tracked_player_tags():
         return []
 
     try:
-        response = requests.get(
-            f"{SUPABASE_URL}/rest/v1/trophy_history",
-            headers={
-                "apikey": SUPABASE_SERVICE_ROLE_KEY,
-                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"
-            },
-            params={
-                "select": "player_tag",
-                "order": "recorded_at.desc",
-                "limit": "5000"
-            },
-            timeout=20
-        )
-
-        response.raise_for_status()
-
+        headers = {
+            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"
+        }
         tags = []
-
-        for row in response.json():
-            tag = str(row.get("player_tag", "")).strip().upper()
-
-            if tag and tag not in tags:
-                tags.append(tag)
+        sources = (
+            ("community_members", {"select": "player_tag", "player_tag": "not.is.null", "is_active": "eq.true", "limit": "5000"}),
+            ("trophy_history", {"select": "player_tag", "order": "recorded_at.desc", "limit": "5000"}),
+        )
+        for table, params in sources:
+            response = requests.get(
+                f"{SUPABASE_URL}/rest/v1/{table}", headers=headers,
+                params=params, timeout=20
+            )
+            response.raise_for_status()
+            for row in response.json():
+                tag = str(row.get("player_tag", "")).strip().upper()
+                if tag and tag not in tags:
+                    tags.append(tag)
 
         return tags
 
     except Exception as e:
         print("ERRORE LETTURA TAG MONITORATI:", repr(e), flush=True)
+        return []
+
+
+def _tracking_headers(prefer=None):
+    headers = {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json",
+    }
+    if prefer:
+        headers["Prefer"] = prefer
+    return headers
+
+
+def save_player_tracking(player):
+    """Persist the latest profile and a Ranked event only when a value changes."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return False
+
+    tag = player["tag"].replace("#", "").upper()
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        state_response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/player_tracking_state",
+            headers=_tracking_headers(),
+            params={"player_tag": f"eq.{tag}", "select": "*", "limit": "1"},
+            timeout=15,
+        )
+        state_response.raise_for_status()
+        rows = state_response.json()
+        previous = rows[0] if rows else {}
+
+        ranked_fields = {
+            "ranked_current": player.get("ranked_current"),
+            "ranked_current_elo": player.get("ranked_current_elo"),
+            "ranked_season_peak": player.get("ranked_season_peak"),
+            "ranked_season_peak_elo": player.get("ranked_season_peak_elo"),
+            "ranked_career_peak": player.get("ranked_career_peak"),
+            "ranked_career_peak_elo": player.get("ranked_career_peak_elo"),
+        }
+        changed = any(
+            value is not None and previous.get(key) != value
+            for key, value in ranked_fields.items()
+        )
+
+        state = {
+            "player_tag": tag,
+            "player_name": player.get("name"),
+            "trophies": player.get("trophies"),
+            **ranked_fields,
+            "last_checked_at": now,
+        }
+        requests.post(
+            f"{SUPABASE_URL}/rest/v1/player_tracking_state",
+            headers=_tracking_headers("resolution=merge-duplicates,return=minimal"),
+            params={"on_conflict": "player_tag"}, json=state, timeout=15,
+        ).raise_for_status()
+
+        if changed:
+            requests.post(
+                f"{SUPABASE_URL}/rest/v1/ranked_history",
+                headers=_tracking_headers("return=minimal"),
+                json={"player_tag": tag, "player_name": player.get("name"), **ranked_fields},
+                timeout=15,
+            ).raise_for_status()
+
+        member_update = {key: value for key, value in ranked_fields.items() if value is not None}
+        if player.get("ranked_career_peak"):
+            member_update["ranked_peak"] = player["ranked_career_peak"]
+        member_update["player_name"] = player.get("name")
+        member_update["player_last_updated_at"] = now
+        requests.patch(
+            f"{SUPABASE_URL}/rest/v1/community_members",
+            headers=_tracking_headers("return=minimal"),
+            params={"player_tag": f"eq.{tag}"}, json=member_update, timeout=15,
+        ).raise_for_status()
+        return True
+    except Exception as e:
+        print(f"ERRORE TRACKING COMPLETO {tag}:", repr(e), flush=True)
+        return False
+
+
+def get_ranked_history(player_tag, limit=10):
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return []
+    tag = player_tag.upper().replace("#", "").strip()
+    try:
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/ranked_history",
+            headers=_tracking_headers(),
+            params={
+                "player_tag": f"eq.{tag}",
+                "select": "ranked_current,ranked_current_elo,ranked_season_peak,ranked_career_peak,recorded_at",
+                "order": "recorded_at.desc",
+                "limit": str(max(1, min(30, limit))),
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"ERRORE STORICO RANKED {tag}:", repr(e), flush=True)
         return []
 
 
@@ -1077,6 +1178,7 @@ def automatic_trophy_monitor():
                             player["name"],
                             player["trophies"]
                         )
+                        save_player_tracking(player)
 
                         print(
                             f"TROFEI AGGIORNATI: {player["name"]} "
@@ -1100,7 +1202,8 @@ def automatic_trophy_monitor():
                 flush=True
             )
 
-        time.sleep(6 * 60 * 60)
+        interval_minutes = max(5, int(os.environ.get("TRACKING_INTERVAL_MINUTES", "15")))
+        time.sleep(interval_minutes * 60)
 
 
 
@@ -1256,7 +1359,7 @@ def get_brawlzone_player(player_tag):
             decoded
         )
 
-        return {
+        player = {
             "name": title_match.group(1).strip(),
             "tag": f"#{tag}",
             "trophies": number(description_match.group(1)),
@@ -1267,6 +1370,8 @@ def get_brawlzone_player(player_tag):
             "wins_solo": find_stat("Solo SD wins"),
             "wins_duo": find_stat("Duo SD wins")
         }
+        player.update(extract_brawlzone_ranked(decoded))
+        return player
 
     except Exception as e:
         print("ERRORE BRAWLZONE PLAYER:", repr(e), flush=True)
@@ -1449,6 +1554,11 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             or player.get("ranked_current")
             or "Non disponibile"
         )
+        ranked_season_peak = (
+            (member_data or {}).get("ranked_season_peak")
+            or player.get("ranked_season_peak")
+            or "Non disponibile"
+        )
         ranked_peak = (
             (member_data or {}).get("ranked_peak")
             or player.get("ranked_peak")
@@ -1463,7 +1573,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Livello: {format_number_it(player['level'])}\n"
             f"Prestigio: {format_number_it(player['prestige'])}\n"
             f"Ranked attuale: {ranked_current}\n"
-            f"Ranked massima: {ranked_peak}\n\n"
+            f"Massima stagione: {ranked_season_peak}\n"
+            f"Massima carriera: {ranked_peak}\n\n"
             f"Vittorie:\n"
             f"- 3v3: {format_number_it(player['wins_3v3'])}\n"
             f"- Solo: {format_number_it(player['wins_solo'])}\n"
@@ -1480,6 +1591,53 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=message.chat_id,
             text=text
         )
+        return
+
+    ranked_match = re.fullmatch(
+        r"(?:ranked|classificata)(?:\s+storico|\s+cronologia)?\s+#?([0289PYLQGRJCUV]{3,15})",
+        question.strip(),
+        re.I,
+    )
+    ranked_history_match = re.fullmatch(
+        r"(?:storico|cronologia)\s+(?:ranked|classificata)\s+#?([0289PYLQGRJCUV]{3,15})",
+        question.strip(),
+        re.I,
+    )
+    if ranked_match or ranked_history_match:
+        player_tag = (ranked_match or ranked_history_match).group(1).upper()
+        player = get_brawlzone_player(player_tag)
+        if not player:
+            await message.reply_text("Non riesco a trovare questo giocatore.")
+            return
+        save_player_tracking(player)
+        lines = [
+            f"CLASSIFICATA - {player['name']}",
+            f"Tag: {player['tag']}",
+            "",
+            f"Attuale: {player.get('ranked_current') or 'Non disponibile'}"
+            f" ({format_number_it(player.get('ranked_current_elo'))} ELO)",
+            f"Massima stagione: {player.get('ranked_season_peak') or 'Non disponibile'}"
+            f" ({format_number_it(player.get('ranked_season_peak_elo'))} ELO)",
+            f"Massima carriera: {player.get('ranked_career_peak') or 'Non disponibile'}"
+            f" ({format_number_it(player.get('ranked_career_peak_elo'))} ELO)",
+        ]
+        wants_history = bool(ranked_history_match) or any(
+            word in question.lower() for word in ("storico", "cronologia")
+        )
+        if wants_history:
+            history = get_ranked_history(player_tag)
+            lines.extend(["", "ULTIME VARIAZIONI"])
+            if history:
+                for row in history:
+                    recorded = datetime.fromisoformat(row["recorded_at"].replace("Z", "+00:00"))
+                    lines.append(
+                        f"- {recorded.astimezone(ROME).strftime('%d/%m/%Y %H:%M')}: "
+                        f"{row.get('ranked_current') or 'Non disponibile'} "
+                        f"({format_number_it(row.get('ranked_current_elo'))} ELO)"
+                    )
+            else:
+                lines.append("Lo storico inizierà dal primo aggiornamento automatico.")
+        await message.reply_text("\n".join(lines))
         return
 
     original_message = ""
