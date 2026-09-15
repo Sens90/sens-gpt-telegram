@@ -33,6 +33,7 @@ HELP_TEXT = (
     "- reclutamento: avvia candidatura guidata\n"
     "- candidature: mostra candidature pendenti (admin)\n"
     "- regole / faq: regole TITANI ABUSIVI\n"
+    "- sito: informazioni e link al sito ufficiale titaniabusivi.it\n"
     "- report: report operativo immediato\n"
     "- report giornaliero on|off / report settimanale on|off: report automatici (admin)\n"
     "- autokick on|off: espulsione automatica oltre soglia (admin)\n"
@@ -618,6 +619,19 @@ class CommunityFeatures:
 
         if ql in ("regole", "faq", "regolamento"):
             await message.reply_text(FAQ_TEXT)
+            return True
+
+        if ql in ("sito", "website", "web", "titaniabusivi.it"):
+            await message.reply_text(
+                "Sito ufficiale della community:\n"
+                "https://www.titaniabusivi.it\n\n"
+                "Sul sito puoi trovare:\n"
+                "- progressione dei club\n"
+                "- progressione dei giocatori\n"
+                "- eventuali tornei ed eventi\n"
+                "- link ai social ufficiali\n"
+                "- accesso ai canali Telegram e Discord per il reclutamento"
+            )
             return True
 
         match = re.fullmatch(r"registrami\s+#?([0289PYLQGRJCUV]{3,15})", q, re.I)
