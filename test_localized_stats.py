@@ -13,8 +13,17 @@ helpers = ast.Module(body=[node for node in source.body
      'brawlplanet_rotation_manifest', 'compact_source_text',
      'build_web_context', 'clean_brawlplanet_cell',
      'brawlplanet_page_labels', 'brawlplanet_table_rows',
-     'brawlplanet_structured_stats', 'invalid_exhaustive_map_answer'}], type_ignores=[])
-scope = {'re': re, 'urlsplit': urlsplit, 'urlunsplit': urlunsplit}
+     'brawlplanet_structured_stats', 'invalid_exhaustive_map_answer',
+     'mode_name_it', 'translate_mode_names_in_text'}], type_ignores=[])
+scope = {'re': re, 'urlsplit': urlsplit, 'urlunsplit': urlunsplit,
+         'MODE_NAMES_IT': {
+             'Brawl Ball': 'Footbrawl', 'Hot Zone': 'Dominio',
+             'Gem Grab': 'Arraffagemme', 'Heist': 'Rapina',
+             'Knockout': 'K.O.', 'Bounty': 'Ricercati',
+             'Showdown': 'Sopravvivenza', 'Wipeout': 'Annientamento',
+             'Duels': 'Duelli', 'Payload': 'Corsa dei carrelli',
+             'Basket Brawl': 'Basket Brawl', 'Brawl Hockey': 'Brawl Hockey',
+             'Brawl Arena': 'Arena dei Brawler'}}
 exec(compile(helpers, 'app.py', 'exec'), scope)
 
 
@@ -112,6 +121,11 @@ class LocalizedStatsTests(unittest.TestCase):
         self.assertIn('Wendy | 67.3 | 5.6 | 16.1', structured)
         self.assertIn('Ambra · Gus · Shade | 86.9', structured)
         self.assertIn('Jacky · Bibi · Buster | 75.2', structured)
+
+    def test_mode_names_are_localized(self):
+        self.assertEqual(scope['mode_name_it']('Brawl Ball'), 'Footbrawl')
+        self.assertEqual(scope['translate_mode_names_in_text'](
+            'Brawl Ball e Hot Zone'), 'Footbrawl e Dominio')
 
     def test_incomplete_rotation_answer_is_rejected(self):
         validate = scope['invalid_exhaustive_map_answer']
