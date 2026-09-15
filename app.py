@@ -79,22 +79,53 @@ def is_current_meta_query(question):
     return any(keyword in question_lower for keyword in meta_keywords)
 
 
+def get_game_context(question):
+    q = (question or "").lower()
+
+    ranked_terms = [
+        "classificata", "classificate", "ranked", "draft", "ban",
+        "lega", "leghe", "power league"
+    ]
+    ladder_terms = [
+        "ladder", "trofei", "trofeo", "coppe", "coppa",
+        "push", "pushare", "scalare", "scala trofei"
+    ]
+
+    if any(term in q for term in ranked_terms):
+        return "ranked"
+
+    if any(term in q for term in ladder_terms):
+        return "ladder"
+
+    return "both"
+
+
 def meta_source_priority(url):
     url_lower = (url or "").lower()
 
     if "supercell.com" in url_lower or "brawlstars.com" in url_lower:
         return 0
-    if "brawlify.com" in url_lower or "brawltime.ninja" in url_lower:
+    if "brawlplanet.com" in url_lower or "brawlplanet.nl" in url_lower:
         return 1
-    if "noff.gg" in url_lower:
+    if "brawlify.com" in url_lower or "brawltime.ninja" in url_lower:
         return 2
-    return 3
+    if "noff.gg" in url_lower:
+        return 3
+    return 4
 
 
 def web_search(query):
     query_lower = query.lower()
     today = datetime.now(timezone.utc).date().isoformat()
     is_meta_query = is_current_meta_query(query)
+    game_context = get_game_context(query)
+
+    if game_context == "ranked":
+        context_hint = "Ranked Classificata current ranked map pool draft ban"
+    elif game_context == "ladder":
+        context_hint = "trophy ladder trofei current event rotation"
+    else:
+        context_hint = "compare trophy ladder and Ranked separately"
 
     is_map_query = any(x in query_lower for x in [
         "mappa", "mappe", "rotazione", "mappa attuale",
@@ -107,18 +138,18 @@ def web_search(query):
 
     if is_map_query:
         search_query = (
-            f"Brawl Stars {query} {today} "
-            f"(site:brawlinsights.com/en/tools/map_rotation OR site:brawlify.com/it/maps OR site:brawlzone.net/maps) "
-            f"current live rotation active maps today current season "
-            f"Brawl Insights Brawlify BrawlZone"
+            f"Brawl Stars {query} {today} {context_hint} "
+            f"Brawl Planet italiano mappe attive win rate pick rate giocatore stella team comp "
+            f"site:brawlplanet.nl/it OR site:brawlplanet.com/it "
+            f"Brawl Insights Brawlify current live rotation current season"
         )
     elif is_meta_query:
         search_query = (
-            f"Brawl Stars current meta {today} {query} "
-            f"latest balance changes tier list ranked competitive "
-            f"win rates pick rates best brawlers "
+            f"Brawl Stars current meta {today} {query} {context_hint} "
+            f"Brawl Planet italiano win rate pick rate giocatore stella team comp "
+            f"latest balance changes tier list competitive "
             f"gadget abilità stellare equipaggiamento overdrive nomi italiani "
-            f"Supercell italiano Brawlify Brawl Time Ninja Noff"
+            f"Supercell italiano Brawl Planet Brawlify Brawl Time Ninja Noff"
         )
     elif is_image_subject_query:
         search_query = (
@@ -1614,6 +1645,15 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Confronta più risultati quando possibile: non dichiarare un Brawler 'meta' basandoti su una sola fonte debole.\n"
                 "- Se i risultati web non permettono di verificare il meta attuale con sufficiente affidabilità, dichiaralo chiaramente invece di indovinare.\n"
                 "- Se l'utente chiede cosa pushare o come pushare un Brawler, struttura la risposta con: modalità consigliate, mappe favorevoli attuali se verificabili, configurazione consigliata, comp/sinergie, matchup da evitare e un piano pratico di push.\n"
+                "- DISTINZIONE LADDER/CLASSIFICATA OBBLIGATORIA:\n"
+                "  - Ladder/trofei: usa esclusivamente statistiche trophy-ladder e mappe della rotazione a trofei attuale.\n"
+                "  - Classificata/Ranked: usa esclusivamente statistiche Ranked e mappe del pool Classificata attuale; considera draft, ban, counterpick e sinergie.\n"
+                "  - Non mescolare mai percentuali Ladder e Ranked nella stessa raccomandazione.\n"
+                "  - Se la domanda non specifica Ladder o Classificata e i due contesti portano a consigli diversi, separa la risposta in due sezioni: Ladder e Classificata.\n"
+                "  - Se una mappa è indicata come solo Ranked, non proporla per Ladder. Se è archiviata o fuori pool, non proporla come attuale.\n"
+                "- Per statistiche per mappa usa Brawl Planet come fonte prioritaria quando disponibile: distingue Ladder e Ranked e mostra tasso di vittoria, utilizzo, giocatore stella e composizioni.\n"
+                "- Non scegliere automaticamente il Brawler con il win rate più alto: valuta insieme tasso di vittoria, tasso di utilizzo, frequenza giocatore stella, numero di partite/campione e qualità delle composizioni.\n"
+                "- Diffida di percentuali molto alte con utilizzo o campione molto basso; preferisci dati robusti e coerenti tra più indicatori.\n"
                 "- TERMINOLOGIA ITALIANA OBBLIGATORIA: usa sempre i termini ufficiali del gioco in italiano. Gear = equipaggiamento/equipaggiamenti; Star Power = abilità stellare/abilità stellari; Hypercharge = overdrive; Gadget resta gadget.\n"
                 "- Per gadget, abilità stellari, equipaggiamenti e overdrive specifici usa il NOME UFFICIALE ITALIANO mostrato in Brawl Stars, non il nome inglese.\n"
                 "- Per i nomi localizzati dai priorità alle pagine italiane ufficiali di Supercell e alle fonti italiane affidabili.\n"
@@ -1673,8 +1713,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Inserisci MAPPA_IMMAGINE solo se quella mappa è stata verificata come attuale/disponibile; non usarla per mappe storiche o non verificate.\n"
                 "- La riga MAPPA_IMMAGINE è un dato tecnico e verrà rimossa prima di mostrare la risposta all utente.\n"
                 "- La risposta deve sembrare scritta da un assistente ufficiale della community, non da un chatbot che cerca di essere simpatico.\n\n"
-                "FONTE PRIORITARIA PER LE MAPPE:\n"
-                "- Per la rotazione delle mappe attuali usa Brawl Insights come fonte primaria.\n"
+                "FONTE PRIORITARIA PER LE MAPPE E LE STATISTICHE:\n"
+                "- Per nomi italiani delle mappe e statistiche specifiche per mappa usa Brawl Planet come fonte prioritaria quando disponibile.\n"
+                "- Brawl Planet separa Ladder e Classificata: usa sempre il dataset coerente con la domanda dell utente.\n"
+                "- Per verificare la rotazione live delle mappe usa anche Brawl Insights come fonte primaria di rotazione.\n"
                 "- La fonte primaria per la rotazione è https://brawlinsights.com/en/tools/map_rotation.\n"
                 "- Se Brawl Insights non permette di verificare la mappa corrente, usa Brawlify come fonte di fallback live.\n"
                 "- Per il fallback live usa https://brawlify.com/it/maps.\n"
@@ -1695,7 +1737,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Se non trovi dati affidabili per quella specifica mappa, dichiaralo chiaramente invece di sostituirli con dati generali della modalità.\n"
                 "- Per usare una fonte come prova della miglior comp, verifica che nella fonte compaiano sia il nome esatto della mappa sia la modalità esatta richiesta.\n"
                 "- Non associare statistiche di una mappa usata in un altra modalità alla modalità richiesta dall utente.\n"
-                "- Brawl Insights, Brawl Time Ninja, Noff, Brawlify e Power League Prodigy sono fonti community/statistiche: non definirle fonti ufficiali Supercell.\n"
+                "- Brawl Planet, Brawl Insights, Brawl Time Ninja, Noff, Brawlify e Power League Prodigy sono fonti community/statistiche: non definirle fonti ufficiali Supercell.\n"
                 "- Quando l utente chiede la miglior comp, indica esattamente 3 Brawler specifici.\n"
                 "- Non rispondere con categorie generiche come tank, tiratori, supporti o brawler da mischia.\n"
                 "- Se i dati disponibili non permettono di determinare una comp affidabile, dichiaralo chiaramente e non inventare.\n"
