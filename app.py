@@ -590,13 +590,154 @@ def brawler_name_it(name):
 
 
 MAP_NAMES_IT = {
-    "Sneaky Fields": "Campetto incolto"
+    # Ricercati / Bounty
+    "No Excuses": "Senza scuse",
+    "Shooting Star": "Piana delle stelle",
+    "Snake Prairie": "Prateria dei serpenti",
+    "Layer Cake": "Arena stratificata",
+    "Hideout": "Nascondiglio",
+
+    # Footbrawl / Brawl Ball
+    "Second Try": "Secondo tentativo",
+    "Trickey": "Red Brawl Arena",
+    "Pinhole Punt": "Camp Brawl",
+    "Center Stage": "Stamford Brawl",
+    "Sneaky Fields": "Campetto incolto",
+    "Pinball Dreams": "Brawlacanã",
+    "Triple Dribble": "Brawl Trafford",
+    "Beach Ball": "Campo da beach brawl",
+    "Backyard Bowl": "Campetto",
+    "Sunny Soccer": "Campetto sabbioso",
+    "Super Beach": "Superspiaggia",
+    "Penalty Kick": "Stadio delle Brawlpi",
+    "Spiraling Out": "Spirale della vittoria",
+
+    # Duelli
+    "Petticoat Duel": "Duello meschino",
+    "No Surrender": "Arena dei coraggiosi",
+    "Shrouding Serpent": "Serpente sibilante",
+    "Warrior's Way": "Via del guerriero",
+    "Warrior’s Way": "Via del guerriero",
+    "Monkey Maze": "Labirinto delle scimmie",
+    "Zen Garden": "Giardino zen",
+
+    # Arraffagemme / Gem Grab
+    "Forest Clearing": "Radura nella foresta",
+    "The cooler Hard Rock": "Miniera delle acca",
+    "Crystal Arcade": "Sala giochi di cristallo",
+    "Deathcap Trap": "Antro velenoso",
+    "Last Stop": "Ultima fermata",
+    "Hard Rock Mine": "Miniera Rocciadura",
+    "Double Swoosh": "Arco doppio",
+    "Gem Fort": "Fortino delle gemme",
+    "Rustic Arcade": "Sala giochi rustica",
+    "Open Space": "Campo aperto",
+    "Undermine": "Miniera minacciosa",
+    "Minecart Madness": "Miniera preziosa",
+    "Dungeon Train": "Treno sotterraneo",
+
+    # Rapina / Heist
+    "Safe(r) Zone": "Santuario dei santuari",
+    "The Great Lake": "Gran lago",
+    "GG 2.0": "Colpo grosso",
+    "G.G. Mortuary": "Obitorio G.G.",
+    "Kaboom Canyon": "Canyon Bum Bum",
+    "Safe Zone": "Santuario",
+    "Hot Potato": "Battigia ustionante",
+
+    # Dominio / Hot Zone
+    "Watersport": "Piscine del dolore",
+    "Noisy Neighbors": "Vicini chiassosi",
+    "Open Business": "Campo aperto",
+    "Dueling Beetles": "Distesa degli scarafaggi",
+    "Ring of Fire": "Ring di fuoco",
+    "Parallel Plays": "Giocate parallele",
+    "In the Liminal": "Spazio liminale",
+    "Quick Travel": "Scorrimento veloce",
+    "Tread Carefully": "Cautela estrema",
+
+    # K.O. / Knockout
+    "H for…": "Acca boschiva",
+    "H for...": "Acca boschiva",
+    "Two Rivers": "Doppio fiume",
+    "Deep Forest": "Foresta fitta",
+    "Tiny Islands": "Isolette",
+    "Temple of Vroom": "Tempio del tuono",
+    "Overgrown Ruins": "Rovine infestate",
+    "Goldarm Gulch": "Burrone di Bracciodoro",
+    "Out in the Open": "Alla luce del sole",
+    "Belle's Rock": "Rupe di Belle",
+    "Belle’s Rock": "Rupe di Belle",
+    "New Horizons": "Nuovi orizzonti",
+    "Flaring Phoenix": "Fenice sfolgorante",
+    "Four Levels": "Quattro livelli",
+    "Stroke of Luck": "Colpo di fortuna",
+
+    # Annientamento / Wipeout
+    "Layer Bake": "Strati verdi",
+    "Quad Damage": "Danno quadruplo",
+    "The Great Open": "Apertura massima",
+    "Infinite Doom": "Rovina infinita",
+    "Spice Production": "Arena delle spezie",
+    "Slayer's Paradise": "Sogno degli sterminatori",
+    "Slayer’s Paradise": "Sogno degli sterminatori",
+
+    # Sopravvivenza / Showdown
+    "Acid Lakes": "Laghi acidi",
+    "Island Invasion": "Isola invasa",
+    "Skull Creek": "Torrente del teschio",
+    "Dark Passage": "Passaggio spettrale",
+    "Flying Fantasies": "Pianura volante",
+    "Rockwall Brawl": "Valle rocciosa",
+    "Safety Center": "Rifugio d'emergenza",
+    "Feast or Famine": "Piana della fame",
+    "Cavern Churn": "Caverna rumorosa",
+    "Double Trouble": "Landa dei pericoli",
+    "Dried Up River": "Fiume prosciugato",
+    "Marksman's Paradise": "Paradiso dei cecchini",
+    "Marksman’s Paradise": "Paradiso dei cecchini",
+
+    # Mappe ufficiali introdotte/attive nel 2026
+    "In Demand": "Centrocampo affollato",
+    "Pump It Up": "Trance agonistica",
+    "Stone Skipping": "Rimbalzello",
+    "False Sense Of Security": "Mischia ferroviaria",
+    "Alchemy": "Alchimia",
+    "Net Presence": "Presenza in campo",
+    "Triple Threat": "Tripla minaccia",
+    "Brawler's Rift": "Faglia dei brawler",
+    "Brawler’s Rift": "Faglia dei brawler"
 }
 
 
 def map_name_it(name):
-    return MAP_NAMES_IT.get(name, name)
+    if not name:
+        return name
 
+    lowered = name.casefold()
+    for english_name, italian_name in MAP_NAMES_IT.items():
+        if english_name.casefold() == lowered:
+            return italian_name
+
+    return name
+
+
+def translate_map_names_in_text(text):
+    if not text:
+        return text
+
+    translated = text
+
+    for english_name in sorted(MAP_NAMES_IT, key=len, reverse=True):
+        italian_name = MAP_NAMES_IT[english_name]
+        translated = re.sub(
+            r"(?<![A-Za-z0-9])" + re.escape(english_name) + r"(?![A-Za-z0-9])",
+            italian_name,
+            translated,
+            flags=re.I
+        )
+
+    return translated
 
 def get_noff_brawler_image(brawler_name):
     try:
@@ -1481,6 +1622,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Non usare mappe storiche o risultati provenienti da altre fonti per dichiarare quale mappa è attiva se Brawl Insights fornisce il dato.\n"
                 "- Se la rotazione attuale non è verificabile, dichiaralo chiaramente e non indovinare.\n\n"
 
+                "- I nomi delle mappe mostrati all utente devono essere SEMPRE quelli ufficiali italiani usati nel gioco.\n"
+                "- Le fonti web possono contenere i nomi inglesi: usali solo internamente per la ricerca e non mostrarli nella risposta se esiste il nome ufficiale italiano.\n"
                 "- Non inventare traduzioni di nomi ufficiali.\n"
                 "- Per una miglior composizione identifica prima la mappa corrente e poi scegli i Brawler più adatti a quella specifica mappa.\n\n"
                 "- Se è stata identificata una mappa specifica, usa solo dati e statistiche relativi a quella mappa per scegliere la composizione.\n"
@@ -1585,6 +1728,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             final_text,
             flags=re.I
         ).strip()
+
+        # Converte i nomi inglesi delle mappe nei nomi ufficiali italiani
+        # prima di mostrare la risposta agli utenti.
+        final_text = translate_map_names_in_text(final_text)
 
         if "verified_comp" in locals() and len(verified_comp) == 3:
             comp_brawlers = verified_comp[:3]
