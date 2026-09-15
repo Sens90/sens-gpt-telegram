@@ -107,9 +107,10 @@ def web_search(query):
 
     if is_map_query:
         search_query = (
-            f"Brawl Stars {query} "
-            f"(site:brawlinsights.com/en/tools/map_rotation OR site:brawlify.com/it/maps) "
-            f"Brawl Insights current map rotation"
+            f"Brawl Stars {query} {today} "
+            f"(site:brawlinsights.com/en/tools/map_rotation OR site:brawlify.com/it/maps OR site:brawlzone.net/maps) "
+            f"current live rotation active maps today current season "
+            f"Brawl Insights Brawlify BrawlZone"
         )
     elif is_meta_query:
         search_query = (
@@ -1620,7 +1621,11 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Per il fallback live usa https://brawlify.com/it/maps.\n"
                 "- Usa Brawlify solo se mostra chiaramente la rotazione corrente; non usare mappe storiche come se fossero attive.\n"
                 "- Non usare mappe storiche o risultati provenienti da altre fonti per dichiarare quale mappa è attiva se Brawl Insights fornisce il dato.\n"
-                "- Se la rotazione attuale non è verificabile, dichiaralo chiaramente e non indovinare.\n\n"
+                "- Se la rotazione attuale non è verificabile, dichiaralo chiaramente e non indovinare.\n"
+                "- Quando l utente chiede su quale mappa usare un Brawler, NON proporre mappe storiche, rimosse o fuori dal pool attuale.\n"
+                "- Una mappa può essere consigliata solo se i risultati web aggiornati mostrano che è attualmente disponibile nella rotazione o nel pool della modalità pertinente.\n"
+                "- Se una buona mappa per quel Brawler esiste storicamente ma non è disponibile adesso, non consigliarla come scelta attuale.\n"
+                "- Se non riesci a verificare almeno una mappa attualmente disponibile, consiglia la modalità e spiega che la mappa attiva non è verificabile, senza inventare.\n\n"
 
                 "- I nomi delle mappe mostrati all utente devono essere SEMPRE quelli ufficiali italiani usati nel gioco.\n"
                 "- Le fonti web possono contenere i nomi inglesi: usali solo internamente per la ricerca e non mostrarli nella risposta se esiste il nome ufficiale italiano.\n"
