@@ -1,0 +1,37 @@
+name: Fix balance verification
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply verification rules
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('app.py')
+          s = p.read_text()
+          anchor = '"- Una fonte ufficiale stabilisce cosa è cambiato, ma il meta reale va valutato anche con statistiche e dati competitivi aggiornati.\\n"'
+          addition = anchor + '\n                "- REGOLE BILANCIAMENTO: cita un buff, nerf, rework o altra modifica solo se una fonte ufficiale Supercell/Brawl Stars aggiornata conferma esplicitamente quella modifica per quel singolo Brawler.\\n"\n                "- Non dedurre mai buff o nerf da win rate, utilizzo, posizione nella tier list, variazioni del meta o prestazioni statistiche.\\n"\n                "- Verifica ogni Brawler separatamente: una patch che modifica altri Brawler non autorizza ad attribuire la stessa modifica a nomi non citati.\\n"\n                "- Se la modifica non è verificata individualmente, non menzionarla nella risposta.\\n"'
+          if 'REGOLE BILANCIAMENTO: cita un buff' not in s:
+              s = s.replace(anchor, addition, 1)
+          old = '''                "FONTE PRIORITARIA PER LE MAPPE E LE STATISTICHE:\\n"
+                "- Per nomi italiani delle mappe e statistiche specifiche per mappa usa Brawl Planet come fonte prioritaria quando disponibile.\\n"
+                "- Brawl Planet separa Ladder e Classificata: usa sempre il dataset coerente con la domanda dell utente.\\nn"
+'''
+          # Replace the contradictory legacy source block line-by-line.
+          s = s.replace('"- Per nomi italiani delle mappe e statistiche specifiche per mappa usa Brawl Planet come fonte prioritaria quando disponibile.\\n"', '"- Per meta, mappe, statistiche e composizioni usa BrawlTrack come fonte primaria quando il dato è disponibile.\\n"')
+          s = s.replace('"- Brawl Planet è la fonte primaria anche per la rotazione live: usa la sezione Active Maps e le pagine specifiche delle mappe.\\n"', '"- Brawl Planet è solo fallback per rotazione o dati che BrawlTrack non rende disponibili in modo verificabile.\\n"')
+          s = s.replace('"- Per ogni mappa usa prima i dati Brawl Planet relativi a quella esatta mappa e al dataset corretto, Trophy ladder oppure Ranked.\\n"', '"- Per ogni mappa usa prima BrawlTrack sulla mappa esatta e sul contesto corretto Ladder oppure Classificata; usa Brawl Planet solo per campi mancanti.\\n"')
+          s = s.replace('"- Solo quando Brawl Planet non pubblica uno specifico dato, usa nell ordine Brawlify, Brawl Time Ninja e Noff come fonti secondarie.\\n"', '"- Solo quando BrawlTrack e Brawl Planet non pubblicano uno specifico dato, usa Brawlify, Brawl Time Ninja e Noff come fonti secondarie.\\n"')
+          s = s.replace('"- Non sostituire mai un dato Brawl Planet disponibile con una fonte secondaria. Non usare mappe storiche come se fossero attive.\\n"', '"- Non sostituire un dato BrawlTrack disponibile con un fallback. Non usare mappe storiche come se fossero attive.\\n"')
+          p.write_text(s)
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app.py
+          git commit -m "Verify balance changes before mentioning them" || exit 0
+          git push
