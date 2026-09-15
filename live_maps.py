@@ -29,7 +29,7 @@ SECTIONS = {
 }
 METRICS = {
     "wr": ("Vittorie", "%"), "win_rate": ("Vittorie", "%"),
-    "ur": ("Scelta", "%"), "use_rate": ("Scelta", "%"),
+    "ur": ("Utilizzo", "%"), "use_rate": ("Utilizzo", "%"),
     "sr": ("Miglior Star Player", "%"), "starplayer_rate": ("Miglior Star Player", "%"),
     "avg_rank": ("Piazzamento medio", ""), "tm": ("Partite", ""),
 }
@@ -106,7 +106,7 @@ def valid_rows(rows):
         if team is not None:
             if (not isinstance(team, list) or len(team) < 2
                     or not all(isinstance(v, str) and v for v in team)
-                    or len(set(team)) != len(team)):
+                    or len(set(v.casefold() for v in team)) != len(team)):
                 continue
         elif not isinstance(row.get("brawler", row.get("brawler_name")), str):
             continue
@@ -131,7 +131,7 @@ def row_text(row, names):
         title, suffix = METRICS.get(key, (key, ""))
         number = f"{value:g}" if key == "tm" else f"{value:.2f}".rstrip("0").rstrip(".")
         metrics.append(f"{title} {number.replace('.', ',')}{suffix}")
-    return label + " — " + " · ".join(metrics)
+    return label + (" — " + " · ".join(metrics) if metrics else "")
 
 
 def collect_report(dataset="both", now=None, fetch=safe_get, secondary=None):
@@ -175,39 +175,37 @@ def collect_report(dataset="both", now=None, fetch=safe_get, secondary=None):
 
 def render_report(report, limit=5):
     if report["rotation_missing"]:
-        return "Non riesco a verificare gli orari della rotazione attiva. Il catalogo delle mappe non è sufficiente per stabilire quali siano giocabili ora."
+        return "Non riesco a verificare gli orari della rotazione attiva."
     names = report["names"]
-    lines = [f"Mappe attive — {report['now'].astimezone(ROME):%d/%m/%Y %H:%M} (Italia)",
-             f"Fonte rotazione: Brawl Planet (fallback). Mappe verificate: {len(report['events'])}.",
-             "BrawlTrack resta la fonte primaria per meta, mappe e composizioni quando il dato è disponibile.",
-             "Statistiche aggregate della fonte, non solo partite di oggi. Fino a 5 scelte per tabella; per gli individuali con tasso di scelta escludo quelli sotto l'1%.",
-             "Vittorie, Scelta e Miglior Star Player sono metriche distinte."]
+    lines = [f"Mappe attive — {report['now'].astimezone(ROME):%d/%m/%Y %H:%M} (Italia)"]
     for entry in report["maps"]:
         event = entry["event"]
-        key = event["event_map_id"]
         raw_mode = next((d["raw"].get("modeFormatted") for d in entry["datasets"] if d["raw"].get("modeFormatted")), MODES.get(event["event_mode"], event["event_mode"]))
         mode = localized(names, "modes", raw_mode)
         map_name = localized(names, "maps", event["event_map"])
         end = event_time(event["end_time"]).astimezone(ROME)
-        lines += ["", f"{mode} — {map_name}", f"Evento fino al {end:%d/%m %H:%M} (Italia)"]
+        lines += ["", f"{mode} — {map_name}", f"Attiva fino alle {end:%H:%M}"]
         for data in entry["datasets"]:
-            lines.append(data["label"] + " — fallback Brawl Planet")
-            raw = data["raw"]
-            if not any(data["sections"].values()):
-                lines.append("Statistiche non disponibili per questa mappa e questo dataset.")
+            available = any(data["sections"].values())
+            if not available:
+                if data["label"] == "Classificata":
+                    lines.append("Classificata — questa mappa non ha dati Classificata verificati; non la tratto come parte del pool Ranked.")
                 continue
-            if isinstance(raw.get("match_count"), (int, float)):
-                lines.append(f"Campione mappa: {raw['match_count']:,} partite".replace(",", "."))
+            lines.append(data["label"])
             for section, rows in data["sections"].items():
                 if not rows:
                     continue
+                if section in ("individual", "solo", "duo_individual", "trio_individual"):
+                    selected = [row for row in rows if row.get("ur", row.get("use_rate", 0)) >= 1]
+                    selected.sort(key=lambda r: (r.get("ur", r.get("use_rate", 0)), r.get("wr", r.get("win_rate", 0))), reverse=True)
+                else:
+                    selected = [row for row in rows if "team" in row and len(row["team"]) == len(set(v.casefold() for v in row["team"]))]
+                if not selected:
+                    continue
                 lines.append(SECTIONS[section] + ":")
-                selected = [row for row in rows if "team" in row or row.get("ur", row.get("use_rate", 1)) >= 1]
                 lines.extend("• " + row_text(row, names) for row in selected[:limit])
         if entry["secondary"]:
             lines.append(entry["secondary"])
-        lines.append("https://www.brawlplanet.com/it/maps/" + key)
-    lines += ["", "Ladder, Classificata e Competitivo restano dataset distinti e non devono essere mescolati."]
     return "\n".join(lines)
 
 
@@ -229,7 +227,6 @@ def report_csv(report):
                             event["event_mode"], data["label"], SECTIONS[section],
                             ", ".join(localized(report["names"], "brawlers", name) for name in identity),
                             metric, value, data["raw"].get("match_count", ""),
-                            data["raw"].get("latest_match_time", ""),
-                            "https://www.brawlplanet.com/it/maps/" + event["event_map_id"],
+                            data["raw"].get("latest_match_time", ""), "Brawl Planet fallback",
                         ])
     return out.getvalue().encode("utf-8-sig")

@@ -1382,7 +1382,7 @@ def translate_game_terms_in_text(text):
         (r"\bBuild\b", "configurazione"),
         (r"\bLoadout\b", "configurazione"),
         (r"\bgiocatori?\s+stella\b", "Miglior Star Player"),
-        (r"\bstar\s+player\b", "Star Player"),
+        (r"\bstar\s+player\b", "Miglior Star Player"),
     ]
 
     translated = text
@@ -2573,7 +2573,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Se la domanda riguarda meta, tier list, Ranked, migliori Brawler, pick rate, win rate, buff, nerf o bilanciamenti attuali, considera la ricerca web come obbligatoria.\n"
                 "- Per affermazioni sul meta attuale NON usare la memoria interna del modello come fonte principale.\n"
                 "- Dai priorità ai risultati più recenti e coerenti con l'ultima patch o stagione verificabile.\n"
-                "- Gerarchia fonti per il meta: 1) Supercell/Brawl Stars ufficiale per patch, buff, nerf e modifiche; 2) Brawl Planet Tier List/Meta per il meta generale aggiornato; 3) Brawl Planet dati specifici, Brawlify e Brawl Time Ninja per statistiche di modalità, mappe e andamento competitivo; 4) Noff come supporto; 5) altre fonti community solo come conferma secondaria.\n"
+                "- Gerarchia fonti per il meta: 1) BrawlTrack per meta, mappe, statistiche e composizioni; 2) Supercell/Brawl Stars ufficiale per patch, buff, nerf e modifiche; 3) Brawl Planet solo come fallback quando BrawlTrack non ha il dato; 4) Brawlify, Brawl Time Ninja e Noff solo come supporto secondario.\n"
                 "- Una fonte ufficiale stabilisce cosa è cambiato, ma il meta reale va valutato anche con statistiche e dati competitivi aggiornati.\n"
                 "- Confronta più risultati quando possibile: non dichiarare un Brawler 'meta' basandoti su una sola fonte debole.\n"
                 "- Se i risultati web non permettono di verificare il meta attuale con sufficiente affidabilità, dichiaralo chiaramente invece di indovinare.\n"
@@ -2586,24 +2586,24 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "  - Se la domanda non specifica Ladder o Classificata e i due contesti portano a consigli diversi, separa la risposta in due sezioni: Ladder e Classificata.\n"
                 "  - Una richiesta sulle mappe di oggi, senza parole come Classificata, Ranked, draft o ban, riguarda prima di tutto la rotazione eventi/trofei: non presentarla come rotazione Classificata.\n"
                 "  - Se una mappa è indicata come solo Ranked, non proporla per Ladder. Se è archiviata o fuori pool, non proporla come attuale.\n"
-                "- META GENERALE: per domande come 'chi è meta?', 'tier list', 'migliori brawler adesso' usa come fonte primaria la Tier List e la pagina Meta aggiornate di Brawl Planet, confrontandole con gli ultimi bilanciamenti ufficiali Supercell.\n"
+                "- META GENERALE: per domande come 'chi è meta?', 'tier list', 'migliori brawler adesso' usa BrawlTrack come fonte primaria e confronta con gli ultimi bilanciamenti ufficiali Supercell; usa Brawl Planet solo come fallback.\n"
                 "- La Tier List generale di Brawl Planet serve per il meta complessivo e NON deve sostituire i dataset specifici Ladder o Classificata quando l utente specifica uno di quei contesti.\n"
                 "- Se la Tier List generale e i dati specifici di una modalità/mappa differiscono, per la risposta contestuale prevalgono i dati specifici della modalità/mappa.\n"
-                "- Per statistiche per mappa usa Brawl Planet come fonte prioritaria quando disponibile: distingue Ladder e Ranked e mostra tasso di vittoria, tasso di utilizzo, Miglior Star Player e composizioni.\n"
+                "- Per statistiche per mappa usa BrawlTrack come fonte prioritaria. Brawl Planet è solo fallback. Mantieni distinti Ladder, Classificata e Competitivo.\n"
                 "- Non scegliere automaticamente il Brawler con il win rate più alto: valuta insieme tasso di vittoria, tasso di utilizzo, percentuale/frequenza Miglior Star Player, numero di partite/campione e qualità delle composizioni.\n"
                 "- DATI PER BRAWLER: ogni Brawler deve avere il proprio blocco completo di statistiche. Non mescolare mai il tasso di vittoria di un Brawler con utilizzo, Star Player, partite o comp di un altro.\n"
-                "- Usa prioritariamente le pagine /it di Brawl Planet e conserva i nomi italiani presenti nella fonte; non ritradurli. Rinomina giocatore stella in Miglior Star Player.\n"
+                "- Conserva i nomi italiani/localizzati forniti dalla fonte. Usa sempre la dicitura Miglior Star Player.\n"
                 "- Riporta tutte le metriche disponibili per ogni Brawler consigliato: vittorie, utilizzo, Miglior Star Player, campione individuale e posizione media dove presenti. Non chiamare campione individuale il totale delle partite della mappa.\n"
                 "- Separa Individuali e Squadre. Per ogni squadra consigliata riporta i componenti esatti e tutte le metriche pubblicate per quella composizione: vittorie, utilizzo, campione o posizione media solo quando presenti. Non mediare o trasferire statistiche individuali alla squadra.\n"
-                "- Per ogni blocco specifica mappa, modalità, Trofei o Classificata, eventuale lega/filtro, periodo e aggiornamento se pubblicati. Dato assente: Non disponibile. Se manca un dato consulta le fonti secondarie senza mescolare campioni di fonti diverse.\n"
+                "- Per ogni blocco specifica mappa, modalità e Ladder o Classificata quando utile. Non riempire la risposta con campi Non disponibile: ometti le metriche assenti. Se manca un dato consulta il fallback senza mescolare campioni di fonti diverse.\n"
                 "- Per una richiesta su tutte le mappe usa prima il blocco DATI STRUTTURATI BRAWL PLANET: contiene le righe delle tabelle, non fermarti ai soli riepiloghi del titolo.\n"
-                "- Per OGNI mappa crea sempre quattro sottosezioni: Trofei - Individuali, Trofei - Squadre, Classificata - Individuali e Classificata - Squadre. Se una tabella non è pubblicata, scrivi Non disponibile.\n"
+                "- Usa le etichette Ladder - Individuali, Ladder - Squadre, Classificata - Individuali e Classificata - Squadre solo quando il relativo dataset è realmente disponibile. Se la Classificata non è verificata per quella mappa, dillo in una sola frase senza creare sezioni vuote.\n"
                 "- Nei blocchi Individuali conserva le colonne Brawler, Vitt., Scelta e Stella; nei blocchi Squadre conserva la composizione esatta e Vitt. Non ridurre la risposta alle sole liste 'miglior vittoria' e 'più scelto'.\n"
                 "- Per ogni mappa riporta almeno i primi 10 Brawler della sezione Individuale e le prime 10 Squadre pubblicate da Brawl Planet, quando presenti nel blocco strutturato. Per ciascuna riga conserva tutte le metriche effettivamente pubblicate; non fermarti a un solo leader e non inventare colonne mancanti.\n"
                 "- Se elenchi più Brawler, per ciascuno riporta separatamente, quando disponibili: Tasso di vittoria, Tasso di utilizzo, Miglior Star Player, Partite analizzate/campione e Comp principali.\n"
                 "- Tutti i dati nello stesso blocco devono provenire dallo stesso contesto: stessa mappa, stessa modalità e stesso ambiente Ladder oppure Classificata.\n"
-                "- Se una metrica manca per un Brawler, scrivi Non disponibile invece di ricavarla da un altro giocatore o da un altro dataset.\n"
-                "- Diffida di percentuali molto alte con utilizzo o campione molto basso; preferisci dati robusti e coerenti tra più indicatori.\n"
+                "- Se una metrica manca per un Brawler, omettila e non ricavarla da un altro giocatore o dataset.\n"
+                "- Escludi dai consigli meta Ladder i Brawler con utilizzo inferiore all 1% quando il tasso di utilizzo è disponibile. Diffida di percentuali alte con campione basso. Scarta sempre composizioni con lo stesso Brawler ripetuto.\n"
                 "- TERMINOLOGIA ITALIANA OBBLIGATORIA: usa sempre i termini ufficiali del gioco in italiano. Gear = equipaggiamento/equipaggiamenti; Star Power = abilità stellare/abilità stellari; Hypercharge = overdrive; Gadget resta gadget.\n"
                 "- Per gadget, abilità stellari, equipaggiamenti e overdrive specifici usa il NOME UFFICIALE ITALIANO mostrato in Brawl Stars, non il nome inglese.\n"
                 "- Per i nomi localizzati dai priorità alle pagine italiane ufficiali di Supercell e alle fonti italiane affidabili.\n"
