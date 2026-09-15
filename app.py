@@ -1236,7 +1236,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Livello: {format_number_it(player['level'])}\n"
             f"Prestigio: {format_number_it(player['prestige'])}\n"
             f"Ranked attuale: {ranked_current}\n"
-            f"Massimo Ranked: {ranked_peak}\n\n"
+            f"Ranked massima: {ranked_peak}\n\n"
             f"Vittorie:\n"
             f"- 3v3: {format_number_it(player['wins_3v3'])}\n"
             f"- Solo: {format_number_it(player['wins_solo'])}\n"
