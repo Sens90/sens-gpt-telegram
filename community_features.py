@@ -23,6 +23,8 @@ HELP_TEXT = (
     "- profilo #TAG / stats #TAG: scheda giocatore\n"
     "- grafico 7|15|30|90 #TAG: andamento trofei\n"
     "- registrami #TAG: collega il tuo account Brawl Stars e salva Ranked attuale/Ranked massima\n"
+    "- ranked #TAG: Classificata attuale, massima stagione e massima carriera\n"
+    "- storico ranked #TAG: ultime variazioni automatiche della Classificata\n"
     "- classifica 7 / classifica 15 / classifica 30: crescita interna\n"
     "- club: riepilogo della community registrata\n"
     "- inattivi: membri a rischio per inattività Telegram\n"
@@ -180,6 +182,12 @@ class CommunityFeatures:
             "player_name": player["name"],
             "ranked_current": player.get("ranked_current"),
             "ranked_peak": player.get("ranked_peak"),
+            "ranked_current_elo": player.get("ranked_current_elo"),
+            "ranked_season_peak": player.get("ranked_season_peak"),
+            "ranked_season_peak_elo": player.get("ranked_season_peak_elo"),
+            "ranked_career_peak": player.get("ranked_career_peak"),
+            "ranked_career_peak_elo": player.get("ranked_career_peak_elo"),
+            "player_last_updated_at": self._now_iso(),
             "last_seen_at": self._now_iso(),
             "is_active": True,
         }
@@ -648,13 +656,15 @@ class CommunityFeatures:
                 else:
                     ranked_current = player.get("ranked_current")
                     ranked_peak = player.get("ranked_peak")
+                    ranked_season_peak = player.get("ranked_season_peak")
 
                     if ranked_current and ranked_peak:
                         await message.reply_text(
                             f"Account collegato: {player['name']} {player['tag']} - "
                             f"{self.number_formatter(player['trophies'])} trofei.\n"
                             f"Ranked attuale: {ranked_current}\n"
-                            f"Ranked massima: {ranked_peak}"
+                            f"Massima stagione: {ranked_season_peak or 'Non disponibile'}\n"
+                            f"Massima carriera: {ranked_peak}"
                         )
                     else:
                         context.user_data["registration_stage"] = "ranked_current"
