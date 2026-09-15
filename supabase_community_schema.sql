@@ -6,6 +6,7 @@ create table if not exists public.community_members (
   display_name text,
   player_tag text,
   player_name text,
+  club_name text not null default 'TITANI ABUSIVI' check (club_name in ('TITANI ABUSIVI','TAMARRI ABUSIVI','TORNADI ABUSIVI','TALENTI ABUSIVI')),
   role text default 'member',
   last_seen_at timestamptz default now(),
   last_warning_at timestamptz,
@@ -19,6 +20,8 @@ create index if not exists community_members_chat_idx
   on public.community_members (chat_id, is_active);
 create index if not exists community_members_player_tag_idx
   on public.community_members (player_tag);
+create index if not exists community_members_club_idx
+  on public.community_members (club_name, is_active);
 
 create table if not exists public.community_settings (
   chat_id bigint primary key,
