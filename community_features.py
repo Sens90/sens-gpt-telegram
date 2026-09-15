@@ -682,8 +682,8 @@ class CommunityFeatures:
                             f"Account collegato: {player['name']} {player['tag']} - "
                             f"{self.number_formatter(player['trophies'])} trofei.\n"
                             f"Ranked attuale: {ranked_current}\n"
-                            f"Massima stagione: {ranked_season_peak or 'Non disponibile'}\n"
-                            f"Massima carriera: {ranked_peak}"
+                            f"Ranked massima raggiunta nella stagione: {ranked_season_peak or 'Non disponibile'}\n"
+                            f"Ranked massima raggiunta in carriera: {ranked_peak}"
                         )
                     else:
                         context.user_data["registration_stage"] = "ranked_current"
