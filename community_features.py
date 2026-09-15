@@ -34,6 +34,7 @@ HELP_TEXT = (
     "- candidature: mostra candidature pendenti (admin)\n"
     "- regole / faq: regole TITANI ABUSIVI\n"
     "- sito: informazioni e link al sito ufficiale titaniabusivi.it\n"
+    "- discord: link diretto al server Discord della community\n"
     "- report: report operativo immediato\n"
     "- report giornaliero on|off / report settimanale on|off: report automatici (admin)\n"
     "- autokick on|off: espulsione automatica oltre soglia (admin)\n"
@@ -627,6 +628,14 @@ class CommunityFeatures:
                 "https://www.titaniabusivi.it\n\n"
                 "Qui trovi tutte le informazioni sulla community, i link ai nostri social ufficiali "
                 "e l'accesso a Discord, utilizzato per le vocali della community."
+            )
+            return True
+
+        if ql in ("discord", "server discord", "vocale", "vocali"):
+            await message.reply_text(
+                "Server Discord ufficiale della community:\n"
+                "https://discord.gg/uwrUfsEaBc\n\n"
+                "Usiamo Discord per le vocali della community."
             )
             return True
 
