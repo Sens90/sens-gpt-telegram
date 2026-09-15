@@ -740,6 +740,28 @@ def translate_map_names_in_text(text):
 
     return translated
 
+
+def resolve_map_source_name(name):
+    if not name:
+        return None
+
+    cleaned = name.strip()
+    lowered = cleaned.casefold()
+
+    # Nome inglese/canonico già utilizzabile dalla API mappe.
+    for english_name in MAP_NAMES_IT:
+        if english_name.casefold() == lowered:
+            return english_name
+
+    # Se il modello restituisce il nome italiano, risali al nome sorgente.
+    for english_name, italian_name in MAP_NAMES_IT.items():
+        if italian_name.casefold() == lowered:
+            return english_name
+
+    # Consenti comunque nomi non presenti nel dizionario: get_noff_map_image
+    # farà la verifica contro l'elenco reale delle mappe di BrawlAPI.
+    return cleaned
+
 def get_noff_brawler_image(brawler_name):
     try:
         slug = re.sub(r"[^a-z0-9]+", "_", brawler_name.lower()).strip("_")
@@ -1613,7 +1635,14 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Non inventare informazioni mancanti.\n"
                 "- Se non sei sicuro di un dato, dichiaralo chiaramente.\n"
                 "- Usa le fonti web internamente per verificare i dati, ma NON mostrare fonti, URL, link o una sezione Fonti nella risposta.\n"
-                "- Se proponi uno o più Brawler consigliati per la mappa, aggiungi come ULTIMA riga: BRAWLERS_IMMAGINI: Nome1|Nome2|Nome3|Nome4|Nome5...\n" "- Usa in BRAWLERS_IMMAGINI esclusivamente i Brawler realmente consigliati nella risposta.\n" "- Se non puoi determinare una composizione affidabile, NON aggiungere BRAWLERS_IMMAGINI.\n" "- La riga BRAWLERS_IMMAGINI è un dato tecnico e verrà rimossa prima di mostrare la risposta all utente.\n" "- La risposta deve sembrare scritta da un assistente ufficiale della community, non da un chatbot che cerca di essere simpatico.\n\n"
+                "- Quando consigli una mappa specifica attualmente disponibile, aggiungi una riga tecnica: MAPPA_IMMAGINE: NomeMappa.\n"
+                "- In MAPPA_IMMAGINE usa il nome esatto della mappa trovato nelle fonti web; preferisci il nome inglese/canonico della fonte per permettere al sistema di recuperare l immagine corretta.\n"
+                "- Inserisci MAPPA_IMMAGINE solo se quella mappa è stata verificata come attuale/disponibile; non usarla per mappe storiche o non verificate.\n"
+                "- Se proponi uno o più Brawler consigliati per la mappa, aggiungi una riga tecnica: BRAWLERS_IMMAGINI: Nome1|Nome2|Nome3|Nome4|Nome5...\n"
+                "- Usa in BRAWLERS_IMMAGINI esclusivamente i Brawler realmente consigliati nella risposta.\n"
+                "- Se non puoi determinare una composizione affidabile, NON aggiungere BRAWLERS_IMMAGINI.\n"
+                "- Le righe MAPPA_IMMAGINE e BRAWLERS_IMMAGINI sono dati tecnici e verranno rimosse prima di mostrare la risposta all utente.\n"
+                "- La risposta deve sembrare scritta da un assistente ufficiale della community, non da un chatbot che cerca di essere simpatico.\n\n"
                 "FONTE PRIORITARIA PER LE MAPPE:\n"
                 "- Per la rotazione delle mappe attuali usa Brawl Insights come fonte primaria.\n"
                 "- La fonte primaria per la rotazione è https://brawlinsights.com/en/tools/map_rotation.\n"
@@ -1676,6 +1705,31 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         final_text = response.text or ""
         comp_brawlers = []
+        recommended_map = None
+
+        match_map = re.search(
+            r"^MAPPA_IMMAGINE:\s*(.+)$",
+            final_text,
+            re.I | re.M
+        )
+
+        if match_map:
+            recommended_map = resolve_map_source_name(
+                match_map.group(1).strip()
+            )
+
+            final_text = re.sub(
+                r"^MAPPA_IMMAGINE:\s*.+$",
+                "",
+                final_text,
+                flags=re.I | re.M
+            ).strip()
+
+            print(
+                "MAPPA IMMAGINE ESTRATTA:",
+                recommended_map,
+                flush=True
+            )
 
         match_brawlers = re.search(
             r"^BRAWLERS_IMMAGINI:\s*(.+)$",
@@ -1762,9 +1816,15 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         map_photo_sent = False
 
+        map_to_send = None
         if "current_map" in locals() and current_map:
+            map_to_send = current_map
+        elif recommended_map:
+            map_to_send = recommended_map
+
+        if map_to_send:
             try:
-                map_image = get_noff_map_image(current_map)
+                map_image = get_noff_map_image(map_to_send)
 
                 if map_image:
                     image_response = requests.get(
@@ -1776,10 +1836,22 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                     await context.bot.send_photo(
                         chat_id=message.chat_id,
-                        photo=image_response.content
+                        photo=image_response.content,
+                        caption=f"Mappa: {map_name_it(map_to_send)}"
                     )
 
                     map_photo_sent = True
+                    print(
+                        "IMMAGINE MAPPA INVIATA:",
+                        map_to_send,
+                        flush=True
+                    )
+                else:
+                    print(
+                        "NESSUNA IMMAGINE DISPONIBILE PER MAPPA:",
+                        map_to_send,
+                        flush=True
+                    )
 
             except Exception as e:
                 print(
