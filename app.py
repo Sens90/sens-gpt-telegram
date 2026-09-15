@@ -402,7 +402,9 @@ def brawlplanet_rotation_manifest(results):
         if not match:
             continue
         map_name = re.sub(r"\s+", " ", match.group(1)).strip()
-        mode_name = re.sub(r"\s+", " ", match.group(2)).strip()
+        mode_name = mode_name_it(
+            re.sub(r"\s+", " ", match.group(2)).strip()
+        )
         key = (map_name.casefold(), mode_name.casefold())
         if key in seen:
             continue
@@ -443,7 +445,9 @@ def brawlplanet_page_labels(result):
         return None, None
     return (
         re.sub(r"\s+", " ", clean_brawlplanet_cell(match.group(1))).strip(),
-        re.sub(r"\s+", " ", clean_brawlplanet_cell(match.group(2))).strip()
+        mode_name_it(
+            re.sub(r"\s+", " ", clean_brawlplanet_cell(match.group(2))).strip()
+        )
     )
 
 
@@ -1141,6 +1145,46 @@ BRAWLER_NAMES_IT = {
 
 def brawler_name_it(name):
     return BRAWLER_NAMES_IT.get(name, name)
+
+
+MODE_NAMES_IT = {
+    "Brawl Ball": "Footbrawl",
+    "Hot Zone": "Dominio",
+    "Gem Grab": "Arraffagemme",
+    "Heist": "Rapina",
+    "Knockout": "K.O.",
+    "Bounty": "Ricercati",
+    "Showdown": "Sopravvivenza",
+    "Wipeout": "Annientamento",
+    "Duels": "Duelli",
+    "Payload": "Corsa dei carrelli",
+    "Basket Brawl": "Basket Brawl",
+    "Brawl Hockey": "Brawl Hockey",
+    "Brawl Arena": "Arena dei Brawler",
+}
+
+
+def translate_mode_names_in_text(text):
+    if not text:
+        return text
+    translated = text
+    for english_name in sorted(MODE_NAMES_IT, key=len, reverse=True):
+        translated = re.sub(
+            r"(?<![A-Za-z0-9])" + re.escape(english_name) + r"(?![A-Za-z0-9])",
+            MODE_NAMES_IT[english_name],
+            translated,
+            flags=re.I
+        )
+    return translated
+
+
+def mode_name_it(name):
+    if not name:
+        return name
+    for english_name, italian_name in MODE_NAMES_IT.items():
+        if english_name.casefold() == name.casefold():
+            return italian_name
+    return name
 
 
 MAP_NAMES_IT = {
@@ -2686,6 +2730,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Converte i nomi inglesi delle mappe e la terminologia generica
         # nei termini ufficiali italiani prima di mostrare la risposta.
         final_text = translate_map_names_in_text(final_text)
+        final_text = translate_mode_names_in_text(final_text)
         final_text = translate_game_terms_in_text(final_text)
 
         if (
