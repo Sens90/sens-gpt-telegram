@@ -1638,10 +1638,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Quando consigli una mappa specifica attualmente disponibile, aggiungi una riga tecnica: MAPPA_IMMAGINE: NomeMappa.\n"
                 "- In MAPPA_IMMAGINE usa il nome esatto della mappa trovato nelle fonti web; preferisci il nome inglese/canonico della fonte per permettere al sistema di recuperare l immagine corretta.\n"
                 "- Inserisci MAPPA_IMMAGINE solo se quella mappa è stata verificata come attuale/disponibile; non usarla per mappe storiche o non verificate.\n"
-                "- Se proponi uno o più Brawler consigliati per la mappa, aggiungi una riga tecnica: BRAWLERS_IMMAGINI: Nome1|Nome2|Nome3|Nome4|Nome5...\n"
-                "- Usa in BRAWLERS_IMMAGINI esclusivamente i Brawler realmente consigliati nella risposta.\n"
-                "- Se non puoi determinare una composizione affidabile, NON aggiungere BRAWLERS_IMMAGINI.\n"
-                "- Le righe MAPPA_IMMAGINE e BRAWLERS_IMMAGINI sono dati tecnici e verranno rimosse prima di mostrare la risposta all utente.\n"
+                "- La riga MAPPA_IMMAGINE è un dato tecnico e verrà rimossa prima di mostrare la risposta all utente.\n"
                 "- La risposta deve sembrare scritta da un assistente ufficiale della community, non da un chatbot che cerca di essere simpatico.\n\n"
                 "FONTE PRIORITARIA PER LE MAPPE:\n"
                 "- Per la rotazione delle mappe attuali usa Brawl Insights come fonte primaria.\n"
@@ -1890,14 +1887,6 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=final_text,
             disable_web_page_preview=True
         )
-
-        if comp_brawlers:
-            await send_comp_brawler_images(
-                context,
-                message.chat_id,
-                comp_brawlers
-            )
-
 
         if False and any(k in question_for_ai.lower() for k in ["mappa", "mappe", "rotazione"]):
             try:
