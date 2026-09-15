@@ -1,6 +1,18 @@
 """Deterministic current-meta report built only from BrawlTrack search results."""
 import re
 
+# Nomi mostrati come nel client italiano quando differiscono dalla fonte/slug.
+# I nomi propri che non cambiano restano invariati.
+_BRAWLER_IT = {
+    "Mr P": "Mr. P",
+    "Mister P": "Mr. P",
+}
+
+
+def brawler_name_it(name):
+    clean = re.sub(r"\s+", " ", str(name or "")).strip()
+    return _BRAWLER_IT.get(clean, clean)
+
 
 def _pct(text, labels):
     for label in labels:
@@ -14,9 +26,9 @@ def _name(result):
     url = result.get('url') or ''
     m = re.search(r'brawltrack\.app/brawlers/([^/?#]+)', url, re.I)
     if m:
-        return m.group(1).replace('-', ' ').title()
+        return brawler_name_it(m.group(1).replace('-', ' ').title())
     title = re.sub(r'\s*[-|].*$', '', result.get('title') or '').strip()
-    return title or None
+    return brawler_name_it(title) if title else None
 
 
 def render_current_meta(search_data, context='both'):
@@ -50,13 +62,13 @@ def render_current_meta(search_data, context='both'):
         if win: metrics.append('Vittorie ' + win)
         if use: metrics.append('Utilizzo ' + use)
         if star: metrics.append('Miglior Star Player ' + star)
-        lines.append('- ' + name + ': ' + ' | '.join(metrics))
+        lines.append('- ' + brawler_name_it(name) + ': ' + ' | '.join(metrics))
     lines += ['', 'Contesti:']
     if context == 'ladder':
-        lines.append('- Ladder: usa questi dati solo dove il dataset BrawlTrack è identificato come Ladder.')
+        lines.append('- Ladder: vengono mostrati solo dati identificati come Ladder.')
     elif context == 'ranked':
-        lines.append('- Classificata: usa questi dati solo dove il dataset BrawlTrack è identificato come Classificata.')
+        lines.append('- Classificata: vengono mostrati solo dati identificati come Classificata.')
     else:
         lines.append('- Ladder e Classificata non vengono fusi. I dati senza contesto verificato non vengono attribuiti a uno dei due.')
-    lines += ['', 'I bilanciamenti e i Buffie non vengono dedotti dalle statistiche: vengono mostrati solo quando verificati separatamente da fonti ufficiali.']
+    lines += ['', 'Bilanciamenti e Buffie sono categorie separate e vengono mostrati solo se verificati da fonti ufficiali.']
     return '\n'.join(lines)
