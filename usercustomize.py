@@ -1,7 +1,16 @@
-"""Sens GPT runtime guards for Brawl Stars meta answers."""
+"""Sens GPT runtime guards for Brawl Stars meta answers and live profiles."""
+import html
 import os
 import re
+import sys
+import threading
+import time
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
 import requests
+
+ROME = ZoneInfo("Europe/Rome")
 
 META_POLICY = r'''
 REGOLE RUNTIME OBBLIGATORIE PER IL META:
@@ -112,5 +121,140 @@ def _install_command_guard():
     community_features.CommunityFeatures.handle_command = guarded
 
 
+def _install_live_club_guard():
+    """Make Brawlify club lookup resolve the current club tag and name."""
+    try:
+        import player_tracking
+    except Exception as exc:
+        print("PROFILE CLUB GUARD import failure:", repr(exc), flush=True)
+        return
+
+    def live_club(player_tag, timeout=15):
+        tag = str(player_tag or "").upper().replace("#", "").strip()
+        if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
+            return None, None
+        try:
+            url = f"https://brawlify.com/it/player/{tag}?refresh={int(time.time())}"
+            response = requests.get(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)",
+                    "Cache-Control": "no-cache",
+                    "Pragma": "no-cache",
+                    "Accept-Language": "it-IT,it;q=0.9,en;q=0.8",
+                },
+                timeout=timeout,
+            )
+            if response.status_code != 200:
+                return None, None
+            page = html.unescape(response.text)
+            href = re.search(
+                r'href=["\']/(?:it/)?club/(?:%23|#)?([0289PYLQGRJCUV]{3,15})(?:[^"\']*)["\']',
+                page, re.I,
+            )
+            if not href:
+                return None, None
+            club_tag = "#" + href.group(1).upper()
+            # First try the visible anchor body.
+            anchor = re.search(
+                r'<a[^>]+href=["\']/(?:it/)?club/(?:%23|#)?' + re.escape(href.group(1)) + r'[^"\']*["\'][^>]*>(.*?)</a>',
+                page, re.I | re.S,
+            )
+            if anchor:
+                name = re.sub(r"<[^>]+>", " ", anchor.group(1))
+                name = re.sub(r"\s+", " ", html.unescape(name)).strip()
+                if name and name.casefold() not in {"club", "visualizza club", "view club"}:
+                    return name, club_tag
+            # If the player card hides the club name in client-rendered markup,
+            # resolve the club page from the verified live tag.
+            club_response = requests.get(
+                f"https://brawlify.com/it/club/{href.group(1)}?refresh={int(time.time())}",
+                headers={"User-Agent": "Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)", "Cache-Control": "no-cache"},
+                timeout=timeout,
+            )
+            if club_response.status_code == 200:
+                club_page = html.unescape(club_response.text)
+                title = re.search(r"<title>\s*(.*?)\s*(?:#|—|-).*?</title>", club_page, re.I | re.S)
+                if title:
+                    name = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", title.group(1))).strip()
+                    if name:
+                        return name, club_tag
+                heading = re.search(r"<h1[^>]*>(.*?)</h1>", club_page, re.I | re.S)
+                if heading:
+                    name = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", heading.group(1))).strip()
+                    if name:
+                        return name, club_tag
+            return None, club_tag
+        except Exception as exc:
+            print("PROFILE CLUB LIVE failure:", repr(exc), flush=True)
+            return None, None
+
+    player_tracking.get_live_club = live_club
+    print("PROFILE CLUB LIVE GUARD INSTALLATA", flush=True)
+
+
+def _rome_trophy_changes(history, current_trophies):
+    """Today uses Rome midnight and the first snapshot after midnight if needed."""
+    now_utc = datetime.now(timezone.utc)
+    now_rome = now_utc.astimezone(ROME)
+    start_rome = now_rome.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_today = start_rome.astimezone(timezone.utc)
+
+    parsed = []
+    for row in history or []:
+        try:
+            dt = datetime.fromisoformat(str(row["recorded_at"]).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            parsed.append((dt.astimezone(timezone.utc), int(row["trophies"])))
+        except Exception:
+            continue
+    parsed.sort(key=lambda item: item[0])
+
+    def at_or_before(target):
+        value = None
+        for dt, trophies in parsed:
+            if dt <= target:
+                value = trophies
+            else:
+                break
+        return value
+
+    today_value = at_or_before(start_today)
+    if today_value is None:
+        # Tracking may have started after local midnight. Use the first real
+        # snapshot of this local day rather than claiming history is missing.
+        for dt, trophies in parsed:
+            if start_today <= dt <= now_utc:
+                today_value = trophies
+                break
+
+    changes = {
+        "today": current_trophies - today_value if today_value is not None else 0,
+    }
+    for days, key in ((7, "7d"), (15, "15d"), (30, "30d"), (90, "90d")):
+        old = at_or_before(now_utc - timedelta(days=days))
+        changes[key] = current_trophies - old if old is not None else None
+    return changes
+
+
+def _patch_main_profile_runtime():
+    """Patch app globals after app.py has finished defining them."""
+    for _ in range(120):
+        main = sys.modules.get("__main__")
+        if main and hasattr(main, "calculate_trophy_changes") and hasattr(main, "community"):
+            main.calculate_trophy_changes = _rome_trophy_changes
+            try:
+                main.community.change_calculator = _rome_trophy_changes
+            except Exception:
+                pass
+            print("PROFILE TROPHY ROME GUARD INSTALLATA", flush=True)
+            return
+        time.sleep(0.25)
+    print("PROFILE TROPHY ROME GUARD NON INSTALLATA", flush=True)
+
+
 _install_gemini_guard()
 _install_command_guard()
+_install_live_club_guard()
+threading.Thread(target=_patch_main_profile_runtime, daemon=True).start()
