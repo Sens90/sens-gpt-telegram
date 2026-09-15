@@ -218,6 +218,135 @@ def telegram_text_chunks(text, limit=3500):
         yield text
 
 
+def compact_source_text(text, limit):
+    """Keep prompts bounded while preserving the start and end of a page.
+
+    Brawl Planet puts the individual table near the top of a map page and the
+    team table further down. Keeping both ends retains the two sections without
+    sending the entire HTML/markdown page to Gemini.
+    """
+    text = str(text or "")
+    if len(text) <= limit:
+        return text
+
+    marker = "\n...[contenuto ridotto per il limite AI]...\n"
+    if limit <= len(marker):
+        return text[:limit]
+    remaining = limit - len(marker)
+    head = max(1, int(remaining * 0.62))
+    tail = max(1, remaining - head)
+    return (
+        text[:head]
+        + marker
+        + text[-tail:]
+    )
+
+
+def build_web_context(results, exhaustive=False):
+    """Build a bounded, source-labelled context for the generation call.
+
+    A broad "all maps" request can return dozens of full pages. Passing all
+    raw pages to Gemini exceeded the free-tier input-token quota, so primary
+    Brawl Planet pages get priority and a smaller reserved slice is kept for
+    secondary sources. URLs are deduplicated because Tavily returns the same
+    page both from search and from extract.
+    """
+    total_budget = 220000 if exhaustive else 110000
+    primary_budget = 185000 if exhaustive else 85000
+    secondary_budget = 35000 if exhaustive else 25000
+    context_parts = []
+    sources = []
+    seen_urls = set()
+    primary_used = 0
+    secondary_used = 0
+
+    def rank(result):
+        url = (result.get("url") or "").lower()
+        if "/it/maps/" in url and "brawlplanet.com" in url:
+            return 0
+        if italian_planet_url(result.get("url", "")):
+            return 1
+        if result.get("source_role") == "secondary_fallback":
+            return 3
+        return 2
+
+    ordered = sorted(
+        results or [],
+        key=rank if exhaustive else (lambda result: 0)
+    )
+
+    for result in ordered:
+        url = result.get("url", "") or ""
+        url_key = url.casefold()
+        if url_key and url_key in seen_urls:
+            continue
+        if url_key:
+            seen_urls.add(url_key)
+
+        title = str(result.get("title", "") or "")
+        content = str(result.get("content", "") or "")
+        raw_content = str(result.get("raw_content", "") or "")
+        if not (title or content or raw_content):
+            continue
+
+        is_secondary = result.get("source_role") == "secondary_fallback"
+        is_map_page = "/it/maps/" in url.casefold() and "brawlplanet.com" in url.casefold()
+        if is_map_page:
+            raw_limit = 7000
+        elif italian_planet_url(url):
+            raw_limit = 9000
+        elif is_secondary:
+            raw_limit = 4500
+        else:
+            raw_limit = 5000
+
+        source_role = (
+            "FONTE SECONDARIA - usare solo se Brawl Planet non ha il dato"
+            if is_secondary
+            else (
+                "FONTE PRIMARIA BRAWL PLANET"
+                if italian_planet_url(url)
+                else "ALTRA FONTE"
+            )
+        )
+        block = (
+            f"\nRuolo fonte: {source_role}\n"
+            f"Titolo: {compact_source_text(title, 1200)}\n"
+            f"Contenuto: {compact_source_text(content, 2600)}\n"
+            f"Contenuto completo: {compact_source_text(raw_content, raw_limit)}\n"
+            f"Fonte: {url}\n"
+            "---\n"
+        )
+
+        if is_secondary:
+            if secondary_used >= secondary_budget:
+                continue
+            available = secondary_budget - secondary_used
+        else:
+            if primary_used >= primary_budget:
+                continue
+            available = primary_budget - primary_used
+
+        if len(block) > available:
+            # A final shortened block can still carry the title, labels and
+            # the URL when the source budget is nearly exhausted.
+            if available < 700:
+                continue
+            block = compact_source_text(block, available)
+
+        context_parts.append(block)
+        if is_secondary:
+            secondary_used += len(block)
+        else:
+            primary_used += len(block)
+        if primary_used + secondary_used >= total_budget:
+            break
+        if url:
+            sources.append(url)
+
+    return "".join(context_parts), sources
+
+
 def brawlplanet_map_urls(results):
     """Collect localized Brawl Planet map detail URLs from extracted pages."""
     urls = []
@@ -250,7 +379,7 @@ def brawlplanet_rotation_manifest(results):
             "title", "content", "raw_content"
         ))
         match = re.search(
-            r"(?:Migliori Brawler per|Best Brawlers for)\s+(.+?)\s+-\s+([^\n|]+)",
+            r"(?:Migliori Brawler per|Best Brawlers for)\s+(.+?)\s*(?:\||-)\s*([^\n|]+)",
             text, re.I
         )
         if not match:
@@ -379,8 +508,14 @@ def web_search(query):
                         data["results"] = (
                             detail_results + localized_results + data.get("results", [])
                         )
-            except (requests.RequestException, ValueError):
-                print("BRAWL PLANET: estrazione italiana non disponibile", flush=True)
+            except Exception as e:
+                # Tavily can return a non-JSON/partial extract response. A
+                # failed enrichment must not abort the whole Telegram answer.
+                print(
+                    "BRAWL PLANET: estrazione italiana non disponibile",
+                    repr(e),
+                    flush=True
+                )
 
         data["brawlplanet_rotation"] = brawlplanet_rotation_manifest(
             data.get("results", [])
@@ -1917,30 +2052,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 )
 
-            for result in search_results:
-                title = result.get("title", "")
-                content = result.get("content", "")
-                raw_content = result.get("raw_content", "") or ""
-                url = result.get("url", "")
-                source_role = (
-                    "FONTE SECONDARIA - usare solo se Brawl Planet non ha il dato"
-                    if result.get("source_role") == "secondary_fallback"
-                    else ("FONTE PRIMARIA BRAWL PLANET" if italian_planet_url(url)
-                          else "ALTRA FONTE")
-                )
-
-                if title or content or raw_content:
-                    web_context += (
-                        f"\nRuolo fonte: {source_role}\n"
-                        f"Titolo: {title}\n"
-                        f"Contenuto: {content}\n"
-                        f"Contenuto completo: {raw_content[:40000]}\n"
-                        f"Fonte: {url}\n"
-                        f"---\n"
-                    )
-
-                if url:
-                    web_sources.append(url)
+            web_context, web_sources = build_web_context(
+                search_results,
+                exhaustive=is_all_maps_request(question_for_ai)
+            )
 
             rotation_manifest = search_data.get("brawlplanet_rotation", [])
             rotation_instruction = ""
@@ -2203,10 +2318,45 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{question_for_ai}"
             )
 
-        response = client.models.generate_content(
-            model="gemini-3.5-flash-lite",
-            contents=instructions
+        # Keep a final hard ceiling even if a future Tavily response contains
+        # unexpectedly large fields. The normal context builder stays well
+        # below this value; this is only a last-resort safety net.
+        if len(instructions) > 235000:
+            instructions = compact_source_text(instructions, 235000)
+        print(
+            "GEMINI INPUT CARATTERI:",
+            len(instructions),
+            flush=True
         )
+
+        try:
+            response = client.models.generate_content(
+                model="gemini-3.5-flash-lite",
+                contents=instructions
+            )
+        except Exception as generation_error:
+            error_lower = str(generation_error).lower()
+            # If a provider-side input-token limit is hit, retry once with a
+            # much smaller prompt. This also makes the bot recover from an
+            # unusually large single Tavily page without returning the generic
+            # AI error to the user.
+            if (
+                ("429" in error_lower or "resource_exhausted" in error_lower)
+                and "input_token" in error_lower
+                and len(instructions) > 90000
+            ):
+                reduced_instructions = compact_source_text(instructions, 90000)
+                print(
+                    "GEMINI: nuovo tentativo con contesto ridotto",
+                    len(reduced_instructions),
+                    flush=True
+                )
+                response = client.models.generate_content(
+                    model="gemini-3.5-flash-lite",
+                    contents=reduced_instructions
+                )
+            else:
+                raise
 
         final_text = response.text or ""
         comp_brawlers = []
@@ -2317,7 +2467,11 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 flush=True
             )
 
-        if "verified_comp" in locals() and len(verified_comp) == 3:
+        if (
+            not is_all_maps_request(question_for_ai)
+            and "verified_comp" in locals()
+            and len(verified_comp) == 3
+        ):
             comp_brawlers = verified_comp[:3]
 
             display_map = map_name_it(current_map)
@@ -2504,12 +2658,25 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             flush=True
         )
 
-        await context.bot.send_message(
-            chat_id=message.chat_id,
-            text=(
+        error_lower = str(e).lower()
+        if (
+            "429" in error_lower
+            or "resource_exhausted" in error_lower
+            or "quota" in error_lower
+        ):
+            user_error = (
+                "Il servizio AI ha raggiunto temporaneamente il limite di richieste. "
+                "Ho già ridotto il contenuto inviato al modello: riprova tra circa un minuto."
+            )
+        else:
+            user_error = (
                 "Ho avuto un problema con il sistema AI. "
                 "Riprova tra poco."
             )
+
+        await context.bot.send_message(
+            chat_id=message.chat_id,
+            text=user_error
         )
 
 
