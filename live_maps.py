@@ -1,7 +1,8 @@
-"""Read the public data used by Brawl Planet's active-map component.
+"""Live Brawl Stars map rotation and fallback statistics.
 
-Rotation is time-bounded, never inferred from the map catalogue. Tables are
-rendered directly, so missing data cannot invalidate unrelated maps.
+BrawlTrack is the primary meta/map/comp source in app.py. This module keeps
+Brawl Planet only for verified live rotation and as a fallback when BrawlTrack
+has no usable Ladder or Classificata datum.
 """
 import csv
 import gzip
@@ -29,7 +30,7 @@ SECTIONS = {
 METRICS = {
     "wr": ("Vittorie", "%"), "win_rate": ("Vittorie", "%"),
     "ur": ("Scelta", "%"), "use_rate": ("Scelta", "%"),
-    "sr": ("Star Player", "%"), "starplayer_rate": ("Star Player", "%"),
+    "sr": ("Miglior Star Player", "%"), "starplayer_rate": ("Miglior Star Player", "%"),
     "avg_rank": ("Piazzamento medio", ""), "tm": ("Partite", ""),
 }
 MODES = {
@@ -112,7 +113,6 @@ def valid_rows(rows):
         clean = {k: v for k, v in row.items() if k in ("brawler", "brawler_name", "team")}
         for key, value in row.items():
             if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0:
-                # Pick rates in this source can exceed 100 (multiple selections).
                 if key in ("wr", "win_rate", "sr", "starplayer_rate") and value > 100:
                     continue
                 clean[key] = value
@@ -136,7 +136,6 @@ def row_text(row, names):
 
 def collect_report(dataset="both", now=None, fetch=safe_get, secondary=None):
     now = now or datetime.now(timezone.utc)
-    # A failure in one fetch never discards independent successful responses.
     paths = ["event_rotation.json.gz", "i18n/names.it.json.gz"]
     with ThreadPoolExecutor(max_workers=4) as pool:
         initial = dict(zip(paths, pool.map(fetch, paths)))
@@ -158,15 +157,13 @@ def collect_report(dataset="both", now=None, fetch=safe_get, secondary=None):
         normal = normal if isinstance(normal, dict) else {}
         ranked = ranked if isinstance(ranked, dict) else {}
         entry = {"event": event, "datasets": [], "secondary": None}
-        for label, raw in (("Trofei", normal), ("Classificata", ranked)):
-            if (dataset == "ladder" and label != "Trofei") or (dataset == "ranked" and label != "Classificata"):
+        for label, raw in (("Ladder", normal), ("Classificata", ranked)):
+            if (dataset == "ladder" and label != "Ladder") or (dataset == "ranked" and label != "Classificata"):
                 continue
             sections = {k: valid_rows(raw.get(k)) for k in SECTIONS}
             entry["datasets"].append({"label": label, "raw": raw, "sections": sections})
         maps.append(entry)
-    # Only request secondary sources for missing Trofei data; absence of Ranked
-    # on a live-event map does not imply that the map is in the Ranked pool.
-    missing = [entry for entry in maps if dataset != "ranked" and not any(
+    missing = [entry for entry in maps if dataset != "ranked" and entry["datasets"] and not any(
         entry["datasets"][0]["sections"].values())]
     if secondary and missing:
         with ThreadPoolExecutor(max_workers=3) as pool:
@@ -181,9 +178,10 @@ def render_report(report, limit=5):
         return "Non riesco a verificare gli orari della rotazione attiva. Il catalogo delle mappe non è sufficiente per stabilire quali siano giocabili ora."
     names = report["names"]
     lines = [f"Mappe attive — {report['now'].astimezone(ROME):%d/%m/%Y %H:%M} (Italia)",
-             f"Fonte rotazione: Brawl Planet. Mappe verificate: {len(report['events'])}.",
-             "Statistiche aggregate della fonte, non solo partite di oggi. Fino a 5 scelte per tabella; per gli individuali con tasso di scelta escludo quelli sotto l'1%. Tutte le righe valide sono nel CSV allegato.",
-             "Vittorie, Scelta e Star Player sono metriche distinte. Scelta può superare il 100% nella fonte. Il campione della mappa non è il campione del singolo brawler."]
+             f"Fonte rotazione: Brawl Planet (fallback). Mappe verificate: {len(report['events'])}.",
+             "BrawlTrack resta la fonte primaria per meta, mappe e composizioni quando il dato è disponibile.",
+             "Statistiche aggregate della fonte, non solo partite di oggi. Fino a 5 scelte per tabella; per gli individuali con tasso di scelta escludo quelli sotto l'1%.",
+             "Vittorie, Scelta e Miglior Star Player sono metriche distinte."]
     for entry in report["maps"]:
         event = entry["event"]
         key = event["event_map_id"]
@@ -193,30 +191,23 @@ def render_report(report, limit=5):
         end = event_time(event["end_time"]).astimezone(ROME)
         lines += ["", f"{mode} — {map_name}", f"Evento fino al {end:%d/%m %H:%M} (Italia)"]
         for data in entry["datasets"]:
-            lines.append(data["label"] + " — Brawl Planet")
+            lines.append(data["label"] + " — fallback Brawl Planet")
             raw = data["raw"]
             if not any(data["sections"].values()):
                 lines.append("Statistiche non disponibili per questa mappa e questo dataset.")
                 continue
             if isinstance(raw.get("match_count"), (int, float)):
                 lines.append(f"Campione mappa: {raw['match_count']:,} partite".replace(",", "."))
-            stamp = raw.get("latest_match_time")
-            if isinstance(stamp, (int, float)) and 0 < stamp <= report["now"].timestamp() + 300:
-                lines.append(f"Ultima partita nel dataset: {datetime.fromtimestamp(stamp, ROME):%d/%m/%Y %H:%M}")
-                if report["now"].timestamp() - stamp > 7 * 86400:
-                    lines.append("Dati storici: ultima partita oltre 7 giorni fa. Non descrivono il meta attuale.")
             for section, rows in data["sections"].items():
                 if not rows:
                     continue
                 lines.append(SECTIONS[section] + ":")
                 selected = [row for row in rows if "team" in row or row.get("ur", row.get("use_rate", 1)) >= 1]
-                if not selected:
-                    lines.append("Nessuna riga supera la soglia di scelta dell'1%; dati nel CSV.")
                 lines.extend("• " + row_text(row, names) for row in selected[:limit])
         if entry["secondary"]:
             lines.append(entry["secondary"])
         lines.append("https://www.brawlplanet.com/it/maps/" + key)
-    lines += ["", "La rotazione degli eventi e il pool della Classificata sono distinti: gli eventuali dati Classificata qui riportati si riferiscono alle mappe elencate e non certificano il pool Ranked attuale. Le tabelle senza campione individuale non permettono di stabilire l'affidabilità di ogni percentuale."]
+    lines += ["", "Ladder, Classificata e Competitivo restano dataset distinti e non devono essere mescolati."]
     return "\n".join(lines)
 
 
