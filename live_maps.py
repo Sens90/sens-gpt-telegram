@@ -155,7 +155,7 @@ def _install_direct_meta_route():
                 await context.bot.send_chat_action(chat_id=message.chat_id,action="typing"); key=os.environ.get("TAVILY_API_KEY")
                 if not key: raise RuntimeError("TAVILY_API_KEY assente")
                 queries=[
-                    "Brawl Stars current meta BrawlTrack brawlers Win Rate Meta Usage Star Rate site:brawltrack.app/brawlers",
+                    "BrawlTrack Brawler Tier List Best Brawlers Right Now site:brawltrack.app/tier-list",
                     "BrawlTrack PRO ACTIVE maps PRIORITY PICKS COMMON FINAL COMPS site:brawltrack.app/pro/maps",
                 ]
                 merged={"results":[]}
@@ -164,11 +164,11 @@ def _install_direct_meta_route():
                     response.raise_for_status(); merged["results"].extend(response.json().get("results",[]))
                 report=render_current_meta(merged,"both")
                 if report:
-                    print("META APP IMPORT: BrawlTrack global+maps+comps; Gemini BLOCCATO",flush=True); await message.reply_text(report)
+                    print("META APP IMPORT: BrawlTrack tier-list+maps+comps; Gemini BLOCCATO",flush=True); await message.reply_text(report)
                 else:
-                    print("META APP IMPORT: dati insufficienti; Gemini BLOCCATO",flush=True); await message.reply_text("META ATTUALE\n\nBrawlTrack non restituisce abbastanza statistiche verificabili in questo momento. Non genero percentuali, tier o bilanciamenti a intuito. Riprova tra poco.")
+                    print("META APP IMPORT: tier list non verificabile; Gemini BLOCCATO",flush=True); await message.reply_text("META ATTUALE\n\nLa Tier List BrawlTrack non è leggibile in modo verificabile in questo momento. Non sostituisco la Tier List con Brawler casuali o con il solo win rate. Riprova tra poco.")
             except Exception as exc:
-                print("META APP IMPORT ERRORE; Gemini BLOCCATO:",repr(exc),flush=True); await message.reply_text("META ATTUALE\n\nNon riesco a verificare i dati BrawlTrack in questo momento. Per evitare informazioni inventate non genero una tier list generica.")
+                print("META APP IMPORT ERRORE; Gemini BLOCCATO:",repr(exc),flush=True); await message.reply_text("META ATTUALE\n\nNon riesco a verificare la Tier List BrawlTrack in questo momento. Per evitare un meta errato non genero una lista alternativa.")
             return True
         return await original(self,message,context,question)
     routed._sens_meta_direct_import=True; community_features.CommunityFeatures.handle_command=routed; print("META APP IMPORT ROUTE INSTALLATA",flush=True)
