@@ -1,6 +1,7 @@
 name: Fix profile labels
 on:
-  workflow_dispatch:
+  push:
+    branches: [fix-profile-club-record-labels]
 permissions:
   contents: write
 jobs:
