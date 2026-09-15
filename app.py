@@ -103,6 +103,46 @@ def get_game_context(question):
     return "both"
 
 
+def is_exhaustive_current_maps_query(question):
+    """True for requests covering today's maps across several/all modes."""
+    q = (question or "").lower()
+    current_terms = ["oggi", "attual", "adesso", "ora", "rotazione", "corrent"]
+    scope_terms = [
+        "ogni mappa", "tutte le mappe", "per ogni mappa",
+        "ogni modalità", "ogni modalita", "tutte le modalità",
+        "tutte le modalita"
+    ]
+    return any(term in q for term in current_terms) and any(
+        term in q for term in scope_terms
+    )
+
+
+def invalid_exhaustive_map_answer(text):
+    """Reject common hallucinations in large, current map recommendations."""
+    if not text:
+        return True
+
+    lowered = text.casefold()
+    invented_mode_names = [
+        "fotoria", "acuffobia", "zona telone"
+    ]
+    if any(name in lowered for name in invented_mode_names):
+        return True
+
+    # A genuinely map-specific answer should not recycle one identical trio
+    # across three or more maps. Order is ignored when comparing trios.
+    trios = []
+    for line in text.splitlines():
+        if ":" not in line:
+            continue
+        value = line.split(":", 1)[1]
+        names = [part.strip().casefold() for part in value.split(",")]
+        if len(names) == 3 and all(re.fullmatch(r"[\w .’'-]+", name) for name in names):
+            trios.append(tuple(sorted(names)))
+
+    return any(trios.count(trio) >= 3 for trio in set(trios))
+
+
 def meta_source_priority(url):
     url_lower = (url or "").lower()
 
@@ -1813,6 +1853,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "  - Non mescolare mai percentuali Ladder e Ranked nella stessa raccomandazione.\n"
                 "  - Non fondere statistiche appartenenti a mappe diverse, modalità diverse o Brawler diversi.\n"
                 "  - Se la domanda non specifica Ladder o Classificata e i due contesti portano a consigli diversi, separa la risposta in due sezioni: Ladder e Classificata.\n"
+                "  - Una richiesta sulle mappe di oggi, senza parole come Classificata, Ranked, draft o ban, riguarda prima di tutto la rotazione eventi/trofei: non presentarla come rotazione Classificata.\n"
                 "  - Se una mappa è indicata come solo Ranked, non proporla per Ladder. Se è archiviata o fuori pool, non proporla come attuale.\n"
                 "- META GENERALE: per domande come 'chi è meta?', 'tier list', 'migliori brawler adesso' usa come fonte primaria la Tier List e la pagina Meta aggiornate di Brawl Planet, confrontandole con gli ultimi bilanciamenti ufficiali Supercell.\n"
                 "- La Tier List generale di Brawl Planet serve per il meta complessivo e NON deve sostituire i dataset specifici Ladder o Classificata quando l utente specifica uno di quei contesti.\n"
@@ -1899,6 +1940,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Se non riesci a verificare almeno una mappa attualmente disponibile, consiglia la modalità e spiega che la mappa attiva non è verificabile, senza inventare.\n\n"
 
                 "- I nomi delle mappe mostrati all utente devono essere SEMPRE quelli ufficiali italiani usati nel gioco.\n"
+                "- I nomi italiani canonici delle modalità principali sono: Arraffagemme, Sopravvivenza, Footbrawl, Ricercati, Rapina, Dominio, K.O., Annientamento e Duelli. Non tradurre creativamente i nomi delle modalità e non usare mai Fotoria, Acuffobia o Zona Telone.\n"
                 "- Le fonti web possono contenere i nomi inglesi: usali solo internamente per la ricerca e non mostrarli nella risposta se esiste il nome ufficiale italiano.\n"
                 "- Non inventare traduzioni di nomi ufficiali.\n"
                 "- Per una miglior composizione identifica prima la mappa corrente e poi scegli i Brawler più adatti a quella specifica mappa.\n\n"
@@ -1911,6 +1953,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Quando l utente chiede la miglior comp, indica esattamente 3 Brawler specifici.\n"
                 "- Non rispondere con categorie generiche come tank, tiratori, supporti o brawler da mischia.\n"
                 "- Se i dati disponibili non permettono di determinare una comp affidabile, dichiaralo chiaramente e non inventare.\n"
+                "- Per richieste estese come 'ogni mappa di ogni modalità oggi', includi solo mappe dimostrate attive dai risultati forniti e raccomandazioni statistiche riferite proprio a ciascuna mappa. Non copiare lo stesso terzetto su mappe diverse. Se non puoi verificare in modo strutturato l intero elenco, spiega che la rotazione completa non è verificabile in quel momento e chiedi di scegliere una modalità: non completare l elenco a intuito.\n"
 
                 "Alla fine della risposta aggiungi:\n"
                 "Fonti:\n"
@@ -2040,6 +2083,24 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # nei termini ufficiali italiani prima di mostrare la risposta.
         final_text = translate_map_names_in_text(final_text)
         final_text = translate_game_terms_in_text(final_text)
+
+        if (
+            is_exhaustive_current_maps_query(question_for_ai)
+            and invalid_exhaustive_map_answer(final_text)
+        ):
+            final_text = (
+                "Non riesco a verificare con sufficiente affidabilità tutte le mappe "
+                "attive e i migliori Brawler specifici per ciascuna mappa in questo "
+                "momento. Non voglio riempire l'elenco con consigli generici. "
+                "Indicami una modalità, per esempio Footbrawl, Rapina o K.O., e "
+                "controllerò solo le mappe attive e i dati relativi a quella modalità."
+            )
+            comp_brawlers = []
+            recommended_map = None
+            print(
+                "RISPOSTA MAPPE ESTESE BLOCCATA: dati non verificati o terzetti duplicati",
+                flush=True
+            )
 
         if "verified_comp" in locals() and len(verified_comp) == 3:
             comp_brawlers = verified_comp[:3]
