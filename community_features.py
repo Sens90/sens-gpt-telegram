@@ -626,7 +626,7 @@ class CommunityFeatures:
                 "Sito ufficiale della community:\n"
                 "https://www.titaniabusivi.it\n\n"
                 "Qui trovi tutte le informazioni sulla community, i link ai nostri social ufficiali "
-                "e l'accesso a Discord per il reclutamento."
+                "e l'accesso a Discord, utilizzato per le vocali della community."
             )
             return True
 
