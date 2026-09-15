@@ -1,4 +1,4 @@
-python-telegram-bot[webhooks]
+python-telegram-bot[webhooks,job-queue]
 google-genai
 flask
 gunicorn
