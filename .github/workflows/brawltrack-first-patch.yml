@@ -1,0 +1,40 @@
+name: BrawlTrack first meta patch
+on:
+  push:
+    branches: [brawltrack-first-meta-maps]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brawltrack-first-meta-maps
+      - name: Patch source priority
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app.py')
+          s=p.read_text()
+          s=s.replace('''    if "supercell.com" in url_lower or "brawlstars.com" in url_lower:\n        return 0\n    if "brawlplanet.com" in url_lower or "brawlplanet.nl" in url_lower:\n        return 1\n    if "brawlify.com" in url_lower or "brawltime.ninja" in url_lower:\n        return 2\n    if "noff.gg" in url_lower:\n        return 3\n    return 4''','''    # BrawlTrack is the primary statistics source for meta/maps/comps.\n    # Official Supercell pages remain authoritative for game announcements only.\n    if "brawltrack.app" in url_lower:\n        return 0\n    if "supercell.com" in url_lower or "brawlstars.com" in url_lower:\n        return 1\n    if "brawlplanet.com" in url_lower or "brawlplanet.nl" in url_lower:\n        return 2\n    if "brawlify.com" in url_lower or "brawltime.ninja" in url_lower:\n        return 3\n    if "noff.gg" in url_lower:\n        return 4\n    return 5''')
+          s=s.replace('''        if "/it/maps/" in url and "brawlplanet.com" in url:\n            return 0\n        if italian_planet_url(result.get("url", "")):\n            return 1\n        if result.get("source_role") == "secondary_fallback":\n            return 3\n        return 2''','''        if "brawltrack.app" in url and ("/maps/" in url or "/pro/maps/" in url):\n            return 0\n        if "/it/maps/" in url and "brawlplanet.com" in url:\n            return 1\n        if italian_planet_url(result.get("url", "")):\n            return 2\n        if result.get("source_role") == "secondary_fallback":\n            return 4\n        return 3''')
+          s=s.replace('''        source_role = (\n            "FONTE SECONDARIA - usare solo se Brawl Planet non ha il dato"\n            if is_secondary\n            else (\n                "FONTE PRIMARIA BRAWL PLANET"\n                if italian_planet_url(url)\n                else "ALTRA FONTE"\n            )\n        )''','''        if "brawltrack.app" in url.casefold():\n            source_role = "FONTE PRIMARIA BRAWLTRACK"\n        elif italian_planet_url(url):\n            source_role = "FONTE FALLBACK BRAWL PLANET - usare solo se BrawlTrack non ha il dato"\n        elif is_secondary:\n            source_role = "FONTE SECONDARIA - usare solo se BrawlTrack e Brawl Planet non hanno il dato"\n        else:\n            source_role = "ALTRA FONTE"''')
+          s=s.replace('''            f"site:brawlplanet.com/it Brawl Stars {query} {today} {context_hint} "\n            f"Active Maps best brawlers win rate pick rate Star Player team comp "\n            f"trophy ladder Ranked"''','''            f"Brawl Stars {query} {today} {context_hint} "\n            f"site:brawltrack.app/maps OR site:brawltrack.app/pro/maps "\n            f"BrawlTrack map preview Priority Picks win rate use rate Common Final Comps "\n            f"trophy ladder Ranked"''')
+          s=s.replace('''            f"(site:brawlplanet.nl/it/meta OR site:brawlplanet.com/meta OR "\n            f"site:brawlplanet.com/tier-list OR site:brawlplanet.nl/it/tier-list) "\n            f"Brawl Planet tier list meta win rate pick rate Star Player current rotation "''','''            f"(site:brawltrack.app/brawlers OR site:brawltrack.app/ranked OR site:brawltrack.app/maps) "\n            f"BrawlTrack tier list meta win rate Meta Usage Star Rate current maps team comps "''')
+          # Enrich BrawlTrack pages first; Brawl Planet enrichment below stays as fallback.
+          needle='''    if is_map_query:\n        # Read localized page contents, not just search snippets.'''
+          repl='''    if is_map_query:\n        # BrawlTrack-first: extract the exact map pages returned by search.\n        track_urls = list(dict.fromkeys(\n            result.get("url") for result in data.get("results", [])\n            if result.get("url") and "brawltrack.app" in result.get("url", "").casefold()\n            and ("/maps/" in result.get("url", "") or "/pro/maps/" in result.get("url", ""))\n        ))[:20]\n        if track_urls:\n            try:\n                extracted = requests.post(\n                    "https://api.tavily.com/extract",\n                    json={"api_key": TAVILY_API_KEY, "urls": track_urls, "extract_depth": "advanced"},\n                    timeout=30\n                )\n                extracted.raise_for_status()\n                for result in extracted.json().get("results", []):\n                    result["source_role"] = "primary_brawltrack"\n                data["results"] = extracted.json().get("results", []) + data.get("results", [])\n            except Exception as e:\n                print("BRAWLTRACK: estrazione mappe non disponibile", repr(e), flush=True)\n\n        # Brawl Planet is retained strictly as fallback when BrawlTrack lacks a field/page.\n        # Read localized page contents, not just search snippets.'''
+          s=s.replace(needle,repl)
+          p.write_text(s)
+          PY
+      - name: Validate syntax
+        run: python -m py_compile app.py live_maps.py player_tracking.py
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app.py
+          git diff --cached --quiet || git commit -m "Prefer BrawlTrack for meta maps and comps"
+          git push origin HEAD:brawltrack-first-meta-maps
