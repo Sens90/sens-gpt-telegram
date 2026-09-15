@@ -1,0 +1,2147 @@
+{
+  "event_rotation.json.gz": [
+    {
+      "start_time": "20260915T080000.000Z",
+      "end_time": "20260916T080000.000Z",
+      "event_id": 15000144,
+      "event_mode": "brawlBall",
+      "event_map": "Sunny Soccer",
+      "event_map_id": "sunnysoccer_brawlball",
+      "slot_id": 1
+    },
+    {
+      "start_time": "20260914T200000.000Z",
+      "end_time": "20260915T200000.000Z",
+      "event_id": 15001278,
+      "event_mode": "showdown",
+      "event_map": "Crossing the Coast",
+      "event_map_id": "crossingthecoast_showdown",
+      "slot_id": 2
+    },
+    {
+      "start_time": "20260915T000000.000Z",
+      "end_time": "20260916T000000.000Z",
+      "event_id": 15001208,
+      "event_mode": "gemGrab",
+      "event_map": "Picturesque",
+      "event_map_id": "picturesque_gemgrab",
+      "slot_id": 3
+    },
+    {
+      "start_time": "20260914T180000.000Z",
+      "end_time": "20260915T180000.000Z",
+      "event_id": 15001202,
+      "event_mode": "hotZone",
+      "event_map": "Golden Bay",
+      "event_map_id": "goldenbay_hotzone",
+      "slot_id": 4
+    },
+    {
+      "start_time": "20260914T200000.000Z",
+      "end_time": "20260915T200000.000Z",
+      "event_id": 15001279,
+      "event_mode": "showdown",
+      "event_map": "Crossing the Coast",
+      "event_map_id": "crossingthecoast_showdown",
+      "slot_id": 5
+    },
+    {
+      "start_time": "20260915T020000.000Z",
+      "end_time": "20260916T020000.000Z",
+      "event_id": 15001127,
+      "event_mode": "knockout",
+      "event_map": "Chivalry",
+      "event_map_id": "chivalry_knockout",
+      "slot_id": 6
+    },
+    {
+      "start_time": "20260914T160000.000Z",
+      "end_time": "20260915T160000.000Z",
+      "event_id": 15001176,
+      "event_mode": "bounty",
+      "event_map": "Choral Chambers",
+      "event_map_id": "choralchambers_bounty",
+      "slot_id": 15
+    },
+    {
+      "start_time": "20260912T080000.000Z",
+      "end_time": "20260922T080000.000Z",
+      "event_id": 15001020,
+      "event_mode": "brawlBall",
+      "event_map": "Grass Knot",
+      "event_map_id": "grassknot_brawlball",
+      "slot_id": 20
+    },
+    {
+      "start_time": "20260912T080000.000Z",
+      "end_time": "20260922T080000.000Z",
+      "event_id": 15000440,
+      "event_mode": "knockout",
+      "event_map": "Flaring Phoenix",
+      "event_map_id": "flaringphoenix_knockout",
+      "slot_id": 21
+    },
+    {
+      "start_time": "20260912T080000.000Z",
+      "end_time": "20260922T080000.000Z",
+      "event_id": 15000005,
+      "event_mode": "bounty",
+      "event_map": "Shooting Star",
+      "event_map_id": "shootingstar_bounty",
+      "slot_id": 22
+    },
+    {
+      "start_time": "20260915T100000.000Z",
+      "end_time": "20260916T100000.000Z",
+      "event_id": 15001249,
+      "event_mode": "airHockey",
+      "event_map": "Arabesque",
+      "event_map_id": "arabesque_airhockey",
+      "slot_id": 33
+    },
+    {
+      "start_time": "20260914T200000.000Z",
+      "end_time": "20260915T200000.000Z",
+      "event_id": 15001280,
+      "event_mode": "showdown",
+      "event_map": "Crossing the Coast",
+      "event_map_id": "crossingthecoast_showdown",
+      "slot_id": 39
+    },
+    {
+      "start_time": "20260915T140000.000Z",
+      "end_time": "20260916T140000.000Z",
+      "event_id": 15000997,
+      "event_mode": "brawlArena",
+      "event_map": "Mirage Arena",
+      "event_map_id": "miragearena_brawlarena",
+      "slot_id": 41
+    },
+    {
+      "start_time": "20260915T120000.000Z",
+      "end_time": "20260916T120000.000Z",
+      "event_id": 15000920,
+      "event_mode": "deathmatch5v5",
+      "event_map": "Big Battle Basin",
+      "event_map_id": "bigbattlebasin_deathmatch5v5",
+      "slot_id": 43
+    },
+    {
+      "start_time": "20260915T040000.000Z",
+      "end_time": "20260916T040000.000Z",
+      "event_id": 15001244,
+      "event_mode": "wipeout",
+      "event_map": "Attrition",
+      "event_map_id": "attrition_wipeout",
+      "slot_id": 42
+    },
+    {
+      "start_time": "20260915T140000.000Z",
+      "end_time": "20260915T160000.000Z",
+      "event_id": 15000143,
+      "event_mode": "brawlBall",
+      "event_map": "Beach Ball",
+      "event_map_id": "beachball_brawlball",
+      "slot_id": 55
+    }
+  ],
+  "i18n/names.it.json.gz": {
+    "brawlers": {
+      "SHELLY": "Shelly",
+      "COLT": "Colt",
+      "BULL": "Bull",
+      "BROCK": "Brock",
+      "RICO": "Stecca",
+      "SPIKE": "Spike",
+      "BARLEY": "Bombardino",
+      "JESSIE": "Jessie",
+      "NITA": "Nita",
+      "DYNAMIKE": "Dynamike",
+      "EL PRIMO": "El Primo",
+      "MORTIS": "Mortis",
+      "CROW": "Corvo",
+      "POCO": "Pocho",
+      "BO": "Bo",
+      "PIPER": "Piper",
+      "PAM": "Pam",
+      "TARA": "Tara",
+      "DARRYL": "Barryl",
+      "PENNY": "Penny",
+      "FRANK": "Frank",
+      "GENE": "Eugenio",
+      "TICK": "Tick",
+      "LEON": "Leon",
+      "ROSA": "Rosa",
+      "CARL": "Carl",
+      "BIBI": "Bibi",
+      "8-BIT": "8-Bit",
+      "SANDY": "Sandy",
+      "BEA": "Bea",
+      "EMZ": "Emz",
+      "MR. P": "Mister P",
+      "MAX": "Maxine",
+      "JACKY": "Jacky",
+      "GALE": "Gelindo",
+      "NANI": "Iris",
+      "SPROUT": "Semino",
+      "SURGE": "Energetik",
+      "COLETTE": "Colette",
+      "AMBER": "Ambra",
+      "LOU": "Lou",
+      "BYRON": "Byron",
+      "EDGAR": "Edgar",
+      "RUFFS": "Ringhio",
+      "STU": "Stu",
+      "BELLE": "Belle",
+      "SQUEAK": "Squeak",
+      "GROM": "Grom",
+      "BUZZ": "Buzz",
+      "GRIFF": "Griff",
+      "ASH": "Ash",
+      "MEG": "Meg",
+      "LOLA": "Lola",
+      "FANG": "Fang",
+      "EVE": "Eve",
+      "JANET": "Janet",
+      "BONNIE": "Bonnie",
+      "OTIS": "Otis",
+      "SAM": "Sam",
+      "GUS": "Gus",
+      "BUSTER": "Buster",
+      "CHESTER": "Chester",
+      "GRAY": "Gray",
+      "MANDY": "Mandy",
+      "R-T": "R-T",
+      "WILLOW": "Willow",
+      "MAISIE": "Maisie",
+      "HANK": "Hank",
+      "CORDELIUS": "Cordelius",
+      "DOUG": "Doug",
+      "PEARL": "Pearl",
+      "CHUCK": "Chuck",
+      "CHARLIE": "Charlie",
+      "MICO": "Mico",
+      "KIT": "Kit",
+      "LARRY & LAWRIE": "Larry E Lawrie",
+      "MELODIE": "Melodie",
+      "ANGELO": "Angelo",
+      "DRACO": "Draco",
+      "LILY": "Lily",
+      "BERRY": "Berry",
+      "CLANCY": "Clancy",
+      "MOE": "Moe",
+      "KENJI": "Kenji",
+      "SHADE": "Shade",
+      "JUJU": "Juju",
+      "MEEPLE": "Meeple",
+      "OLLIE": "Ollie",
+      "LUMI": "Lumi",
+      "FINX": "Finx",
+      "JAE-YONG": "Jae-Yong",
+      "KAZE": "Kaze",
+      "ALLI": "Alli",
+      "TRUNK": "Trunk",
+      "MINA": "Mina",
+      "ZIGGY": "Ziggy",
+      "PIERCE": "Pierce",
+      "GIGI": "Gigi",
+      "GLOWY": "Glowy",
+      "SIRIUS": "Sirius",
+      "NAJIA": "Najia",
+      "DAMIAN": "Damian",
+      "STARR NOVA": "Starr Nova",
+      "BOLT": "Bolt",
+      "NORI": "Nori",
+      "WENDY": "Wendy",
+      "COSMO": "Cosmo",
+      "VINCE": "Vince",
+      "DRILLER": "Nella"
+    },
+    "maps": {
+      "SHOOTING STAR": "Piana delle stelle",
+      "BEACH BALL": "Campo da beach brawl",
+      "SUNNY SOCCER": "Campetto sabbioso",
+      "FLARING PHOENIX": "Fenice sfolgorante",
+      "BIG BATTLE BASIN": "Pianura delle battaglie",
+      "MIRAGE ARENA": "Arena dei miraggi",
+      "GRASS KNOT": "Campetto in erba",
+      "CHIVALRY": "Buone maniere",
+      "CHORAL CHAMBERS": "Camere corali",
+      "GOLDEN BAY": "Baia dell'oro",
+      "PICTURESQUE": "Scorcio pittoresco",
+      "ATTRITION": "Scontro inevitabile",
+      "ARABESQUE": "Arabesque",
+      "CROSSING THE COAST": "Passaggio costiero"
+    },
+    "modes": {
+      "GEM GRAB": "Arraffagemme",
+      "HEIST": "Rapina",
+      "BOUNTY": "Ricercati",
+      "SOLO SHOWDOWN": "SOPRAVVIVENZA (SOLO)",
+      "SHOWDOWN": "Sopravvivenza",
+      "BRAWL BALL": "Footbrawl",
+      "SPIRIT WARS": "ARMAGEDDON",
+      "BIG GAME": "PEZZO GROSSO",
+      "ROBO RUMBLE": "ROBOASSALTO",
+      "DUO SHOWDOWN": "SOPRAVVIVENZA (IN DUE)",
+      "BOSS FIGHT": "RAID",
+      "UPSIDE DOWN": "SOTTOSOPRA",
+      "TAKEDOWN": "CACCIA AL BOSS",
+      "LONE STAR": "STELLA SOLITARIA",
+      "PRESENT PLUNDER": "Rubaregali",
+      "HOT ZONE": "Dominio",
+      "SUPER CITY RAMPAGE": "ASSALTO A SUPER CITY",
+      "KNOCKOUT": "K.O.",
+      "CARRY THE GIFT": "CORSA AI REGALI",
+      "BASKET BRAWL": "Basket Brawl",
+      "VOLLEY BRAWL": "Brawlavolo",
+      "DUELS": "Duelli",
+      "WIPEOUT": "Annientamento",
+      "PAYLOAD": "Corsa dei carrelli",
+      "BOT DROP": "Invasione robotica",
+      "HUNTERS": "CACCIATORI",
+      "LAST STAND": "ULTIMO BALUARDO",
+      "WIPEOUT 5V5": "Annientamento 5v5",
+      "BRAWL BALL 5V5": "Footbrawl 5v5",
+      "GEM GRAB 5V5": "ARRAFFAGEMME 5V5",
+      "TROPHY ESCAPE": "FUGA COI TROFEI",
+      "KNOCKOUT 5V5": "K.O. 5v5",
+      "GODZILLA CITY SMASH": "L'ATTACCO DEI MOSTRI",
+      "PAINT BRAWL": "Paintbrawl",
+      "TRIO SHOWDOWN": "SOPRAVVIVENZA (IN TRE)",
+      "DRUM ROLL": "AVANTI IL PROSSIMO",
+      "SOUL COLLECTOR": "COLLEZIONISTA DI ANIME",
+      "CLEANING DUTY": "ASSI DELLE PULIZIE",
+      "SOLO SHOWDOWN LIMBO": "SOPRAVVIVENZA NEL LIMBO (SOLO)",
+      "KNOCKOUT LIMBO": "K.O. NEL LIMBO",
+      "TRIO SHOWDOWN LIMBO": "SOPRAVVIVENZA NEL LIMBO (IN TRE)",
+      "SPECIAL DELIVERY": "CONSEGNA SPECIALE",
+      "SPECIAL DELIVERY 2V2": "CONSEGNA SPECIALE 2V2",
+      "BRAWL HOCKEY": "Brawl Hockey",
+      "BRAWL HOCKEY 2V2": "BRAWL HOCKEY 2V2",
+      "GEM GRAB 2V2": "ARRAFFAGEMME 2V2",
+      "BRAWL BALL 2V2": "FOOTBRAWL 2V2",
+      "KNOCKOUT 2V2": "K.O. 2V2",
+      "HOT ZONE 2V2": "DOMINIO 2V2",
+      "BASKET BRAWL 2V2": "BASKET BRAWL 2V2",
+      "TOKEN RUN": "SCARTAGETTONI",
+      "TREASURE HUNT": "CACCIATORI DI TESORI",
+      "VIP HUNT": "CACCIA AI VIP",
+      "BRAWL ARENA": "Arena dei Brawler",
+      "SAMURAI SMASH": "GUERRA DEI SAMURAI",
+      "DODGEBRAWL": "DODGEBRAWL",
+      "SUBWAY RUN": "CORSA SUBWAY",
+      "TRIO WIPEOUT": "ANNIENTAMENTO IN TRE",
+      "TRIO GEM GRAB": "ARRAFFAGEMME IN TRE",
+      "UPSIDE SHOWDOWN": "SOTTOSOPRAVVIVENZA",
+      "LOVE BOMBING": "C'È BOMBA PER TE",
+      "SAFE BLAST": "BOTTI E BOTTINI",
+      "DUO MEGA BOSS": "CACCIA AL MEGABOSS (IN DUE)",
+      "TROPHY THIEVES": "Ladri di trofei",
+      "SHADOW SMASH": "GUERRA DELLE OMBRE",
+      "LOADED SHOWDOWN": "SOPRAVVIVENZA RANDOM",
+      "SUPER BALL": "SUPERFOOTBRAWL",
+      "5 PLAYER VOID BOSS": "BOSS DEL VUOTO (5 GIOCATORI)",
+      "LOADED DUO SHOWDOWN": "SOPRAVVIVENZA RANDOM (IN DUE)",
+      "SUPER HOCKEY": "SUPER BRAWL HOCKEY",
+      "FOOD FIGHT": "Sfida ai fornelli",
+      "COMBAT COOKING": "STARR IN CUCINA",
+      "MECHA GUARD": "SOS MECHA",
+      "HIDE & SEEK": "NASCONDINO",
+      "MEGA BOSS DUO (20 PLAYER)": "DUO MEGABOSS (20 GIOCATORI)"
+    }
+  },
+  "normal-results/airHockey.json.gz": {
+    "arabesque_airhockey": {
+      "individual": [
+        {
+          "brawler": "BOLT",
+          "wr": 66.1,
+          "ur": 5.8,
+          "sr": 25.7
+        },
+        {
+          "brawler": "WENDY",
+          "wr": 65.7,
+          "ur": 1.4,
+          "sr": 13.1
+        },
+        {
+          "brawler": "DAMIAN",
+          "wr": 61.3,
+          "ur": 4.2,
+          "sr": 17.5
+        },
+        {
+          "brawler": "STARR NOVA",
+          "wr": 60.3,
+          "ur": 4.9,
+          "sr": 29.3
+        },
+        {
+          "brawler": "R-T",
+          "wr": 59.0,
+          "ur": 0.6,
+          "sr": 18.3
+        },
+        {
+          "brawler": "SHADE",
+          "wr": 58.5,
+          "ur": 2.4,
+          "sr": 20.9
+        }
+      ],
+      "teams": [
+        {
+          "team": [
+            "BROCK",
+            "FANG",
+            "BOLT"
+          ],
+          "wr": 79.0
+        },
+        {
+          "team": [
+            "GRIFF",
+            "FANG",
+            "KAZE"
+          ],
+          "wr": 78.5
+        },
+        {
+          "team": [
+            "STU",
+            "GRIFF",
+            "BOLT"
+          ],
+          "wr": 77.7
+        },
+        {
+          "team": [
+            "MORTIS",
+            "GALE",
+            "BOLT"
+          ],
+          "wr": 75.6
+        },
+        {
+          "team": [
+            "BO",
+            "FRANK",
+            "BIBI"
+          ],
+          "wr": 75.0
+        },
+        {
+          "team": [
+            "NITA",
+            "GRIFF",
+            "FANG"
+          ],
+          "wr": 75.0
+        }
+      ],
+      "mode": "airHockey",
+      "modeFormatted": "Brawl Hockey",
+      "map": "Arabesque",
+      "match_count": 616812,
+      "active": true,
+      "latest_match_time": 1789034569,
+      "recent_match_count": 587251
+    }
+  },
+  "normal-results/bounty.json.gz": {
+    "choralchambers_bounty": {
+      "individual": [
+        {
+          "brawler": "COSMO",
+          "wr": 71.0,
+          "ur": 0.2,
+          "sr": 19.7
+        },
+        {
+          "brawler": "BOLT",
+          "wr": 69.1,
+          "ur": 17.7,
+          "sr": 32.8
+        },
+        {
+          "brawler": "WENDY",
+          "wr": 66.5,
+          "ur": 4.1,
+          "sr": 14.2
+        },
+        {
+          "brawler": "STARR NOVA",
+          "wr": 60.9,
+          "ur": 5.3,
+          "sr": 19.9
+        },
+        {
+          "brawler": "DAMIAN",
+          "wr": 60.6,
+          "ur": 0.8,
+          "sr": 13.8
+        },
+        {
+          "brawler": "NORI",
+          "wr": 59.1,
+          "ur": 7.8,
+          "sr": 29.8
+        }
+      ],
+      "teams": [
+        {
+          "team": [
+            "BROCK",
+            "KAZE",
+            "BOLT"
+          ],
+          "wr": 80.6
+        },
+        {
+          "team": [
+            "BROCK",
+            "BO",
+            "BOLT"
+          ],
+          "wr": 80.5
+        },
+        {
+          "team": [
+            "BROCK",
+            "GRAY",
+            "BOLT"
+          ],
+          "wr": 80.3
+        },
+        {
+          "team": [
+            "BROCK",
+            "SURGE",
+            "BOLT"
+          ],
+          "wr": 77.5
+        },
+        {
+          "team": [
+            "PIPER",
+            "8-BIT",
+            "BOLT"
+          ],
+          "wr": 77.5
+        },
+        {
+          "team": [
+            "BROCK",
+            "SPIKE",
+            "BOLT"
+          ],
+          "wr": 77.0
+        }
+      ],
+      "mode": "bounty",
+      "modeFormatted": "Bounty",
+      "map": "Choral Chambers",
+      "match_count": 194311,
+      "active": true,
+      "latest_match_time": 1789470719,
+      "recent_match_count": 171083
+    },
+    "shootingstar_bounty": {
+      "individual": [
+        {
+          "brawler": "WENDY",
+          "wr": 68.2,
+          "ur": 4.4,
+          "sr": 17.1
+        },
+        {
+          "brawler": "BOLT",
+          "wr": 65.1,
+          "ur": 14.3,
+          "sr": 30.1
+        },
+        {
+          "brawler": "GUS",
+          "wr": 57.3,
+          "ur": 12.9,
+          "sr": 18.0
+        },
+        {
+          "brawler": "MINA",
+          "wr": 56.4,
+          "ur": 3.1,
+          "sr": 15.4
+        },
+        {
+          "brawler": "NANI",
+          "wr": 55.7,
+          "ur": 17.7,
+          "sr": 24.1
+        },
+        {
+          "brawler": "KIT",
+          "wr": 54.6,
+          "ur": 7.0,
+          "sr": 21.8
+        }
+      ],
+      "teams": [
+        {
+          "team": [
+            "AMBER",
+            "GUS",
+            "MINA"
+          ],
+          "wr": 90.3
+        },
+        {
+          "team": [
+            "AMBER",
+            "GUS",
+            "WENDY"
+          ],
+          "wr": 89.2
+        },
+        {
+          "team": [
+            "AMBER",
+            "GUS",
+            "SHADE"
+          ],
+          "wr": 85.0
+        },
+        {
+          "team": [
+            "MAX",
+            "BOLT",
+            "WENDY"
+          ],
+          "wr": 82.9
+        },
+        {
+          "team": [
+            "GENE",
+            "NANI",
+            "SQUEAK"
+          ],
+          "wr": 82.4
+        },
+        {
+          "team": [
+            "AMBER",
+            "GUS",
+            "NAJIA"
+          ],
+          "wr": 81.8
+        }
+      ],
+      "mode": "bounty",
+      "modeFormatted": "Bounty",
+      "map": "Shooting Star",
+      "match_count": 1596992,
+      "active": true,
+      "latest_match_time": 1789470940,
+      "recent_match_count": 1556736,
+      "ranked_live": true
+    }
+  },
+  "normal-results/brawlArena.json.gz": {
+    "miragearena_brawlarena": {
+      "individual": [
+        {
+          "brawler": "WENDY",
+          "wr": 69.4,
+          "ur": 1.3,
+          "sr": 1.0
+        },
+        {
+          "brawler": "8-BIT",
+          "wr": 58.7,
+          "ur": 24.3,
+          "sr": 44.7
+        },
+        {
+          "brawler": "NORI",
+          "wr": 58.2,
+          "ur": 3.4,
+          "sr": 18.5
+        },
+        {
+          "brawler": "BOLT",
+          "wr": 58.1,
+          "ur": 5.8,
+          "sr": 16.4
+        },
+        {
+          "brawler": "STARR NOVA",
+          "wr": 57.9,
+          "ur": 7.0,
+          "sr": 17.2
+        },
+        {
+          "brawler": "HANK",
+          "wr": 57.4,
+          "ur": 30.5,
+          "sr": 33.2
+        }
+      ],
+      "teams": [
+        {
+          "team": [
+            "JESSIE",
+            "8-BIT",
+            "BOLT"
+          ],
+          "wr": 79.5
+        },
+        {
+          "team": [
+            "BROCK",
+            "8-BIT",
+            "WENDY"
+          ],
+          "wr": 77.5
+        },
+        {
+          "team": [
+            "8-BIT",
+            "SURGE",
+            "BUZZ"
+          ],
+          "wr": 77.1
+        },
+        {
+          "team": [
+            "CROW",
+            "8-BIT",
+            "HANK"
+          ],
+          "wr": 76.0
+        },
+        {
+          "team": [
+            "BULL",
+            "JESSIE",
+            "BOLT"
+          ],
+          "wr": 74.1
+        },
+        {
+          "team": [
+            "BROCK",
+            "NITA",
+            "BIBI"
+          ],
+          "wr": 73.9
+        }
+      ],
+      "mode": "brawlArena",
+      "modeFormatted": "Brawl Arena",
+      "map": "Mirage Arena",
+      "match_count": 417372,
+      "active": true,
+      "latest_match_time": 1788962749,
+      "recent_match_count": 407464
+    }
+  },
+  "normal-results/brawlBall.json.gz": {
+    "beachball_brawlball": {
+      "individual": [
+        {
+          "brawler": "WENDY",
+          "wr": 68.4,
+          "ur": 5.1,
+          "sr": 16.2
+        },
+        {
+          "brawler": "AMBER",
+          "wr": 65.7,
+          "ur": 4.1,
+          "sr": 27.2
+        },
+        {
+          "brawler": "ASH",
+          "wr": 64.9,
+          "ur": 3.0,
+          "sr": 28.9
+        },
+        {
+          "brawler": "SHADE",
+          "wr": 63.1,
+          "ur": 11.7,
+          "sr": 31.2
+        },
+        {
+          "brawler": "GUS",
+          "wr": 62.4,
+          "ur": 4.9,
+          "sr": 16.8
+        },
+        {
+          "brawler": "STARR NOVA",
+          "wr": 61.7,
+          "ur": 7.0,
+          "sr": 28.5
+        }
+      ],
+      "teams": [
+        {
+          "team": [
+            "SURGE",
+            "ASH",
+            "MEG"
+          ],
+          "wr": 80.6
+        },
+        {
+          "team": [
+            "FRANK",
+            "AMBER",
+            "SHADE"
+          ],
+          "wr": 80.5
+        },
+        {
+          "team": [
+            "EL PRIMO",
+            "MEG",
+            "CHESTER"
+          ],
+          "wr": 80.4
+        },
+        {
+          "team": [
+            "BUZZ",
+            "GRIFF",
+            "CORDELIUS"
+          ],
+          "wr": 79.2
+        },
+        {
+          "team": [
+            "AMBER",
+            "MAISIE",
+            "SHADE"
+          ],
+          "wr": 78.8
+        },
+        {
+          "team": [
+            "AMBER",
+            "STU",
+            "SHADE"
+          ],
+          "wr": 78.8
+        }
+      ],
+      "mode": "brawlBall",
+      "modeFormatted": "Brawl Ball",
+      "map": "Beach Ball",
+      "match_count": 1000986,
+      "active": true,
+      "latest_match_time": 1789401606,
+      "recent_match_count": 1000986,
+      "ranked_live": true
+    },
+    "grassknot_brawlball": {
+      "individual": [
+        {
+          "brawler": "WENDY",
+          "wr": 67.2,
+          "ur": 5.6,
+          "sr": 16.1
+        },
+        {
+          "brawler": "GUS",
+          "wr": 63.3,
+          "ur": 6.5,
+          "sr": 17.6
+        },
+        {
+          "brawler": "AMBER",
+          "wr": 62.2,
+          "ur": 5.6,
+          "sr": 23.4
+        },
+        {
+          "brawler": "SHADE",
+          "wr": 61.5,
+          "ur": 9.8,
+          "sr": 29.0
+        },
+        {
+          "brawler": "ASH",
+          "wr": 60.7,
+          "ur": 2.2,
+          "sr": 24.8
+        },
+        {
+          "brawler": "LUMI",
+          "wr": 57.5,
+          "ur": 3.1,
+          "sr": 17.8
+        }
+      ],
+      "teams": [
+        {
+          "team": [
+            "AMBER",
+            "GUS",
+            "SHADE"
+          ],
+          "wr": 86.9
+        },
+        {
+          "team": [
+            "AMBER",
+            "SHADE",
+            "WENDY"
+          ],
+          "wr": 85.1
+        },
+        {
+          "team": [
+            "AMBER",
+            "ASH",
+            "GUS"
+          ],
+          "wr": 83.7
+        },
+        {
+          "team": [
+            "AMBER",
+            "BUZZ",
+            "SHADE"
+          ],
+          "wr": 82.6
+        },
+        {
+          "team": [
+            "EL PRIMO",
+            "AMBER",
+            "SHADE"
+          ],
+          "wr": 82.4
+        },
+        {
+          "team": [
+            "AMBER",
+            "GUS",
+            "WENDY"
+          ],
+          "wr": 80.9
+        }
+      ],
+      "mode": "brawlBall",
+      "modeFormatted": "Brawl Ball",
+      "map": "Grass Knot",
+      "match_count": 2291248,
+      "active": true,
+      "latest_match_time": 1789471026,
+      "recent_match_count": 2291244
+    },
+    "sunnysoccer_brawlball": {
+      "individual": [
+        {
+          "brawler": "COSMO",
+          "wr": 70.4,
+          "ur": 0.0,
+          "sr": 9.6
+        },
+        {
+          "brawler": "AMBER",
+          "wr": 67.5,
+          "ur": 5.1,
+          "sr": 28.3
+        },
+        {
+          "brawler": "WENDY",
+          "wr": 66.5,
+          "ur": 4.5,
+          "sr": 14.6
+        },
+        {
+          "brawler": "ASH",
+          "wr": 64.5,
+          "ur": 3.2,
+          "sr": 27.4
+        },
+        {
+          "brawler": "SHADE",
+          "wr": 62.7,
+          "ur": 13.7,
+          "sr": 29.3
+        },
+        {
+          "brawler": "GUS",
+          "wr": 61.2,
+          "ur": 3.9,
+          "sr": 15.0
+        }
+      ],
+      "teams": [
+        {
+          "team": [
+            "AMBER",
+            "FANG",
+            "SHADE"
+          ],
+          "wr": 83.1
+        },
+        {
+          "team": [
+            "AMBER",
+            "MAISIE",
+            "SHADE"
+          ],
+          "wr": 82.9
+        },
+        {
+          "team": [
+            "FRANK",
+            "SURGE",
+            "STARR NOVA"
+          ],
+          "wr": 79.4
+        },
+        {
+          "team": [
+            "NITA",
+            "DARRYL",
+            "SURGE"
+          ],
+          "wr": 79.2
+        },
+        {
+          "team": [
+            "SHELLY",
+            "GUS",
+            "SHADE"
+          ],
+          "wr": 78.5
+        },
+        {
+          "team": [
+            "EL PRIMO",
+            "LARRY & LAWRIE",
+            "SHADE"
+          ],
+          "wr": 78.0
+        }
+      ],
+      "mode": "brawlBall",
+      "modeFormatted": "Brawl Ball",
+      "map": "Sunny Soccer",
+      "match_count": 1023236,
+      "active": true,
+      "latest_match_time": 1789471028,
+      "recent_match_count": 1023236
+    }
+  },
+  "normal-results/deathmatch5v5.json.gz": {},
+  "normal-results/gemGrab.json.gz": {
+    "picturesque_gemgrab": {
+      "individual": [
+        {
+          "brawler": "WENDY",
+          "wr": 69.2,
+          "ur": 2.9,
+          "sr": 21.8
+        },
+        {
+          "brawler": "BOLT",
+          "wr": 67.8,
+          "ur": 17.3,
+          "sr": 33.3
+        },
+        {
+          "brawler": "DAMIAN",
+          "wr": 64.1,
+          "ur": 3.4,
+          "sr": 18.5
+        },
+        {
+          "brawler": "STARR NOVA",
+          "wr": 61.5,
+          "ur": 7.7,
+          "sr": 28.8
+        },
+        {
+          "brawler": "NORI",
+          "wr": 60.7,
+          "ur": 6.8,
+          "sr": 28.7
+        },
+        {
+          "brawler": "AMBER",
+          "wr": 57.8,
+          "ur": 5.1,
+          "sr": 21.8
+        }
+      ],
+      "teams": [
+        {
+          "team": [
+            "EL PRIMO",
+            "AMBER",
+            "GUS"
+          ],
+          "wr": 80.6
+        },
+        {
+          "team": [
+            "BROCK",
+            "STARR NOVA",
+            "BOLT"
+          ],
+          "wr": 79.6
+        },
+        {
+          "team": [
+            "BROCK",
+            "KENJI",
+            "BOLT"
+          ],
+          "wr": 78.7
+        },
+        {
+          "team": [
+            "CROW",
+            "CLANCY",
+            "BOLT"
+          ],
+          "wr": 77.6
+        },
+        {
+          "team": [
+            "BROCK",
+            "BO",
+            "BOLT"
+          ],
+          "wr": 75.4
+        },
+        {
+          "team": [
+            "BROCK",
+            "SURGE",
+            "BOLT"
+          ],
+          "wr": 73.9
+        }
+      ],
+      "mode": "gemGrab",
+      "modeFormatted": "Gem Grab",
+      "map": "Picturesque",
+      "match_count": 179714,
+      "active": true,
+      "latest_match_time": 1789470781,
+      "recent_match_count": 175660
+    }
+  },
+  "normal-results/hotZone.json.gz": {
+    "goldenbay_hotzone": {
+      "individual": [
+        {
+          "brawler": "WENDY",
+          "wr": 65.8,
+          "ur": 10.6,
+          "sr": 5.6
+        },
+        {
+          "brawler": "BOLT",
+          "wr": 64.2,
+          "ur": 5.1,
+          "sr": 23.7
+        },
+        {
+          "brawler": "HANK",
+          "wr": 63.6,
+          "ur": 3.9,
+          "sr": 30.1
+        },
+        {
+          "brawler": "STARR NOVA",
+          "wr": 62.5,
+          "ur": 5.6,
+          "sr": 31.1
+        },
+        {
+          "brawler": "DRACO",
+          "wr": 61.7,
+          "ur": 2.5,
+          "sr": 20.0
+        },
+        {
+          "brawler": "DAMIAN",
+          "wr": 60.0,
+          "ur": 2.5,
+          "sr": 9.8
+        }
+      ],
+      "teams": [
+        {
+          "team": [
+            "EMZ",
+            "GRIFF",
+            "BOLT"
+          ],
+          "wr": 85.6
+        },
+        {
+          "team": [
+            "BIBI",
+            "EMZ",
+            "HANK"
+          ],
+          "wr": 81.8
+        },
+        {
+          "team": [
+            "JESSIE",
+            "BO",
+            "GALE"
+          ],
+          "wr": 80.7
+        },
+        {
+          "team": [
+            "BIBI",
+            "HANK",
+            "KENJI"
+          ],
+          "wr": 80.1
+        },
+        {
+          "team": [
+            "EMZ",
+            "SURGE",
+            "CHUCK"
+          ],
+          "wr": 79.8
+        },
+        {
+          "team": [
+            "TICK",
+            "8-BIT",
+            "BOLT"
+          ],
+          "wr": 79.8
+        }
+      ],
+      "mode": "hotZone",
+      "modeFormatted": "Hot Zone",
+      "map": "Golden Bay",
+      "match_count": 453456,
+      "active": true,
+      "latest_match_time": 1789470893,
+      "recent_match_count": 437651
+    }
+  },
+  "normal-results/knockout.json.gz": {
+    "chivalry_knockout": {
+      "individual": [
+        {
+          "brawler": "WENDY",
+          "wr": 70.1,
+          "ur": 4.7,
+          "sr": 23.0
+        },
+        {
+          "brawler": "BOLT",
+          "wr": 66.8,
+          "ur": 8.7,
+          "sr": 26.7
+        },
+        {
+          "brawler": "COSMO",
+          "wr": 65.2,
+          "ur": 0.0,
+          "sr": 18.2
+        },
+        {
+          "brawler": "GLOWY",
+          "wr": 62.5,
+          "ur": 2.1,
+          "sr": 16.7
+        },
+        {
+          "brawler": "NAJIA",
+          "wr": 60.7,
+          "ur": 6.3,
+          "sr": 18.8
+        },
+        {
+          "brawler": "PEARL",
+          "wr": 60.0,
+          "ur": 2.1,
+          "sr": 26.2
+        }
+      ],
+      "teams": [
+        {
+          "team": [
+            "PIPER",
+            "PIPER",
+            "BEA"
+          ],
+          "wr": 93.2
+        },
+        {
+          "team": [
+            "PIPER",
+            "PIPER",
+            "LEON"
+          ],
+          "wr": 93.1
+        },
+        {
+          "team": [
+            "PIPER",
+            "PIPER",
+            "MAX"
+          ],
+          "wr": 92.5
+        },
+        {
+          "team": [
+            "PIPER",
+            "PIPER",
+            "BELLE"
+          ],
+          "wr": 92.2
+        },
+        {
+          "team": [
+            "PIPER",
+            "PIPER",
+            "NANI"
+          ],
+          "wr": 91.2
+        },
+        {
+          "team": [
+            "PIPER",
+            "PIPER",
+            "NORI"
+          ],
+          "wr": 90.7
+        }
+      ],
+      "mode": "knockout",
+      "modeFormatted": "Knockout",
+      "map": "Chivalry",
+      "match_count": 914996,
+      "active": true,
+      "latest_match_time": 1789471015,
+      "recent_match_count": 882306
+    },
+    "flaringphoenix_knockout": {
+      "individual": [
+        {
+          "brawler": "WENDY",
+          "wr": 65.4,
+          "ur": 3.0,
+          "sr": 16.0
+        },
+        {
+          "brawler": "SHADE",
+          "wr": 60.1,
+          "ur": 7.6,
+          "sr": 28.2
+        },
+        {
+          "brawler": "GUS",
+          "wr": 59.2,
+          "ur": 10.3,
+          "sr": 19.9
+        },
+        {
+          "brawler": "BUSTER",
+          "wr": 59.1,
+          "ur": 1.8,
+          "sr": 20.4
+        },
+        {
+          "brawler": "OLLIE",
+          "wr": 56.4,
+          "ur": 0.5,
+          "sr": 10.0
+        },
+        {
+          "brawler": "PEARL",
+          "wr": 56.2,
+          "ur": 1.9,
+          "sr": 22.9
+        }
+      ],
+      "teams": [
+        {
+          "team": [
+            "AMBER",
+            "GUS",
+            "SHADE"
+          ],
+          "wr": 87.0
+        },
+        {
+          "team": [
+            "AMBER",
+            "SHADE",
+            "WENDY"
+          ],
+          "wr": 85.7
+        },
+        {
+          "team": [
+            "EL PRIMO",
+            "AMBER",
+            "GUS"
+          ],
+          "wr": 85.4
+        },
+        {
+          "team": [
+            "MAX",
+            "GUS",
+            "SHADE"
+          ],
+          "wr": 85.2
+        },
+        {
+          "team": [
+            "GUS",
+            "PEARL",
+            "SHADE"
+          ],
+          "wr": 84.7
+        },
+        {
+          "team": [
+            "FRANK",
+            "CHARLIE",
+            "KIT"
+          ],
+          "wr": 84.3
+        }
+      ],
+      "mode": "knockout",
+      "modeFormatted": "Knockout",
+      "map": "Flaring Phoenix",
+      "match_count": 1107823,
+      "active": true,
+      "latest_match_time": 1789471053,
+      "recent_match_count": 907823,
+      "ranked_live": true
+    }
+  },
+  "normal-results/showdown.json.gz": {
+    "crossingthecoast_showdown": {
+      "active": true,
+      "solo": [
+        {
+          "brawler_name": "WENDY",
+          "avg_rank": 3.29,
+          "ur": 6.0,
+          "tm": 65325
+        },
+        {
+          "brawler_name": "COSMO",
+          "avg_rank": 3.3,
+          "ur": 0.0,
+          "tm": 300
+        },
+        {
+          "brawler_name": "MEG",
+          "avg_rank": 3.51,
+          "ur": 0.8,
+          "tm": 9268
+        },
+        {
+          "brawler_name": "TRUNK",
+          "avg_rank": 3.67,
+          "ur": 0.1,
+          "tm": 1413
+        },
+        {
+          "brawler_name": "GLOWY",
+          "avg_rank": 3.71,
+          "ur": 0.2,
+          "tm": 2210
+        },
+        {
+          "brawler_name": "DOUG",
+          "avg_rank": 3.75,
+          "ur": 0.3,
+          "tm": 3728
+        }
+      ],
+      "duo_individual": [
+        {
+          "brawler_name": "TRUNK",
+          "avg_rank": 1.98,
+          "ur": 0.2,
+          "tm": 1727
+        },
+        {
+          "brawler_name": "WENDY",
+          "avg_rank": 2.03,
+          "ur": 4.0,
+          "tm": 31341
+        },
+        {
+          "brawler_name": "LARRY & LAWRIE",
+          "avg_rank": 2.04,
+          "ur": 0.4,
+          "tm": 2842
+        },
+        {
+          "brawler_name": "NITA",
+          "avg_rank": 2.05,
+          "ur": 1.3,
+          "tm": 10294
+        },
+        {
+          "brawler_name": "AMBER",
+          "avg_rank": 2.07,
+          "ur": 1.2,
+          "tm": 8994
+        },
+        {
+          "brawler_name": "8-BIT",
+          "avg_rank": 2.08,
+          "ur": 1.7,
+          "tm": 13265
+        }
+      ],
+      "duo_team": [
+        {
+          "team": [
+            "SPIKE",
+            "LARRY & LAWRIE"
+          ],
+          "avg_rank": 1.67
+        },
+        {
+          "team": [
+            "8-BIT",
+            "SQUEAK"
+          ],
+          "avg_rank": 1.68
+        },
+        {
+          "team": [
+            "BO",
+            "PENNY"
+          ],
+          "avg_rank": 1.68
+        },
+        {
+          "team": [
+            "NITA",
+            "PENNY"
+          ],
+          "avg_rank": 1.7
+        },
+        {
+          "team": [
+            "NITA",
+            "KAZE"
+          ],
+          "avg_rank": 1.75
+        },
+        {
+          "team": [
+            "NITA",
+            "CARL"
+          ],
+          "avg_rank": 1.76
+        }
+      ],
+      "trio_individual": [
+        {
+          "brawler_name": "WENDY",
+          "avg_rank": 1.73,
+          "ur": 2.3,
+          "tm": 7713
+        },
+        {
+          "brawler_name": "COSMO",
+          "avg_rank": 1.75,
+          "ur": 0.1,
+          "tm": 342
+        },
+        {
+          "brawler_name": "TRUNK",
+          "avg_rank": 1.82,
+          "ur": 0.3,
+          "tm": 1152
+        },
+        {
+          "brawler_name": "JACKY",
+          "avg_rank": 1.86,
+          "ur": 0.5,
+          "tm": 1746
+        },
+        {
+          "brawler_name": "ASH",
+          "avg_rank": 1.87,
+          "ur": 0.5,
+          "tm": 1621
+        },
+        {
+          "brawler_name": "NITA",
+          "avg_rank": 1.87,
+          "ur": 2.0,
+          "tm": 6538
+        }
+      ],
+      "trio_team": [
+        {
+          "team": [
+            "BROCK",
+            "SURGE",
+            "MEG"
+          ],
+          "avg_rank": 1.64
+        },
+        {
+          "team": [
+            "BROCK",
+            "BROCK",
+            "BROCK"
+          ],
+          "avg_rank": 1.68
+        },
+        {
+          "team": [
+            "BROCK",
+            "CROW",
+            "EMZ"
+          ],
+          "avg_rank": 1.76
+        },
+        {
+          "team": [
+            "COLT",
+            "BEA",
+            "EDGAR"
+          ],
+          "avg_rank": 1.76
+        },
+        {
+          "team": [
+            "BROCK",
+            "SPIKE",
+            "PENNY"
+          ],
+          "avg_rank": 1.78
+        },
+        {
+          "team": [
+            "COLT",
+            "CROW",
+            "EMZ"
+          ],
+          "avg_rank": 1.78
+        }
+      ],
+      "mode": "showdown",
+      "modeFormatted": "Showdown",
+      "map": "Crossing the Coast",
+      "match_count": 2204799,
+      "latest_match_time": 1789471179,
+      "recent_match_count": 2204799
+    }
+  },
+  "normal-results/wipeout.json.gz": {
+    "attrition_wipeout": {
+      "individual": [
+        {
+          "brawler": "WENDY",
+          "wr": 73.0,
+          "ur": 5.0,
+          "sr": 16.0
+        },
+        {
+          "brawler": "BOLT",
+          "wr": 69.1,
+          "ur": 16.8,
+          "sr": 39.0
+        },
+        {
+          "brawler": "DAMIAN",
+          "wr": 63.2,
+          "ur": 0.8,
+          "sr": 12.4
+        },
+        {
+          "brawler": "NAJIA",
+          "wr": 60.1,
+          "ur": 4.2,
+          "sr": 15.9
+        },
+        {
+          "brawler": "PIERCE",
+          "wr": 60.1,
+          "ur": 13.8,
+          "sr": 27.5
+        },
+        {
+          "brawler": "NORI",
+          "wr": 59.2,
+          "ur": 5.8,
+          "sr": 31.7
+        }
+      ],
+      "teams": [
+        {
+          "team": [
+            "BROCK",
+            "BOLT",
+            "NORI"
+          ],
+          "wr": 82.5
+        },
+        {
+          "team": [
+            "PIPER",
+            "SQUEAK",
+            "BOLT"
+          ],
+          "wr": 78.1
+        },
+        {
+          "team": [
+            "PIPER",
+            "BEA",
+            "WENDY"
+          ],
+          "wr": 78.0
+        },
+        {
+          "team": [
+            "BROCK",
+            "8-BIT",
+            "BOLT"
+          ],
+          "wr": 77.2
+        },
+        {
+          "team": [
+            "PIPER",
+            "FANG",
+            "WENDY"
+          ],
+          "wr": 74.7
+        },
+        {
+          "team": [
+            "BYRON",
+            "PIERCE",
+            "BOLT"
+          ],
+          "wr": 73.2
+        }
+      ],
+      "mode": "wipeout",
+      "modeFormatted": "Wipeout",
+      "map": "Attrition",
+      "match_count": 162510,
+      "active": true,
+      "latest_match_time": 1789464183,
+      "recent_match_count": 155098
+    }
+  },
+  "pl-results.json.gz": {
+    "shootingstar_bounty": {
+      "individual": [
+        {
+          "brawler": "WENDY",
+          "wr": 66.5,
+          "ur": 1.4,
+          "sr": 14.8
+        },
+        {
+          "brawler": "BOLT",
+          "wr": 63.0,
+          "ur": 7.4,
+          "sr": 24.5
+        },
+        {
+          "brawler": "GROM",
+          "wr": 59.0,
+          "ur": 7.7,
+          "sr": 34.4
+        },
+        {
+          "brawler": "MR. P",
+          "wr": 57.6,
+          "ur": 1.8,
+          "sr": 10.1
+        },
+        {
+          "brawler": "TICK",
+          "wr": 55.9,
+          "ur": 12.6,
+          "sr": 20.3
+        },
+        {
+          "brawler": "SPROUT",
+          "wr": 55.8,
+          "ur": 3.6,
+          "sr": 25.4
+        }
+      ],
+      "teams": [
+        {
+          "team": [
+            "BROCK",
+            "NAJIA",
+            "WENDY"
+          ],
+          "wr": 85.1
+        },
+        {
+          "team": [
+            "PIPER",
+            "AMBER",
+            "KAZE"
+          ],
+          "wr": 84.0
+        },
+        {
+          "team": [
+            "PIPER",
+            "AMBER",
+            "WENDY"
+          ],
+          "wr": 82.8
+        },
+        {
+          "team": [
+            "BROCK",
+            "AMBER",
+            "WENDY"
+          ],
+          "wr": 82.4
+        },
+        {
+          "team": [
+            "BROCK",
+            "GUS",
+            "WENDY"
+          ],
+          "wr": 82.1
+        },
+        {
+          "team": [
+            "PIPER",
+            "GUS",
+            "WENDY"
+          ],
+          "wr": 80.6
+        }
+      ],
+      "mode": "bounty",
+      "modeFormatted": "Bounty",
+      "map": "Shooting Star",
+      "match_count": 1016196,
+      "active": true,
+      "latest_match_time": 1789470777,
+      "recent_match_count": 1016196
+    },
+    "beachball_brawlball": {
+      "individual": [
+        {
+          "brawler": "AMBER",
+          "wr": 63.6,
+          "ur": 12.4,
+          "sr": 29.6
+        },
+        {
+          "brawler": "SHADE",
+          "wr": 63.2,
+          "ur": 11.5,
+          "sr": 30.9
+        },
+        {
+          "brawler": "WENDY",
+          "wr": 61.4,
+          "ur": 10.8,
+          "sr": 16.9
+        },
+        {
+          "brawler": "GUS",
+          "wr": 58.6,
+          "ur": 20.1,
+          "sr": 21.1
+        },
+        {
+          "brawler": "EL PRIMO",
+          "wr": 57.6,
+          "ur": 15.7,
+          "sr": 17.8
+        },
+        {
+          "brawler": "ASH",
+          "wr": 57.1,
+          "ur": 9.5,
+          "sr": 22.3
+        }
+      ],
+      "teams": [
+        {
+          "team": [
+            "EL PRIMO",
+            "GUS",
+            "SHADE"
+          ],
+          "wr": 86.0
+        },
+        {
+          "team": [
+            "EMZ",
+            "GUS",
+            "SHADE"
+          ],
+          "wr": 84.2
+        },
+        {
+          "team": [
+            "COLETTE",
+            "GUS",
+            "SHADE"
+          ],
+          "wr": 83.9
+        },
+        {
+          "team": [
+            "EL PRIMO",
+            "AMBER",
+            "GUS"
+          ],
+          "wr": 83.9
+        },
+        {
+          "team": [
+            "EL PRIMO",
+            "COLETTE",
+            "SHADE"
+          ],
+          "wr": 83.6
+        },
+        {
+          "team": [
+            "RICO",
+            "GUS",
+            "SHADE"
+          ],
+          "wr": 82.4
+        }
+      ],
+      "mode": "brawlBall",
+      "modeFormatted": "Brawl Ball",
+      "map": "Beach Ball",
+      "match_count": 156987,
+      "active": true,
+      "latest_match_time": 1789470812,
+      "recent_match_count": 156987
+    },
+    "grassknot_brawlball": {
+      "individual": [
+        {
+          "brawler": "OLLIE",
+          "wr": 59.3,
+          "ur": 6.6,
+          "sr": 14.6
+        },
+        {
+          "brawler": "JACKY",
+          "wr": 57.5,
+          "ur": 4.8,
+          "sr": 18.7
+        },
+        {
+          "brawler": "BIBI",
+          "wr": 57.3,
+          "ur": 17.0,
+          "sr": 20.4
+        },
+        {
+          "brawler": "BUSTER",
+          "wr": 56.5,
+          "ur": 4.1,
+          "sr": 21.5
+        },
+        {
+          "brawler": "CHARLIE",
+          "wr": 55.8,
+          "ur": 4.6,
+          "sr": 10.4
+        },
+        {
+          "brawler": "SAM",
+          "wr": 55.7,
+          "ur": 0.7,
+          "sr": 22.2
+        }
+      ],
+      "teams": [
+        {
+          "team": [
+            "FRANK",
+            "SURGE",
+            "GRIFF"
+          ],
+          "wr": 78.4
+        },
+        {
+          "team": [
+            "GRIFF",
+            "CORDELIUS",
+            "OLLIE"
+          ],
+          "wr": 72.7
+        },
+        {
+          "team": [
+            "TARA",
+            "BIBI",
+            "CORDELIUS"
+          ],
+          "wr": 71.2
+        },
+        {
+          "team": [
+            "BIBI",
+            "EMZ",
+            "CORDELIUS"
+          ],
+          "wr": 70.6
+        },
+        {
+          "team": [
+            "FRANK",
+            "BIBI",
+            "SURGE"
+          ],
+          "wr": 70.6
+        },
+        {
+          "team": [
+            "TARA",
+            "FANG",
+            "CORDELIUS"
+          ],
+          "wr": 70.1
+        }
+      ],
+      "mode": "brawlBall",
+      "modeFormatted": "Brawl Ball",
+      "map": "Grass Knot",
+      "match_count": 200000,
+      "active": false,
+      "latest_match_time": 1763543204,
+      "recent_match_count": 0
+    },
+    "flaringphoenix_knockout": {
+      "individual": [
+        {
+          "brawler": "WENDY",
+          "wr": 63.1,
+          "ur": 1.7,
+          "sr": 17.2
+        },
+        {
+          "brawler": "PEARL",
+          "wr": 60.3,
+          "ur": 8.6,
+          "sr": 29.5
+        },
+        {
+          "brawler": "GROM",
+          "wr": 59.1,
+          "ur": 9.3,
+          "sr": 35.0
+        },
+        {
+          "brawler": "DOUG",
+          "wr": 58.0,
+          "ur": 2.8,
+          "sr": 17.0
+        },
+        {
+          "brawler": "BUSTER",
+          "wr": 57.4,
+          "ur": 2.8,
+          "sr": 15.1
+        },
+        {
+          "brawler": "BROCK",
+          "wr": 57.0,
+          "ur": 43.5,
+          "sr": 29.5
+        }
+      ],
+      "teams": [
+        {
+          "team": [
+            "BROCK",
+            "SHADE",
+            "WENDY"
+          ],
+          "wr": 90.7
+        },
+        {
+          "team": [
+            "BROCK",
+            "AMBER",
+            "WENDY"
+          ],
+          "wr": 89.3
+        },
+        {
+          "team": [
+            "BROCK",
+            "PEARL",
+            "WENDY"
+          ],
+          "wr": 86.9
+        },
+        {
+          "team": [
+            "BROCK",
+            "DOUG",
+            "PEARL"
+          ],
+          "wr": 84.9
+        },
+        {
+          "team": [
+            "BROCK",
+            "COLETTE",
+            "WENDY"
+          ],
+          "wr": 83.1
+        },
+        {
+          "team": [
+            "BROCK",
+            "PEARL",
+            "BOLT"
+          ],
+          "wr": 82.0
+        }
+      ],
+      "mode": "knockout",
+      "modeFormatted": "Knockout",
+      "map": "Flaring Phoenix",
+      "match_count": 1016088,
+      "active": true,
+      "latest_match_time": 1789470885,
+      "recent_match_count": 1016088
+    }
+  }
+}
