@@ -140,6 +140,12 @@ class CommunityFeatures:
                 params={"on_conflict": "chat_id,telegram_user_id"},
                 prefer="resolution=merge-duplicates,return=minimal",
             )
+            self._post(
+                "community_settings",
+                {"chat_id": int(message.chat_id)},
+                params={"on_conflict": "chat_id"},
+                prefer="resolution=merge-duplicates,return=minimal",
+            )
         except Exception as exc:
             print("ERRORE TRACK ATTIVITA:", repr(exc), flush=True)
 
