@@ -117,7 +117,8 @@ def web_search(query):
             f"Brawl Stars current meta {today} {query} "
             f"latest balance changes tier list ranked competitive "
             f"win rates pick rates best brawlers "
-            f"Supercell Brawlify Brawl Time Ninja Noff"
+            f"gadget abilità stellare equipaggiamento overdrive nomi italiani "
+            f"Supercell italiano Brawlify Brawl Time Ninja Noff"
         )
     elif is_image_subject_query:
         search_query = (
@@ -734,6 +735,33 @@ def translate_map_names_in_text(text):
         translated = re.sub(
             r"(?<![A-Za-z0-9])" + re.escape(english_name) + r"(?![A-Za-z0-9])",
             italian_name,
+            translated,
+            flags=re.I
+        )
+
+    return translated
+
+
+def translate_game_terms_in_text(text):
+    if not text:
+        return text
+
+    replacements = [
+        (r"\bStar\s*Power\b", "abilità stellare"),
+        (r"\bStar\s*Powers\b", "abilità stellari"),
+        (r"\bGear\b", "equipaggiamento"),
+        (r"\bGears\b", "equipaggiamenti"),
+        (r"\bHypercharge\b", "overdrive"),
+        (r"\bHypercharges\b", "overdrive"),
+        (r"\bBuild\b", "configurazione"),
+        (r"\bLoadout\b", "configurazione"),
+    ]
+
+    translated = text
+    for pattern, replacement in replacements:
+        translated = re.sub(
+            pattern,
+            replacement,
             translated,
             flags=re.I
         )
@@ -1585,7 +1613,12 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Una fonte ufficiale stabilisce cosa è cambiato, ma il meta reale va valutato anche con statistiche e dati competitivi aggiornati.\n"
                 "- Confronta più risultati quando possibile: non dichiarare un Brawler 'meta' basandoti su una sola fonte debole.\n"
                 "- Se i risultati web non permettono di verificare il meta attuale con sufficiente affidabilità, dichiaralo chiaramente invece di indovinare.\n"
-                "- Se l'utente chiede cosa pushare o come pushare un Brawler, struttura la risposta con: modalità consigliate, mappe favorevoli attuali se verificabili, build consigliata, comp/sinergie, matchup da evitare e un piano pratico di push.\n\n"
+                "- Se l'utente chiede cosa pushare o come pushare un Brawler, struttura la risposta con: modalità consigliate, mappe favorevoli attuali se verificabili, configurazione consigliata, comp/sinergie, matchup da evitare e un piano pratico di push.\n"
+                "- TERMINOLOGIA ITALIANA OBBLIGATORIA: usa sempre i termini ufficiali del gioco in italiano. Gear = equipaggiamento/equipaggiamenti; Star Power = abilità stellare/abilità stellari; Hypercharge = overdrive; Gadget resta gadget.\n"
+                "- Per gadget, abilità stellari, equipaggiamenti e overdrive specifici usa il NOME UFFICIALE ITALIANO mostrato in Brawl Stars, non il nome inglese.\n"
+                "- Per i nomi localizzati dai priorità alle pagine italiane ufficiali di Supercell e alle fonti italiane affidabili.\n"
+                "- Se il nome italiano ufficiale di una specifica abilità non è verificabile, non tradurlo a intuito e non mostrare il nome inglese: descrivi semplicemente l effetto o il tipo di scelta consigliata.\n"
+                "- Questa regola vale per tutti gli elementi del gioco mostrati all utente: modalità, mappe, gadget, abilità stellari, equipaggiamenti, overdrive, eventi e oggetti.\n\n"
 
                 + (
                     f"MAPPA CORRENTE IDENTIFICATA DAL SISTEMA: {current_map}\n"
@@ -1691,6 +1724,12 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Se non conosci con certezza una informazione, "
                 "dillo chiaramente.\n\n"
 
+                "Usa sempre la terminologia ufficiale italiana di Brawl Stars. "
+                "Scrivi equipaggiamento invece di gear, abilità stellare invece di Star Power "
+                "e overdrive invece di Hypercharge. Per i nomi specifici di gadget, abilità "
+                "stellari, equipaggiamenti e overdrive usa solo il nome italiano ufficiale; "
+                "se non sei sicuro del nome ufficiale, descrivi l effetto senza inventare una traduzione.\n\n"
+
                 f"DOMANDA E CONTESTO:\n"
                 f"{question_for_ai}"
             )
@@ -1785,9 +1824,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             flags=re.I
         ).strip()
 
-        # Converte i nomi inglesi delle mappe nei nomi ufficiali italiani
-        # prima di mostrare la risposta agli utenti.
+        # Converte i nomi inglesi delle mappe e la terminologia generica
+        # nei termini ufficiali italiani prima di mostrare la risposta.
         final_text = translate_map_names_in_text(final_text)
+        final_text = translate_game_terms_in_text(final_text)
 
         if "verified_comp" in locals() and len(verified_comp) == 3:
             comp_brawlers = verified_comp[:3]
