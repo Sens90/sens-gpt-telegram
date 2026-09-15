@@ -118,7 +118,20 @@ def is_exhaustive_current_maps_query(question):
     )
 
 
-def invalid_exhaustive_map_answer(text):
+def is_all_maps_request(question):
+    q = (question or "").casefold()
+    return is_exhaustive_current_maps_query(question) or any(
+        phrase in q for phrase in (
+            "ogni brawler consigliato per ogni mappa",
+            "ogni brawler per ogni mappa",
+            "tutte le mappe di ogni modalità",
+            "tutte le mappe di ogni modalita",
+            "mappe di oggi"
+        )
+    )
+
+
+def invalid_exhaustive_map_answer(text, rotation_manifest=None):
     """Reject common hallucinations in large, current map recommendations."""
     if not text:
         return True
@@ -138,6 +151,20 @@ def invalid_exhaustive_map_answer(text):
     if any(marker in lowered for marker in refusal_markers):
         return True
 
+    if rotation_manifest is not None and len(rotation_manifest) < 2:
+        return True
+
+    if rotation_manifest:
+        # The request is exhaustive: a response mentioning only one map is
+        # incomplete even when the one map's statistics are correct.
+        expected_maps = {
+            entry.get("map", "").casefold() for entry in rotation_manifest
+            if entry.get("map")
+        }
+        mentioned = sum(1 for map_name in expected_maps if map_name in lowered)
+        if mentioned < len(expected_maps):
+            return True
+
     # A genuinely map-specific answer should not recycle one identical trio
     # across three or more maps. Order is ignored when comparing trios.
     trios = []
@@ -148,6 +175,11 @@ def invalid_exhaustive_map_answer(text):
         names = [part.strip().casefold() for part in value.split(",")]
         if len(names) == 3 and all(re.fullmatch(r"[\w .’'-]+", name) for name in names):
             trios.append(tuple(sorted(names)))
+
+        if "squadra" in line.casefold():
+            members = [part.strip().casefold() for part in re.split(r"[,·|]", value)]
+            if len(members) == 3 and len(set(members)) < 3:
+                return True
 
     return any(trios.count(trio) >= 3 for trio in set(trios))
 
@@ -184,6 +216,55 @@ def telegram_text_chunks(text, limit=3500):
         text = text[cut:].lstrip("\n")
     if text:
         yield text
+
+
+def brawlplanet_map_urls(results):
+    """Collect localized Brawl Planet map detail URLs from extracted pages."""
+    urls = []
+    seen = set()
+    pattern = re.compile(
+        r"(?:https?://(?:www\.)?brawlplanet\.com)?/it/maps/"
+        r"([a-z0-9][a-z0-9_-]+)", re.I
+    )
+    for result in results or []:
+        text = "\n".join(str(result.get(key) or "") for key in (
+            "url", "title", "content", "raw_content"
+        ))
+        for slug in pattern.findall(text):
+            url = f"https://www.brawlplanet.com/it/maps/{slug}"
+            if url not in seen:
+                seen.add(url)
+                urls.append(url)
+    return urls
+
+
+def brawlplanet_rotation_manifest(results):
+    """Return map/mode labels found in Brawl Planet detail pages."""
+    manifest = []
+    seen = set()
+    for result in results or []:
+        url = result.get("url") or ""
+        if "/maps/" not in url:
+            continue
+        text = "\n".join(str(result.get(key) or "") for key in (
+            "title", "content", "raw_content"
+        ))
+        match = re.search(
+            r"(?:Migliori Brawler per|Best Brawlers for)\s+(.+?)\s+-\s+([^\n|]+)",
+            text, re.I
+        )
+        if not match:
+            match = re.search(r"^#\s+([^\n]+)\n##\s+([^\n]+)", text, re.M)
+        if not match:
+            continue
+        map_name = re.sub(r"\s+", " ", match.group(1)).strip()
+        mode_name = re.sub(r"\s+", " ", match.group(2)).strip()
+        key = (map_name.casefold(), mode_name.casefold())
+        if key in seen:
+            continue
+        seen.add(key)
+        manifest.append({"map": map_name, "mode": mode_name, "url": url})
+    return manifest
 
 
 def web_search(query):
@@ -267,6 +348,11 @@ def web_search(query):
             localized for result in data.get("results", [])
             if (localized := italian_planet_url(result.get("url", "")))
         ))[:5]
+        if is_all_maps_request(query):
+            planet_urls = list(dict.fromkeys([
+                "https://www.brawlplanet.com/it/maps",
+                "https://www.brawlplanet.com/it"
+            ] + planet_urls))[:20]
         if planet_urls:
             try:
                 extracted = requests.post(
@@ -277,8 +363,28 @@ def web_search(query):
                 extracted.raise_for_status()
                 localized_results = extracted.json().get("results", [])
                 data["results"] = localized_results + data.get("results", [])
+
+                if is_all_maps_request(query):
+                    detail_urls = brawlplanet_map_urls(localized_results)
+                    if detail_urls:
+                        detail_extract = requests.post(
+                            "https://api.tavily.com/extract",
+                            json={"api_key": TAVILY_API_KEY,
+                                  "urls": detail_urls[:20],
+                                  "extract_depth": "advanced"},
+                            timeout=35
+                        )
+                        detail_extract.raise_for_status()
+                        detail_results = detail_extract.json().get("results", [])
+                        data["results"] = (
+                            detail_results + localized_results + data.get("results", [])
+                        )
             except (requests.RequestException, ValueError):
                 print("BRAWL PLANET: estrazione italiana non disponibile", flush=True)
+
+        data["brawlplanet_rotation"] = brawlplanet_rotation_manifest(
+            data.get("results", [])
+        )
         secondary_response = requests.post(
             "https://api.tavily.com/search",
             json={
@@ -799,6 +905,7 @@ MAP_NAMES_IT = {
     "Kaboom Canyon": "Canyon Bum Bum",
     "Safe Zone": "Santuario",
     "Hot Potato": "Battigia ustionante",
+    "Hot-Potato": "Battigia ustionante",
 
     # Dominio / Hot Zone
     "Watersport": "Piscine del dolore",
@@ -1835,6 +1942,26 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if url:
                     web_sources.append(url)
 
+            rotation_manifest = search_data.get("brawlplanet_rotation", [])
+            rotation_instruction = ""
+            if is_all_maps_request(question_for_ai):
+                if rotation_manifest:
+                    rotation_rows = "\n".join(
+                        f"- {entry['mode']}: {entry['map']}"
+                        for entry in rotation_manifest
+                    )
+                    rotation_instruction = (
+                        "\nELENCO MAPPE ATTIVE DA BRAWL PLANET (OBBLIGATORIO):\n"
+                        f"{rotation_rows}\n"
+                        "Devi coprire ogni riga dell'elenco. Non aggiungere mappe "
+                        "non presenti e non ridurre la risposta a una sola mappa.\n"
+                    )
+                else:
+                    rotation_instruction = (
+                        "\nBRAWL PLANET NON HA RESTITUITO UN ELENCO STRUTTURATO "
+                        "DELLE MAPPE ATTIVE: non inventare una rotazione.\n"
+                    )
+
             current_map = extract_brawl_ball_map(search_data)
             verified_comp = []
 
@@ -1949,7 +2076,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Riporta tutte le metriche disponibili per ogni Brawler consigliato: vittorie, utilizzo, Miglior Star Player, campione individuale e posizione media dove presenti. Non chiamare campione individuale il totale delle partite della mappa.\n"
                 "- Separa Individuali e Squadre. Per ogni squadra consigliata riporta i componenti esatti e tutte le metriche pubblicate per quella composizione: vittorie, utilizzo, campione o posizione media solo quando presenti. Non mediare o trasferire statistiche individuali alla squadra.\n"
                 "- Per ogni blocco specifica mappa, modalità, Trofei o Classificata, eventuale lega/filtro, periodo e aggiornamento se pubblicati. Dato assente: Non disponibile. Se manca un dato consulta le fonti secondarie senza mescolare campioni di fonti diverse.\n"
-                "- Se vengono richieste tutte le statistiche, non limitarti ai tre leader: riporta tutte le righe effettivamente disponibili nei dati forniti, separate per mappa e dataset. Se i dati forniti sono parziali dichiaralo senza definirli completi.\n"
+                "- Per ogni mappa riporta almeno i primi 10 Brawler della sezione Individuale e le prime 10 Squadre pubblicate da Brawl Planet, quando presenti. Per ciascuna riga conserva tutte le metriche effettivamente pubblicate; non fermarti a un solo leader e non inventare colonne mancanti.\n"
                 "- Se elenchi più Brawler, per ciascuno riporta separatamente, quando disponibili: Tasso di vittoria, Tasso di utilizzo, Miglior Star Player, Partite analizzate/campione e Comp principali.\n"
                 "- Tutti i dati nello stesso blocco devono provenire dallo stesso contesto: stessa mappa, stessa modalità e stesso ambiente Ladder oppure Classificata.\n"
                 "- Se una metrica manca per un Brawler, scrivi Non disponibile invece di ricavarla da un altro giocatore o da un altro dataset.\n"
@@ -2047,7 +2174,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "e indica le fonti web realmente utilizzate.\n\n"
 
                 f"RISULTATI DELLA RICERCA WEB:\n"
-                f"{web_context}\n\n"
+                f"{rotation_instruction}\n{web_context}\n\n"
 
                 f"DOMANDA E CONTESTO:\n"
                 f"{question_for_ai}"
@@ -2173,7 +2300,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if (
             is_exhaustive_current_maps_query(question_for_ai)
-            and invalid_exhaustive_map_answer(final_text)
+            and invalid_exhaustive_map_answer(
+                final_text,
+                locals().get("rotation_manifest")
+            )
         ):
             final_text = (
                 "In questo momento Brawl Planet e le fonti secondarie non mi hanno "
