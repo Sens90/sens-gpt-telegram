@@ -1098,6 +1098,9 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ""
         ).strip()
 
+    if await community.continue_registration(message, context):
+        return
+
     if await community.continue_recruitment(message, context):
         return
 
@@ -1209,13 +1212,31 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             player["trophies"]
         )
 
+        member_data = community.get_member_by_player_tag(
+            message.chat_id,
+            player["tag"]
+        )
+
+        ranked_current = (
+            (member_data or {}).get("ranked_current")
+            or player.get("ranked_current")
+            or "Non disponibile"
+        )
+        ranked_peak = (
+            (member_data or {}).get("ranked_peak")
+            or player.get("ranked_peak")
+            or "Non disponibile"
+        )
+
         text = (
             f"{player['name']}\n"
             f"Tag: {player['tag']}\n\n"
             f"Trofei: {format_number_it(player['trophies'])}\n"
             f"Brawler: {format_number_it(player['brawlers'])}\n"
             f"Livello: {format_number_it(player['level'])}\n"
-            f"Prestigio: {format_number_it(player['prestige'])}\n\n"
+            f"Prestigio: {format_number_it(player['prestige'])}\n"
+            f"Ranked attuale: {ranked_current}\n"
+            f"Massimo Ranked: {ranked_peak}\n\n"
             f"Vittorie:\n"
             f"- 3v3: {format_number_it(player['wins_3v3'])}\n"
             f"- Solo: {format_number_it(player['wins_solo'])}\n"
