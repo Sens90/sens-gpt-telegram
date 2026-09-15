@@ -22,7 +22,7 @@ HELP_TEXT = (
     "FUNZIONI COMMUNITY\n\n"
     "- profilo #TAG / stats #TAG: scheda giocatore\n"
     "- grafico 7|15|30|90 #TAG: andamento trofei\n"
-    "- registrami #TAG: collega il tuo account Brawl Stars\n"
+    "- registrami #TAG: collega il tuo account Brawl Stars e salva Ranked attuale/massimo\n"
     "- classifica 7 / classifica 15 / classifica 30: crescita interna\n"
     "- club: riepilogo della community registrata\n"
     "- inattivi: membri a rischio per inattività Telegram\n"
@@ -176,6 +176,8 @@ class CommunityFeatures:
             "display_name": user.full_name,
             "player_tag": player["tag"].replace("#", ""),
             "player_name": player["name"],
+            "ranked_current": player.get("ranked_current"),
+            "ranked_peak": player.get("ranked_peak"),
             "last_seen_at": self._now_iso(),
             "is_active": True,
         }
@@ -186,6 +188,40 @@ class CommunityFeatures:
             prefer="resolution=merge-duplicates,return=minimal",
         )
         return player
+
+    def update_member_ranked(self, chat_id, user_id, ranked_current=None, ranked_peak=None):
+        payload = {}
+        if ranked_current is not None:
+            payload["ranked_current"] = ranked_current[:80]
+        if ranked_peak is not None:
+            payload["ranked_peak"] = ranked_peak[:80]
+
+        if payload:
+            self._patch(
+                "community_members",
+                payload,
+                params={
+                    "chat_id": f"eq.{int(chat_id)}",
+                    "telegram_user_id": f"eq.{int(user_id)}",
+                },
+            )
+
+    def get_member_by_player_tag(self, chat_id, player_tag):
+        tag = player_tag.upper().replace("#", "").strip()
+        try:
+            rows = self._get(
+                "community_members",
+                {
+                    "select": "*",
+                    "chat_id": f"eq.{int(chat_id)}",
+                    "player_tag": f"eq.{tag}",
+                    "limit": 1,
+                },
+            )
+            return rows[0] if rows else None
+        except Exception as exc:
+            print("ERRORE LETTURA MEMBER TAG:", repr(exc), flush=True)
+            return None
 
     def _member_current_trophies(self, member):
         tag = member.get("player_tag")
@@ -478,6 +514,37 @@ class CommunityFeatures:
             )
         return "\n".join(lines)
 
+    async def continue_registration(self, message, context):
+        stage = context.user_data.get("registration_stage")
+        if not stage:
+            return False
+
+        text = (message.text or "").strip()
+
+        if stage == "ranked_current":
+            context.user_data["registration_ranked_current"] = text[:80]
+            context.user_data["registration_stage"] = "ranked_peak"
+            await message.reply_text("Qual è il massimo Ranked che hai raggiunto?")
+            return True
+
+        if stage == "ranked_peak":
+            ranked_current = context.user_data.get("registration_ranked_current", "")
+            ranked_peak = text[:80]
+            self.update_member_ranked(
+                message.chat_id,
+                message.from_user.id,
+                ranked_current=ranked_current,
+                ranked_peak=ranked_peak,
+            )
+            context.user_data.pop("registration_stage", None)
+            context.user_data.pop("registration_ranked_current", None)
+            await message.reply_text(
+                f"Registrazione completata. Ranked attuale: {ranked_current} | Massimo raggiunto: {ranked_peak}"
+            )
+            return True
+
+        return False
+
     async def continue_recruitment(self, message, context):
         stage = context.user_data.get("recruitment_stage")
         if not stage:
@@ -560,9 +627,23 @@ class CommunityFeatures:
                 if not player:
                     await message.reply_text("Non riesco a trovare quel giocatore. Controlla il tag.")
                 else:
-                    await message.reply_text(
-                        f"Account collegato: {player['name']} {player['tag']} - {self.number_formatter(player['trophies'])} trofei."
-                    )
+                    ranked_current = player.get("ranked_current")
+                    ranked_peak = player.get("ranked_peak")
+
+                    if ranked_current and ranked_peak:
+                        await message.reply_text(
+                            f"Account collegato: {player['name']} {player['tag']} - "
+                            f"{self.number_formatter(player['trophies'])} trofei.\n"
+                            f"Ranked attuale: {ranked_current}\n"
+                            f"Massimo raggiunto: {ranked_peak}"
+                        )
+                    else:
+                        context.user_data["registration_stage"] = "ranked_current"
+                        await message.reply_text(
+                            f"Account collegato: {player['name']} {player['tag']} - "
+                            f"{self.number_formatter(player['trophies'])} trofei.\n\n"
+                            f"Qual è il tuo livello Ranked attuale?"
+                        )
             except Exception as exc:
                 print("ERRORE REGISTRAZIONE:", repr(exc), flush=True)
                 await message.reply_text("Non riesco a salvare la registrazione. Verifica che lo schema community sia stato creato su Supabase.")
