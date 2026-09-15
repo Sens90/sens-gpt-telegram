@@ -10,7 +10,8 @@ FAQ_TEXT = (
     "TITANI ABUSIVI - INFO RAPIDE\n\n"
     "- Club competitivo: minimo 100.000 trofei.\n"
     "- Ranked minimo: Leggenda.\n"
-    "- Se non hai abbastanza coppe puoi essere spostato nel secondo club TAMARRI ABUSIVI.\n"
+    "- I club della community, in ordine, sono: TITANI ABUSIVI, TAMARRI ABUSIVI, TORNADI ABUSIVI, TALENTI ABUSIVI.\n"
+    "- In base a requisiti, attività e disponibilità posti puoi essere spostato tra i quattro club.\n"
     "- Gli eventi dichiarati obbligatori, come il Megasalvadanaio, vanno completati: chi non partecipa può essere espulso indipendentemente da coppe o ruolo.\n"
     "- Telegram e Discord sono obbligatori quando richiesti per tornei/eventi.\n"
     "- Se sei assente per studio, lavoro o vacanze avvisa la direzione o usa il comando assenza.\n"
@@ -22,7 +23,7 @@ HELP_TEXT = (
     "- profilo #TAG / stats #TAG: scheda giocatore\n"
     "- grafico 7|15|30|90 #TAG: andamento trofei\n"
     "- registrami #TAG: collega il tuo account Brawl Stars\n"
-    "- classifica 7 / classifica 30: crescita interna\n"
+    "- classifica 7 / classifica 15 / classifica 30: crescita interna\n"
     "- club: riepilogo della community registrata\n"
     "- inattivi: membri a rischio per inattività Telegram\n"
     "- assenza 7: segnala 7 giorni di assenza\n"
@@ -210,7 +211,11 @@ class CommunityFeatures:
                 continue
             history = self.history_fetcher(tag, days=max(days + 2, 10))
             changes = self.change_calculator(history, current)
-            key = "7d" if days == 7 else "30d"
+            key = {
+                7: "7d",
+                15: "15d",
+                30: "30d",
+            }.get(days, "7d")
             delta = changes.get(key)
             if delta is None:
                 delta = 0
@@ -249,7 +254,8 @@ class CommunityFeatures:
         growth7 = sum(r["delta"] for r in ranking7)
         top = ranking7[:3]
         lines = [
-            "TITANI ABUSIVI - PROFILO CLUB",
+            "COMMUNITY ABUSIVI - PROFILO CLUB",
+            "Ordine club: TITANI ABUSIVI > TAMARRI ABUSIVI > TORNADI ABUSIVI > TALENTI ABUSIVI",
             "",
             f"Membri Telegram tracciati: {len(members)}",
             f"Giocatori registrati: {len(registered)}",
@@ -562,7 +568,7 @@ class CommunityFeatures:
                 await message.reply_text("Non riesco a salvare la registrazione. Verifica che lo schema community sia stato creato su Supabase.")
             return True
 
-        match = re.fullmatch(r"classifica(?:\s+(7|30))?", q, re.I)
+        match = re.fullmatch(r"classifica(?:\s+(7|15|30))?", q, re.I)
         if match:
             days = int(match.group(1) or 7)
             await message.reply_text(self.ranking_text(message.chat_id, days))
