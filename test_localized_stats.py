@@ -11,7 +11,9 @@ helpers = ast.Module(body=[node for node in source.body
     if isinstance(node, ast.FunctionDef) and node.name in
     {'italian_planet_url', 'telegram_text_chunks', 'brawlplanet_map_urls',
      'brawlplanet_rotation_manifest', 'compact_source_text',
-     'build_web_context'}], type_ignores=[])
+     'build_web_context', 'clean_brawlplanet_cell',
+     'brawlplanet_page_labels', 'brawlplanet_table_rows',
+     'brawlplanet_structured_stats', 'invalid_exhaustive_map_answer'}], type_ignores=[])
 scope = {'re': re, 'urlsplit': urlsplit, 'urlunsplit': urlunsplit}
 exec(compile(helpers, 'app.py', 'exec'), scope)
 
@@ -78,6 +80,55 @@ class LocalizedStatsTests(unittest.TestCase):
         self.assertIn('FONTE PRIMARIA BRAWL PLANET', context)
         self.assertIn('FONTE SECONDARIA', context)
         self.assertEqual(len(sources), 2)
+
+    def test_structured_brawlplanet_tables_keep_both_datasets(self):
+        page = {
+            'url': 'https://www.brawlplanet.com/it/maps/test_brawlball',
+            'title': 'Migliori Brawler per Campetto in erba | Footbrawl',
+            'raw_content': (
+                'Percentuali di vittoria su 100.000 partite a trofei.\n'
+                '### Individuale\n'
+                'Brawler | Vitt. | Scelta | Stella\n'
+                '--- | --- | --- | ---\n'
+                'Wendy | 67.3 | 5.6 | 16.1\n'
+                '### Squadre\n'
+                'Squadra | Vitt.\n'
+                '--- | ---\n'
+                'Ambra · Gus · Shade | 86.9\n'
+                'Percentuali di vittoria su 20.000 partite in Classificata.\n'
+                '### Individuale\n'
+                'Brawler | Vitt. | Scelta | Stella\n'
+                '--- | --- | --- | ---\n'
+                'Ollie | 59.3 | 6.6 | 14.6\n'
+                '### Squadre\n'
+                'Squadra | Vitt.\n'
+                '--- | ---\n'
+                'Jacky · Bibi · Buster | 75.2\n'
+            ),
+        }
+        structured = scope['brawlplanet_structured_stats']([page])
+        self.assertIn('DATASET: Trofei', structured)
+        self.assertIn('DATASET: Classificata', structured)
+        self.assertIn('Wendy | 67.3 | 5.6 | 16.1', structured)
+        self.assertIn('Ambra · Gus · Shade | 86.9', structured)
+        self.assertIn('Jacky · Bibi · Buster | 75.2', structured)
+
+    def test_incomplete_rotation_answer_is_rejected(self):
+        validate = scope['invalid_exhaustive_map_answer']
+        manifest = [
+            {'map': 'Campetto', 'mode': 'Footbrawl'},
+            {'map': 'Arabesque', 'mode': 'Brawl Hockey'},
+        ]
+        bad = 'Footbrawl: Campetto - miglior vittoria Wendy, più scelto Colt.'
+        self.assertTrue(validate(bad, manifest, expected_context='both'))
+        good = (
+            'Trofei - Individuali: Brawler | Vitt. | Scelta | Stella\n'
+            'Trofei - Squadre: Composizione | Vitt.\n'
+            'Classificata - Individuali: Brawler | Vitt. | Scelta | Stella\n'
+            'Classificata - Squadre: Non disponibile\n'
+            'Campetto\nArabesque'
+        )
+        self.assertFalse(validate(good, manifest, expected_context='both'))
 
 
 if __name__ == '__main__':
