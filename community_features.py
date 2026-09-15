@@ -636,6 +636,8 @@ class CommunityFeatures:
 
     async def handle_command(self, message, context, question):
         q = (question or "").strip()
+        q = re.sub(r"^[!/]+", "", q).strip()
+        q = q.strip("\"\'“”‘’ ").strip()
         ql = q.lower()
 
         if ql in ("aiuto", "help", "comandi", "funzioni"):
