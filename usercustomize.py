@@ -155,7 +155,6 @@ def _install_live_club_guard():
             if not href:
                 return None, None
             club_tag = "#" + href.group(1).upper()
-            # First try the visible anchor body.
             anchor = re.search(
                 r'<a[^>]+href=["\']/(?:it/)?club/(?:%23|#)?' + re.escape(href.group(1)) + r'[^"\']*["\'][^>]*>(.*?)</a>',
                 page, re.I | re.S,
@@ -165,8 +164,6 @@ def _install_live_club_guard():
                 name = re.sub(r"\s+", " ", html.unescape(name)).strip()
                 if name and name.casefold() not in {"club", "visualizza club", "view club"}:
                     return name, club_tag
-            # If the player card hides the club name in client-rendered markup,
-            # resolve the club page from the verified live tag.
             club_response = requests.get(
                 f"https://brawlify.com/it/club/{href.group(1)}?refresh={int(time.time())}",
                 headers={"User-Agent": "Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)", "Cache-Control": "no-cache"},
@@ -194,7 +191,7 @@ def _install_live_club_guard():
 
 
 def _rome_trophy_changes(history, current_trophies):
-    """Today uses Rome midnight and the first snapshot after midnight if needed."""
+    """Use Europe/Rome for Oggi and first real snapshot if tracking began later."""
     now_utc = datetime.now(timezone.utc)
     now_rome = now_utc.astimezone(ROME)
     start_rome = now_rome.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -222,15 +219,13 @@ def _rome_trophy_changes(history, current_trophies):
 
     today_value = at_or_before(start_today)
     if today_value is None:
-        # Tracking may have started after local midnight. Use the first real
-        # snapshot of this local day rather than claiming history is missing.
         for dt, trophies in parsed:
             if start_today <= dt <= now_utc:
                 today_value = trophies
                 break
 
     changes = {
-        "today": current_trophies - today_value if today_value is not None else 0,
+        "today": current_trophies - today_value if today_value is not None else None,
     }
     for days, key in ((7, "7d"), (15, "15d"), (30, "30d"), (90, "90d")):
         old = at_or_before(now_utc - timedelta(days=days))
@@ -239,8 +234,8 @@ def _rome_trophy_changes(history, current_trophies):
 
 
 def _patch_main_profile_runtime():
-    """Patch app globals after app.py has finished defining them."""
-    for _ in range(120):
+    """Patch the exact globals used by app.py, even on slow Render cold starts."""
+    for _ in range(2400):
         main = sys.modules.get("__main__")
         if main and hasattr(main, "calculate_trophy_changes") and hasattr(main, "community"):
             main.calculate_trophy_changes = _rome_trophy_changes
