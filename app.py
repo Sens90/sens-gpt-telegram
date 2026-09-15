@@ -18,6 +18,7 @@ from urllib.parse import urlsplit, urlunsplit
 from flask import Flask
 from google import genai
 from telegram import Update
+from telegram.error import TelegramError, TimedOut, NetworkError, RetryAfter, BadRequest
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
 from community_features import CommunityFeatures
 from player_tracking import extract_brawlzone_ranked
@@ -1959,6 +1960,73 @@ community = CommunityFeatures(
 )
 
 
+async def telegram_report_send(operation, label):
+    """Retry only the unconfirmed operation; never restart the entire report.
+
+    Telegram has no send idempotency key. A read timeout can produce a duplicate
+    even when retrying only this part; numbered parts make that recognizable.
+    """
+    for attempt in range(3):
+        try:
+            await operation()
+            print("LIVE_MAPS delivered:", label, flush=True)
+            return True
+        except RetryAfter as error:
+            value = error.retry_after
+            delay = value.total_seconds() if hasattr(value, "total_seconds") else float(value)
+            delay = max(0, delay) + 1
+        except BadRequest:
+            print("LIVE_MAPS delivery rejected:", label, flush=True)
+            return False
+        except (TimedOut, NetworkError):
+            delay = 2 ** (attempt + 1)
+        except TelegramError as error:
+            print("LIVE_MAPS delivery failed:", label, type(error).__name__, flush=True)
+            return False
+        print("LIVE_MAPS retry:", label, "attempt:", attempt + 1, flush=True)
+        if attempt < 2:
+            await asyncio.sleep(delay)
+    print("LIVE_MAPS delivery exhausted:", label, flush=True)
+    return False
+
+
+async def deliver_live_map_report(message, report, rendered):
+    timeouts = dict(read_timeout=30, write_timeout=60, connect_timeout=20, pool_timeout=20)
+    missing = []
+    if report["maps"]:
+        csv_bytes = report_csv(report)
+        # Recreate the stream for each attempt, including after a consumed upload.
+        sent = await telegram_report_send(
+            lambda: message.reply_document(
+                document=io.BytesIO(csv_bytes), filename="statistiche_mappe.csv",
+                caption="Statistiche complete di Brawl Planet. Segue il riepilogo in messaggi numerati.",
+                **timeouts,
+            ), "CSV",
+        )
+        if not sent:
+            missing.append("CSV")
+        await asyncio.sleep(1.1)
+    chunks = list(telegram_text_chunks(rendered, limit=3200))
+    for number, chunk in enumerate(chunks, 1):
+        part = f"Parte {number}/{len(chunks)}"
+        sent = await telegram_report_send(
+            lambda text=part + "\n\n" + chunk: message.reply_text(
+                text, disable_web_page_preview=True, **timeouts
+            ), part,
+        )
+        if not sent:
+            missing.append(part)
+        await asyncio.sleep(1.1)
+    if missing:
+        await telegram_report_send(
+            lambda: message.reply_text(
+                "Telegram non ha confermato la consegna di: " + ", ".join(missing) +
+                ". Le parti confermate restano disponibili.", **timeouts
+            ), "delivery status",
+        )
+    print("LIVE_MAPS delivery finished: parts=", len(chunks), "unconfirmed=", missing, flush=True)
+
+
 def secondary_live_map_stats(event):
     """Try secondary sources for one verified event, keeping table cells intact."""
     map_name = event["event_map"]
@@ -2308,14 +2376,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text("Il caricamento delle statistiche ha incontrato un errore. Non ho ancora una rotazione verificata da mostrarti.")
             return
         # No AI rewriting, translation pass, or all-or-nothing prose validator.
-        for chunk in telegram_text_chunks(rendered):
-            await message.reply_text(chunk, disable_web_page_preview=True)
-        if report["maps"]:
-            await message.reply_document(
-                document=io.BytesIO(report_csv(report)),
-                filename="statistiche_mappe.csv",
-                caption="Tutte le righe valide e le metriche disponibili di Brawl Planet, separate per mappa e dataset. Le eventuali fonti secondarie sono nel messaggio.",
-            )
+        await deliver_live_map_report(message, report, rendered)
         return
 
     web_context = ""
