@@ -146,10 +146,12 @@ def web_search(query):
     elif is_meta_query:
         search_query = (
             f"Brawl Stars current meta {today} {query} {context_hint} "
-            f"Brawl Planet italiano win rate pick rate Star Player team comp "
-            f"latest balance changes tier list competitive "
+            f"(site:brawlplanet.nl/it/meta OR site:brawlplanet.com/meta OR "
+            f"site:brawlplanet.com/tier-list OR site:brawlplanet.nl/it/tier-list) "
+            f"Brawl Planet tier list meta win rate pick rate Star Player current rotation "
+            f"latest balance changes competitive "
             f"gadget abilità stellare equipaggiamento overdrive nomi italiani "
-            f"Supercell italiano Brawl Planet Brawlify Brawl Time Ninja Noff"
+            f"Supercell italiano Brawlify Brawl Time Ninja Noff"
         )
     elif is_image_subject_query:
         search_query = (
@@ -1642,7 +1644,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Se la domanda riguarda meta, tier list, Ranked, migliori Brawler, pick rate, win rate, buff, nerf o bilanciamenti attuali, considera la ricerca web come obbligatoria.\n"
                 "- Per affermazioni sul meta attuale NON usare la memoria interna del modello come fonte principale.\n"
                 "- Dai priorità ai risultati più recenti e coerenti con l'ultima patch o stagione verificabile.\n"
-                "- Gerarchia fonti per il meta: 1) Supercell/Brawl Stars ufficiale per patch, buff, nerf e modifiche; 2) Brawlify e Brawl Time Ninja per statistiche, tier list e andamento competitivo; 3) Noff come supporto; 4) altre fonti community solo come conferma secondaria.\n"
+                "- Gerarchia fonti per il meta: 1) Supercell/Brawl Stars ufficiale per patch, buff, nerf e modifiche; 2) Brawl Planet Tier List/Meta per il meta generale aggiornato; 3) Brawl Planet dati specifici, Brawlify e Brawl Time Ninja per statistiche di modalità, mappe e andamento competitivo; 4) Noff come supporto; 5) altre fonti community solo come conferma secondaria.\n"
                 "- Una fonte ufficiale stabilisce cosa è cambiato, ma il meta reale va valutato anche con statistiche e dati competitivi aggiornati.\n"
                 "- Confronta più risultati quando possibile: non dichiarare un Brawler 'meta' basandoti su una sola fonte debole.\n"
                 "- Se i risultati web non permettono di verificare il meta attuale con sufficiente affidabilità, dichiaralo chiaramente invece di indovinare.\n"
@@ -1654,6 +1656,9 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "  - Non fondere statistiche appartenenti a mappe diverse, modalità diverse o Brawler diversi.\n"
                 "  - Se la domanda non specifica Ladder o Classificata e i due contesti portano a consigli diversi, separa la risposta in due sezioni: Ladder e Classificata.\n"
                 "  - Se una mappa è indicata come solo Ranked, non proporla per Ladder. Se è archiviata o fuori pool, non proporla come attuale.\n"
+                "- META GENERALE: per domande come 'chi è meta?', 'tier list', 'migliori brawler adesso' usa come fonte primaria la Tier List e la pagina Meta aggiornate di Brawl Planet, confrontandole con gli ultimi bilanciamenti ufficiali Supercell.\n"
+                "- La Tier List generale di Brawl Planet serve per il meta complessivo e NON deve sostituire i dataset specifici Ladder o Classificata quando l utente specifica uno di quei contesti.\n"
+                "- Se la Tier List generale e i dati specifici di una modalità/mappa differiscono, per la risposta contestuale prevalgono i dati specifici della modalità/mappa.\n"
                 "- Per statistiche per mappa usa Brawl Planet come fonte prioritaria quando disponibile: distingue Ladder e Ranked e mostra tasso di vittoria, tasso di utilizzo, Miglior Star Player e composizioni.\n"
                 "- Non scegliere automaticamente il Brawler con il win rate più alto: valuta insieme tasso di vittoria, tasso di utilizzo, percentuale/frequenza Miglior Star Player, numero di partite/campione e qualità delle composizioni.\n"
                 "- DATI PER BRAWLER: ogni Brawler deve avere il proprio blocco completo di statistiche. Non mescolare mai il tasso di vittoria di un Brawler con utilizzo, Star Player, partite o comp di un altro.\n"
