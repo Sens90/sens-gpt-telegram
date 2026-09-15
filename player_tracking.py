@@ -63,12 +63,7 @@ def _clean_tag(value):
 
 
 def get_live_club(player_tag, timeout=15):
-    """Refresh club independently so a cached BrawlTrack club cannot win.
-
-    Brawlify's player page is backed by the official Brawl Stars player data.
-    The club link contains the club tag. If verification fails, callers keep
-    BrawlTrack's club rather than inventing a value.
-    """
+    """Refresh club independently so a cached profile club cannot win."""
     tag = str(player_tag or "").upper().replace("#", "").strip()
     if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
         return None, None
@@ -85,7 +80,6 @@ def get_live_club(player_tag, timeout=15):
         if response.status_code != 200:
             return None, None
         page = html.unescape(response.text)
-        # Prefer an explicit club anchor; this gives both live name and tag.
         anchors = re.findall(
             r'<a[^>]+href=["\']/(?:it/)?club/(?:%23|#)?([0289PYLQGRJCUV]{3,15})[^"\']*["\'][^>]*>(.*?)</a>',
             page,
@@ -96,7 +90,6 @@ def get_live_club(player_tag, timeout=15):
             name = re.sub(r"\s+", " ", html.unescape(name)).strip()
             if name and name.casefold() not in {"club", "visualizza club", "view club"}:
                 return name, _clean_tag(club_tag)
-        # Next.js payload fallback: club name/tag are often serialized together.
         match = re.search(
             r'"club"\s*:\s*\{[^{}]{0,1000}?"tag"\s*:\s*"#?([0289PYLQGRJCUV]{3,15})"[^{}]{0,1000}?"name"\s*:\s*"([^"]+)"',
             page,
@@ -201,15 +194,30 @@ def _extract_brawlzone_ranked_only(page):
 
 
 def extract_brawlzone_ranked(page):
-    """Compatibility hook: prefer BrawlTrack, fill only missing fields from BrawlZone."""
+    """BrawlTrack first; if it 404s, refresh club separately before returning fallback data."""
     fallback = _extract_brawlzone_ranked_only(page)
     tag_match = re.search(r"\(#([0289PYLQGRJCUV]{3,15})\)", page or "", re.I)
     if not tag_match:
         return fallback
-    primary = get_brawltrack_player(tag_match.group(1)) or {}
+    tag = tag_match.group(1)
+    primary = get_brawltrack_player(tag) or {}
     merged = {k: v for k, v in primary.items() if v is not None}
     for key, value in fallback.items():
         if merged.get(key) is None: merged[key] = value
+
+    # Critical fallback path: BrawlTrack currently returns 404 for some valid
+    # players. Never let the BrawlZone fallback keep a stale club. Resolve the
+    # current club independently on every profile request and overwrite all
+    # club fields only when a live club is actually verified.
+    live_name, live_tag = get_live_club(tag)
+    if live_name or live_tag:
+        merged["club_name"] = live_name
+        merged["club_tag"] = live_tag
+        merged["club"] = (
+            f"{live_name} ({live_tag})" if live_name and live_tag
+            else live_name or live_tag
+        )
+
     merged["ranked_peak"] = merged.get("ranked_career_peak") or merged.get("ranked_peak")
     merged["ranked_peak_elo"] = merged.get("ranked_career_peak_elo") or merged.get("ranked_peak_elo")
     return merged
