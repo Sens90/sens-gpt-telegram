@@ -1,4 +1,5 @@
 import io
+import asyncio
 import html
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -20,6 +21,7 @@ from telegram import Update
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
 from community_features import CommunityFeatures
 from player_tracking import extract_brawlzone_ranked
+from live_maps import collect_report, render_report, report_csv
 
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
@@ -1957,6 +1959,63 @@ community = CommunityFeatures(
 )
 
 
+def secondary_live_map_stats(event):
+    """Try secondary sources for one verified event, keeping table cells intact."""
+    map_name = event["event_map"]
+    try:
+        response = requests.post(
+            "https://api.tavily.com/search",
+            json={"api_key": TAVILY_API_KEY,
+                  "query": f'"{map_name}" Brawl Stars map win rate pick rate statistics',
+                  "include_domains": ["brawlify.com", "brawltime.ninja", "noff.gg"],
+                  "search_depth": "advanced", "max_results": 4,
+                  "include_raw_content": True, "include_answer": False},
+            timeout=20,
+        )
+        response.raise_for_status()
+        for result in response.json().get("results", []):
+            raw = result.get("raw_content") or result.get("content") or ""
+            title = result.get("title") or ""
+            url = result.get("url") or ""
+            if map_name.casefold() not in title.casefold():
+                continue
+            # Do not silently substitute Ranked statistics for a live event.
+            if re.search(r"\b(rank(?:ed)?|classificata)\b", title, re.I):
+                continue
+            headers = None
+            rows = []
+            for line in raw.splitlines():
+                if "|" not in line:
+                    if rows:
+                        break
+                    continue
+                cells = [clean_brawlplanet_cell(c) for c in line.strip().strip("|").split("|")]
+                if any("brawler" in c.casefold() for c in cells) and any(
+                    re.search(r"win|vitt", c, re.I) for c in cells
+                ):
+                    headers = cells
+                    continue
+                if not headers or len(cells) != len(headers):
+                    continue
+                if not cells[0] or re.fullmatch(r"[-: ]+", cells[0]):
+                    continue
+                if not all(re.fullmatch(r"[0-9.,]+\s*%?", c) for c in cells[1:]):
+                    continue
+                # Preserve the source's labels: wins and win percentages differ.
+                rows.append(cells[0].replace("Mister P", "Mr. P") + " — " + " · ".join(
+                    f"{h}: {v}" for h, v in zip(headers[1:], cells[1:])
+                ))
+            if rows:
+                print("LIVE_MAPS secondary table:", map_name, url, len(rows), flush=True)
+                return ("Fonte secondaria — statistiche pubblicate sulla mappa; "
+                        "finestra temporale e campione non verificati:\n" +
+                        "\n".join("• " + row for row in rows[:5]) + "\n" + url)
+        print("LIVE_MAPS no verified secondary table:", map_name, flush=True)
+    except Exception as error:
+        print("LIVE_MAPS secondary failure:", map_name, type(error).__name__, flush=True)
+    return "Ho consultato le fonti secondarie: nessuna tabella utilizzabile per questa mappa. Le altre mappe restano disponibili."
+
+
 async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
 
@@ -2235,6 +2294,29 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         question_for_ai = question
+
+    if is_all_maps_request(question):
+        try:
+            await context.bot.send_chat_action(chat_id=message.chat_id, action="typing")
+            report = await asyncio.to_thread(
+                collect_report, get_game_context(question), secondary=secondary_live_map_stats
+            )
+            rendered = render_report(report)
+            print("LIVE_MAPS report:", len(report["events"]), "maps; chars:", len(rendered), flush=True)
+        except Exception as error:
+            print("LIVE_MAPS report failure:", type(error).__name__, str(error), flush=True)
+            await message.reply_text("Il caricamento delle statistiche ha incontrato un errore. Non ho ancora una rotazione verificata da mostrarti.")
+            return
+        # No AI rewriting, translation pass, or all-or-nothing prose validator.
+        for chunk in telegram_text_chunks(rendered):
+            await message.reply_text(chunk, disable_web_page_preview=True)
+        if report["maps"]:
+            await message.reply_document(
+                document=io.BytesIO(report_csv(report)),
+                filename="statistiche_mappe.csv",
+                caption="Tutte le righe valide e le metriche disponibili di Brawl Planet, separate per mappa e dataset. Le eventuali fonti secondarie sono nel messaggio.",
+            )
+        return
 
     web_context = ""
     web_sources = []
