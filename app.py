@@ -1934,6 +1934,9 @@ def get_brawlzone_player(player_tag):
             "wins_solo": find_stat("Solo SD wins"),
             "wins_duo": find_stat("Duo SD wins")
         }
+        club_match = re.search(r'(?:clubName|club_name|club)[^A-Za-z0-9]{0,20}(?:\\\\\"|\')([^"\']{1,80})', decoded, re.I)
+        if club_match:
+            player["club_name"] = html.unescape(club_match.group(1)).strip()
         player.update(extract_brawlzone_ranked(decoded))
         return player
 
