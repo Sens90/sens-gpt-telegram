@@ -22,7 +22,7 @@ HELP_TEXT = (
     "FUNZIONI COMMUNITY\n\n"
     "- profilo #TAG / stats #TAG: scheda giocatore\n"
     "- grafico 7|15|30|90 #TAG: andamento trofei\n"
-    "- registrami #TAG: collega il tuo account Brawl Stars e salva Ranked attuale/massimo\n"
+    "- registrami #TAG: collega il tuo account Brawl Stars e salva Ranked attuale/Ranked massima\n"
     "- classifica 7 / classifica 15 / classifica 30: crescita interna\n"
     "- club: riepilogo della community registrata\n"
     "- inattivi: membri a rischio per inattività Telegram\n"
@@ -524,7 +524,7 @@ class CommunityFeatures:
         if stage == "ranked_current":
             context.user_data["registration_ranked_current"] = text[:80]
             context.user_data["registration_stage"] = "ranked_peak"
-            await message.reply_text("Qual è il massimo Ranked che hai raggiunto?")
+            await message.reply_text("Qual è il Ranked massima che hai raggiunto?")
             return True
 
         if stage == "ranked_peak":
@@ -539,7 +539,7 @@ class CommunityFeatures:
             context.user_data.pop("registration_stage", None)
             context.user_data.pop("registration_ranked_current", None)
             await message.reply_text(
-                f"Registrazione completata. Ranked attuale: {ranked_current} | Massimo raggiunto: {ranked_peak}"
+                f"Registrazione completata. Ranked attuale: {ranked_current} | Ranked massima: {ranked_peak}"
             )
             return True
 
@@ -635,7 +635,7 @@ class CommunityFeatures:
                             f"Account collegato: {player['name']} {player['tag']} - "
                             f"{self.number_formatter(player['trophies'])} trofei.\n"
                             f"Ranked attuale: {ranked_current}\n"
-                            f"Massimo raggiunto: {ranked_peak}"
+                            f"Ranked massima: {ranked_peak}"
                         )
                     else:
                         context.user_data["registration_stage"] = "ranked_current"
