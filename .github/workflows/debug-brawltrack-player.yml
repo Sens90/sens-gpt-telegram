@@ -1,0 +1,52 @@
+name: Debug BrawlTrack player payload
+
+on:
+  push:
+    branches: [debug-brawltrack-player-payload]
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe SuperLuigi BrawlTrack payload
+        shell: python
+        run: |
+          import json, urllib.request
+          tag = "22VQGP8PL"
+          url = f"https://brawltrack.app/api/player/{tag}?debug=1"
+          req = urllib.request.Request(url, headers={
+              "User-Agent": "SensGPT-Diagnostic/1.0",
+              "Accept": "application/json",
+              "Cache-Control": "no-cache",
+          })
+          try:
+              with urllib.request.urlopen(req, timeout=20) as r:
+                  raw = r.read().decode("utf-8", "replace")
+                  print("HTTP", r.status, "content-type", r.headers.get("content-type"))
+          except Exception as exc:
+              print("REQUEST_ERROR", repr(exc))
+              raise
+          try:
+              data = json.loads(raw)
+          except Exception:
+              print("NON_JSON_HEAD", raw[:2000])
+              raise
+          def walk(v, path="root"):
+              if isinstance(v, dict):
+                  for k, x in v.items():
+                      p = f"{path}.{k}"
+                      kl = str(k).lower()
+                      if any(s in kl for s in ("club", "troph", "player", "name", "tag")):
+                          if isinstance(x, (str, int, float, bool)) or x is None:
+                              print("FIELD", p, "=", repr(x))
+                          elif isinstance(x, dict):
+                              print("OBJECT", p, "keys=", sorted(map(str, x.keys())))
+                          elif isinstance(x, list):
+                              print("LIST", p, "len=", len(x))
+                      walk(x, p)
+              elif isinstance(v, list):
+                  for i, x in enumerate(v[:25]):
+                      walk(x, f"{path}[{i}]")
+          print("ROOT_KEYS", sorted(map(str, data.keys())) if isinstance(data, dict) else type(data).__name__)
+          walk(data)
