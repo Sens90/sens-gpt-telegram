@@ -94,8 +94,8 @@ def get_game_context(question):
         "lega", "leghe", "power league"
     ]
     ladder_terms = [
-        "ladder", "trofei", "trofeo", "coppe", "coppa",
-        "push", "pushare", "scalare", "scala trofei"
+        "ladder", "scalata", "scalare", "push", "pushare",
+        "trofei", "trofeo", "coppe", "coppa", "scala trofei"
     ]
 
     if any(term in q for term in ranked_terms):
@@ -167,7 +167,7 @@ def invalid_exhaustive_map_answer(
         if any(token not in lowered for token in ("vitt", "scelta", "stella")):
             return True
         if expected_context == "both" and (
-            "trofei" not in lowered or "classificat" not in lowered
+            ("ladder" not in lowered and "scalata" not in lowered) or "classificat" not in lowered
         ):
             return True
         # The request is exhaustive: a response mentioning only one map is
@@ -575,7 +575,7 @@ def web_search(query):
     if game_context == "ranked":
         context_hint = "Ranked Classificata current ranked map pool draft ban"
     elif game_context == "ladder":
-        context_hint = "trophy ladder trofei current event rotation"
+        context_hint = "Ladder Scalata current event rotation"
     else:
         context_hint = "compare trophy ladder and Ranked separately"
 
@@ -593,7 +593,7 @@ def web_search(query):
             f"Brawl Stars {query} {today} {context_hint} "
             f"site:brawltrack.app/maps OR site:brawltrack.app/pro/maps "
             f"BrawlTrack map preview Priority Picks win rate use rate Common Final Comps "
-            f"trophy ladder Ranked"
+            f"Ladder Scalata Ranked"
         )
     elif is_meta_query:
         search_query = (
