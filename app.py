@@ -12,6 +12,7 @@ import os
 import requests
 import re
 import threading
+from urllib.parse import urlsplit, urlunsplit
 
 from flask import Flask
 from google import genai
@@ -165,6 +166,26 @@ def meta_source_priority(url):
     return 4
 
 
+def italian_planet_url(url):
+    parts = urlsplit(url or "")
+    if parts.hostname not in {"brawlplanet.com", "www.brawlplanet.com"}:
+        return None
+    path = parts.path
+    path = re.sub(r"^/(?:en|it|pt|es|de|fr|nl|fi|id|ms|tr|pl)(?=/|$)", "", path)
+    return urlunsplit(("https", "www.brawlplanet.com", "/it" + (path or "/"), parts.query, ""))
+
+
+def telegram_text_chunks(text, limit=3500):
+    while len(text) > limit:
+        cut = text.rfind("\n", 0, limit + 1)
+        if cut <= 0:
+            cut = limit
+        yield text[:cut]
+        text = text[cut:].lstrip("\n")
+    if text:
+        yield text
+
+
 def web_search(query):
     query_lower = query.lower()
     today = datetime.now(timezone.utc).date().isoformat()
@@ -189,7 +210,7 @@ def web_search(query):
 
     if is_map_query:
         search_query = (
-            f"site:brawlplanet.com Brawl Stars {query} {today} {context_hint} "
+            f"site:brawlplanet.com/it Brawl Stars {query} {today} {context_hint} "
             f"Active Maps best brawlers win rate pick rate Star Player team comp "
             f"trophy ladder Ranked"
         )
@@ -240,6 +261,24 @@ def web_search(query):
     data = response.json()
 
     if is_map_query:
+        # Read localized page contents, not just search snippets. Keep team
+        # tables that often appear after the complete individual leaderboard.
+        planet_urls = list(dict.fromkeys(
+            localized for result in data.get("results", [])
+            if (localized := italian_planet_url(result.get("url", "")))
+        ))[:5]
+        if planet_urls:
+            try:
+                extracted = requests.post(
+                    "https://api.tavily.com/extract",
+                    json={"api_key": TAVILY_API_KEY, "urls": planet_urls,
+                          "extract_depth": "advanced"}, timeout=25
+                )
+                extracted.raise_for_status()
+                localized_results = extracted.json().get("results", [])
+                data["results"] = localized_results + data.get("results", [])
+            except (requests.RequestException, ValueError):
+                print("BRAWL PLANET: estrazione italiana non disponibile", flush=True)
         secondary_response = requests.post(
             "https://api.tavily.com/search",
             json={
@@ -1779,15 +1818,16 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 source_role = (
                     "FONTE SECONDARIA - usare solo se Brawl Planet non ha il dato"
                     if result.get("source_role") == "secondary_fallback"
-                    else "FONTE PRIMARIA BRAWL PLANET"
+                    else ("FONTE PRIMARIA BRAWL PLANET" if italian_planet_url(url)
+                          else "ALTRA FONTE")
                 )
 
-                if title or content:
+                if title or content or raw_content:
                     web_context += (
                         f"\nRuolo fonte: {source_role}\n"
                         f"Titolo: {title}\n"
                         f"Contenuto: {content}\n"
-                        f"Contenuto completo: {raw_content[:6000]}\n"
+                        f"Contenuto completo: {raw_content[:40000]}\n"
                         f"Fonte: {url}\n"
                         f"---\n"
                     )
@@ -1905,6 +1945,11 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Per statistiche per mappa usa Brawl Planet come fonte prioritaria quando disponibile: distingue Ladder e Ranked e mostra tasso di vittoria, tasso di utilizzo, Miglior Star Player e composizioni.\n"
                 "- Non scegliere automaticamente il Brawler con il win rate più alto: valuta insieme tasso di vittoria, tasso di utilizzo, percentuale/frequenza Miglior Star Player, numero di partite/campione e qualità delle composizioni.\n"
                 "- DATI PER BRAWLER: ogni Brawler deve avere il proprio blocco completo di statistiche. Non mescolare mai il tasso di vittoria di un Brawler con utilizzo, Star Player, partite o comp di un altro.\n"
+                "- Usa prioritariamente le pagine /it di Brawl Planet e conserva i nomi italiani presenti nella fonte; non ritradurli. Rinomina giocatore stella in Miglior Star Player.\n"
+                "- Riporta tutte le metriche disponibili per ogni Brawler consigliato: vittorie, utilizzo, Miglior Star Player, campione individuale e posizione media dove presenti. Non chiamare campione individuale il totale delle partite della mappa.\n"
+                "- Separa Individuali e Squadre. Per ogni squadra consigliata riporta i componenti esatti e tutte le metriche pubblicate per quella composizione: vittorie, utilizzo, campione o posizione media solo quando presenti. Non mediare o trasferire statistiche individuali alla squadra.\n"
+                "- Per ogni blocco specifica mappa, modalità, Trofei o Classificata, eventuale lega/filtro, periodo e aggiornamento se pubblicati. Dato assente: Non disponibile. Se manca un dato consulta le fonti secondarie senza mescolare campioni di fonti diverse.\n"
+                "- Se vengono richieste tutte le statistiche, non limitarti ai tre leader: riporta tutte le righe effettivamente disponibili nei dati forniti, separate per mappa e dataset. Se i dati forniti sono parziali dichiaralo senza definirli completi.\n"
                 "- Se elenchi più Brawler, per ciascuno riporta separatamente, quando disponibili: Tasso di vittoria, Tasso di utilizzo, Miglior Star Player, Partite analizzate/campione e Comp principali.\n"
                 "- Tutti i dati nello stesso blocco devono provenire dallo stesso contesto: stessa mappa, stessa modalità e stesso ambiente Ladder oppure Classificata.\n"
                 "- Se una metrica manca per un Brawler, scrivi Non disponibile invece di ricavarla da un altro giocatore o da un altro dataset.\n"
@@ -2235,11 +2280,12 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         final_text = final_text.replace("*", "").strip()
 
-        await context.bot.send_message(
-            chat_id=message.chat_id,
-            text=final_text,
-            disable_web_page_preview=True
-        )
+        for chunk in telegram_text_chunks(final_text):
+            await context.bot.send_message(
+                chat_id=message.chat_id,
+                text=chunk,
+                disable_web_page_preview=True
+            )
 
         if False and any(k in question_for_ai.lower() for k in ["mappa", "mappe", "rotazione"]):
             try:
