@@ -1,0 +1,19 @@
+name: Validate BrawlTrack integration
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt pytest
+      - run: python -m py_compile app.py live_maps.py player_tracking.py
+      - run: pytest -q test_brawltrack_priority.py
+        env:
+          TELEGRAM_TOKEN: dummy
+          GEMINI_API_KEY: dummy
+          TAVILY_API_KEY: dummy
