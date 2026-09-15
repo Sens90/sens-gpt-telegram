@@ -625,12 +625,8 @@ class CommunityFeatures:
             await message.reply_text(
                 "Sito ufficiale della community:\n"
                 "https://www.titaniabusivi.it\n\n"
-                "Sul sito puoi trovare:\n"
-                "- progressione dei club\n"
-                "- progressione dei giocatori\n"
-                "- eventuali tornei ed eventi\n"
-                "- link ai social ufficiali\n"
-                "- accesso ai canali Telegram e Discord per il reclutamento"
+                "Qui trovi tutte le informazioni sulla community e i link ai nostri social ufficiali, "
+                "compresi Telegram e Discord per il reclutamento."
             )
             return True
 
