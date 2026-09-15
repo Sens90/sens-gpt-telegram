@@ -1,30 +1,8 @@
 name: Fix profile labels
 on:
-  push:
-    branches: [fix-profile-club-record-labels]
-permissions:
-  contents: write
+  workflow_dispatch:
 jobs:
-  patch:
+  noop:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Update profile labels
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('app.py')
-          s = p.read_text()
-          s = s.replace("f\"Tag: {player['tag']}\\n\\n\"", "f\"Tag: {player['tag']}\\n\"\n            f\"Club: {player.get('club') or player.get('club_name') or (member_data or {}).get('club_name') or 'Senza club / non disponibile'}\\n\\n\"")
-          s = s.replace('f"Massima stagione: {ranked_season_peak}\\n"', 'f"Record stagione: {ranked_season_peak}\\n"')
-          s = s.replace('f"Massima carriera: {ranked_peak}\\n\\n"', 'f"Record massimo: {ranked_peak}\\n\\n"')
-          s = s.replace('f"Massima stagione: {player.get(\'ranked_season_peak\') or \'Non disponibile\'}"', 'f"Record stagione: {player.get(\'ranked_season_peak\') or \'Non disponibile\'}"')
-          s = s.replace('f"Massima carriera: {player.get(\'ranked_career_peak\') or \'Non disponibile\'}"', 'f"Record massimo: {player.get(\'ranked_career_peak\') or \'Non disponibile\'}"')
-          p.write_text(s)
-          PY
-          python -m py_compile app.py
-          git config user.name chatgpt-bot
-          git config user.email actions@github.com
-          git add app.py
-          git commit -m "Show club and rename Ranked records" || exit 0
-          git push
+      - run: echo "Patch completed"
