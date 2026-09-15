@@ -21,7 +21,7 @@ from telegram import Update
 from telegram.error import TelegramError, TimedOut, NetworkError, RetryAfter, BadRequest
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
 from community_features import CommunityFeatures
-from player_tracking import extract_brawlzone_ranked
+from player_tracking import extract_brawlzone_ranked, get_brawltrack_player
 from live_maps import collect_report, render_report, report_csv
 
 
@@ -1870,6 +1870,11 @@ def create_trophy_chart(player_tag, player_name, history, days=30):
 
 
 def get_brawlzone_player(player_tag):
+    # BrawlTrack is the primary live source. BrawlZone is only a fallback.
+    primary = get_brawltrack_player(player_tag)
+    if primary and primary.get("name") and primary.get("trophies") is not None:
+        primary["club_name"] = primary.get("club") or primary.get("club_name")
+        return primary
     try:
         tag = player_tag.upper().replace("#", "").strip()
 
@@ -2191,10 +2196,17 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     stats_match = re.fullmatch(
-        r"(?:stats|profilo|scheda)\s+#?([0289PYLQGRJCUV]{3,15})",
+        r"(?:stats|statistiche|profilo|scheda|status(?:\s+(?:del\s+)?giocatore)?|stato(?:\s+(?:del\s+)?giocatore)?)\s*(?:di\s+)?#?([0289PYLQGRJCUV]{3,15})",
         question.strip(),
         re.I
     )
+    if not stats_match:
+        # Natural-language safety net: a player tag plus a clear profile intent
+        # must never be sent to Gemini.
+        tag_match = re.search(r"#([0289PYLQGRJCUV]{3,15})", question, re.I)
+        intent = re.search(r"\b(status|stato|statistiche|stats|profilo|scheda|giocatore)\b", question, re.I)
+        if tag_match and intent:
+            stats_match = tag_match
 
     if stats_match:
         player_tag = stats_match.group(1).upper()
@@ -2238,18 +2250,19 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         ranked_current = (
-            (member_data or {}).get("ranked_current")
-            or player.get("ranked_current")
+            player.get("ranked_current")
+            or (member_data or {}).get("ranked_current")
             or "Non disponibile"
         )
         ranked_season_peak = (
-            (member_data or {}).get("ranked_season_peak")
-            or player.get("ranked_season_peak")
+            player.get("ranked_season_peak")
+            or (member_data or {}).get("ranked_season_peak")
             or "Non disponibile"
         )
         ranked_peak = (
-            (member_data or {}).get("ranked_peak")
+            player.get("ranked_career_peak")
             or player.get("ranked_peak")
+            or (member_data or {}).get("ranked_peak")
             or "Non disponibile"
         )
 
