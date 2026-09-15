@@ -16,6 +16,7 @@ from flask import Flask
 from google import genai
 from telegram import Update
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
+from community_features import CommunityFeatures
 
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
@@ -45,7 +46,7 @@ def needs_web_search(question):
         "adesso", "ora", "ultimo", "ultimi", "ultima",
         "nuovo", "nuova", "novità", "novita",
         "aggiornamento", "aggiornamenti", "patch",
-        "buff", "nerf", "bilanciamento", "meta",
+        "buff", "nerf", "bilanciamento", "meta", "push", "pushare", "pushare adesso",
         "tier list", "tierlist", "miglior brawler", "migliori brawler",
         "ranked", "competitivo", "pick rate", "win rate",
         "stagione", "evento", "eventi",
@@ -68,7 +69,7 @@ def is_current_meta_query(question):
     question_lower = question.lower()
 
     meta_keywords = [
-        "meta", "tier list", "tierlist",
+        "meta", "tier list", "tierlist", "push", "pushare", "cosa pushare",
         "miglior brawler", "migliori brawler",
         "ranked", "competitivo",
         "pick rate", "win rate",
@@ -1052,11 +1053,24 @@ def format_number_it(value):
     return f"{value:,}".replace(",", ".")
 
 
+community = CommunityFeatures(
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
+    get_brawlzone_player,
+    get_trophy_history,
+    calculate_trophy_changes,
+    format_number_it,
+    format_trophy_change,
+)
+
+
 async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
 
     if not message or not message.text:
         return
+
+    community.track_activity(message)
 
     bot_username = context.bot.username
 
@@ -1083,6 +1097,12 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"@{bot_username}",
             ""
         ).strip()
+
+    if await community.continue_recruitment(message, context):
+        return
+
+    if await community.handle_command(message, context, question):
+        return
 
     chart_match = re.fullmatch(
         r"grafico(?:\s+(7|15|30|90))?\s+#?([0289PYLQGRJCUV]{3,15})",
@@ -1148,7 +1168,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     stats_match = re.fullmatch(
-        r"stats\s+#?([0289PYLQGRJCUV]{3,15})",
+        r"(?:stats|profilo|scheda)\s+#?([0289PYLQGRJCUV]{3,15})",
         question.strip(),
         re.I
     )
@@ -1733,6 +1753,14 @@ def main():
     application = Application.builder().token(
         TELEGRAM_TOKEN
     ).build()
+
+    if application.job_queue:
+        application.job_queue.run_repeating(
+            community.scheduled_jobs,
+            interval=3600,
+            first=45,
+            name="community_jobs"
+        )
 
     application.add_handler(
         MessageHandler(
