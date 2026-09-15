@@ -131,7 +131,11 @@ def is_all_maps_request(question):
     )
 
 
-def invalid_exhaustive_map_answer(text, rotation_manifest=None):
+def invalid_exhaustive_map_answer(
+    text,
+    rotation_manifest=None,
+    expected_context="both"
+):
     """Reject common hallucinations in large, current map recommendations."""
     if not text:
         return True
@@ -155,6 +159,14 @@ def invalid_exhaustive_map_answer(text, rotation_manifest=None):
         return True
 
     if rotation_manifest:
+        if "individual" not in lowered or "squadre" not in lowered:
+            return True
+        if any(token not in lowered for token in ("vitt", "scelta", "stella")):
+            return True
+        if expected_context == "both" and (
+            "trofei" not in lowered or "classificat" not in lowered
+        ):
+            return True
         # The request is exhaustive: a response mentioning only one map is
         # incomplete even when the one map's statistics are correct.
         expected_maps = {
@@ -251,9 +263,12 @@ def build_web_context(results, exhaustive=False):
     secondary sources. URLs are deduplicated because Tavily returns the same
     page both from search and from extract.
     """
-    total_budget = 220000 if exhaustive else 110000
-    primary_budget = 185000 if exhaustive else 85000
-    secondary_budget = 35000 if exhaustive else 25000
+    # Leave room for the compact, parsed Brawl Planet tables that are added
+    # separately to the prompt. This keeps the total Gemini input well below
+    # the provider's free-tier limit even for the full daily rotation.
+    total_budget = 150000 if exhaustive else 100000
+    primary_budget = 125000 if exhaustive else 75000
+    secondary_budget = 25000 if exhaustive else 25000
     context_parts = []
     sources = []
     seen_urls = set()
@@ -394,6 +409,149 @@ def brawlplanet_rotation_manifest(results):
         seen.add(key)
         manifest.append({"map": map_name, "mode": mode_name, "url": url})
     return manifest
+
+
+def clean_brawlplanet_cell(value):
+    """Remove Tavily/browser citation markup from a table cell."""
+    value = str(value or "")
+    # Browser extracts wrap visible text as ``citeid†Text``. Preserve
+    # Text while dropping the citation token; image-only citations are then
+    # removed by the second expression.
+    value = re.sub(r"cite[^†]*†([^]*)", r"\1", value)
+    value = re.sub(r"cite[^]*", "", value)
+    value = re.sub(r"\bImage(?:†[^\s|]+)?\b", "", value, flags=re.I)
+    value = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", value)
+    value = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value
+
+
+def brawlplanet_page_labels(result):
+    """Read the localized map and mode labels from one detail page."""
+    text = "\n".join(
+        str(result.get(key) or "")
+        for key in ("title", "content", "raw_content")
+    )
+    match = re.search(
+        r"(?:Migliori Brawler per|Best Brawlers for)\s+(.+?)\s*(?:\||-)\s*([^\n|]+)",
+        text,
+        re.I
+    )
+    if not match:
+        match = re.search(r"^#\s+([^\n]+)\n##\s+([^\n]+)", text, re.M)
+    if not match:
+        return None, None
+    return (
+        re.sub(r"\s+", " ", clean_brawlplanet_cell(match.group(1))).strip(),
+        re.sub(r"\s+", " ", clean_brawlplanet_cell(match.group(2))).strip()
+    )
+
+
+def brawlplanet_table_rows(text, header_size):
+    """Extract markdown rows after a Brawl Planet table header."""
+    rows = []
+    for line in text.splitlines():
+        if "|" not in line:
+            continue
+        cells = [clean_brawlplanet_cell(cell) for cell in line.split("|")]
+        cells = [cell for cell in cells if cell]
+        if len(cells) < header_size:
+            continue
+        if all(re.fullmatch(r"[-: ]+", cell) for cell in cells[:header_size]):
+            continue
+        lowered = cells[0].casefold()
+        if (
+            lowered.startswith("brawler")
+            or lowered.startswith("squadra")
+        ):
+            continue
+        rows.append(cells[:header_size])
+    return rows
+
+
+def brawlplanet_structured_stats(results, max_rows=10):
+    """Extract compact Individuale/Squadre data from Brawl Planet pages.
+
+    The page contains two repeated blocks: one for Trofei and one for
+    Classificata. Keeping the parsed rows separate prevents Gemini from
+    accidentally combining datasets when it writes the answer.
+    """
+    blocks = []
+    seen = set()
+    for result in results or []:
+        url = result.get("url") or ""
+        if "/maps/" not in url.casefold() or "brawlplanet.com" not in url.casefold():
+            continue
+        map_name, mode_name = brawlplanet_page_labels(result)
+        if not map_name or not mode_name:
+            continue
+        text = "\n".join(
+            str(result.get(key) or "")
+            for key in ("title", "content", "raw_content")
+        )
+        individual_matches = list(re.finditer(
+            r"^#{2,3}\s+Individuale\s*$", text, re.I | re.M
+        ))
+        if not individual_matches:
+            continue
+
+        for index, individual_match in enumerate(individual_matches):
+            start = individual_match.start()
+            end = (
+                individual_matches[index + 1].start()
+                if index + 1 < len(individual_matches)
+                else len(text)
+            )
+            segment = text[start:end]
+            prefix = text[:start]
+            dataset_markers = re.findall(
+                r"Percentuali di vittoria[^\n]*|Win percentages[^\n]*",
+                prefix,
+                re.I
+            )
+            marker = dataset_markers[-1].casefold() if dataset_markers else ""
+            if "classificat" in marker or "ranked" in marker:
+                dataset = "Classificata"
+            elif "trofei" in marker or "trophy" in marker:
+                dataset = "Trofei"
+            else:
+                dataset = "Classificata" if index else "Trofei"
+
+            team_match = re.search(
+                r"^#{2,3}\s+Squadre\s*$([\s\S]*?)(?=^#{2,3}\s+Altre mappe|\Z)",
+                segment,
+                re.I | re.M
+            )
+            individual_part = segment
+            if team_match:
+                individual_part = segment[:team_match.start()]
+
+            individual_rows = brawlplanet_table_rows(individual_part, 4)[:max_rows]
+            team_rows = (
+                brawlplanet_table_rows(team_match.group(1), 2)[:max_rows]
+                if team_match else []
+            )
+            if not individual_rows and not team_rows:
+                continue
+
+            key = (url.casefold(), dataset)
+            if key in seen:
+                continue
+            seen.add(key)
+            lines = [f"MAPPA: {map_name} | MODALITÀ: {mode_name} | DATASET: {dataset}"]
+            if individual_rows:
+                lines.append("INDIVIDUALI (Brawler | Vitt. | Scelta | Stella):")
+                lines.extend("- " + " | ".join(row) for row in individual_rows)
+            else:
+                lines.append("INDIVIDUALI: Non disponibile")
+            if team_rows:
+                lines.append("SQUADRE (Composizione | Vitt.):")
+                lines.extend("- " + " | ".join(row) for row in team_rows)
+            else:
+                lines.append("SQUADRE: Non disponibile")
+            blocks.append("\n".join(lines))
+
+    return "\n\n".join(blocks)
 
 
 def web_search(query):
@@ -2037,6 +2195,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     web_context = ""
     web_sources = []
     web_images = []
+    structured_stats_context = ""
 
     if needs_web_search(question_for_ai):
         try:
@@ -2056,6 +2215,21 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 search_results,
                 exhaustive=is_all_maps_request(question_for_ai)
             )
+
+            structured_stats_context = brawlplanet_structured_stats(
+                search_results
+            )
+            if structured_stats_context:
+                structured_stats_context = compact_source_text(
+                    structured_stats_context,
+                    80000 if is_all_maps_request(question_for_ai) else 30000
+                )
+                web_context = (
+                    "\nDATI STRUTTURATI BRAWL PLANET (priorità per la risposta):\n"
+                    + structured_stats_context
+                    + "\nFINE DATI STRUTTURATI BRAWL PLANET\n"
+                    + web_context
+                )
 
             rotation_manifest = search_data.get("brawlplanet_rotation", [])
             rotation_instruction = ""
@@ -2127,7 +2301,11 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
             try:
-                image_data = image_search(question_for_ai)
+                image_data = (
+                    {"images": []}
+                    if is_all_maps_request(question_for_ai)
+                    else image_search(question_for_ai)
+                )
                 for image in image_data.get("images", []):
                     if isinstance(image, str) and image.startswith("http"):
                         web_images.append({"url": image, "description": ""})
@@ -2191,7 +2369,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Riporta tutte le metriche disponibili per ogni Brawler consigliato: vittorie, utilizzo, Miglior Star Player, campione individuale e posizione media dove presenti. Non chiamare campione individuale il totale delle partite della mappa.\n"
                 "- Separa Individuali e Squadre. Per ogni squadra consigliata riporta i componenti esatti e tutte le metriche pubblicate per quella composizione: vittorie, utilizzo, campione o posizione media solo quando presenti. Non mediare o trasferire statistiche individuali alla squadra.\n"
                 "- Per ogni blocco specifica mappa, modalità, Trofei o Classificata, eventuale lega/filtro, periodo e aggiornamento se pubblicati. Dato assente: Non disponibile. Se manca un dato consulta le fonti secondarie senza mescolare campioni di fonti diverse.\n"
-                "- Per ogni mappa riporta almeno i primi 10 Brawler della sezione Individuale e le prime 10 Squadre pubblicate da Brawl Planet, quando presenti. Per ciascuna riga conserva tutte le metriche effettivamente pubblicate; non fermarti a un solo leader e non inventare colonne mancanti.\n"
+                "- Per una richiesta su tutte le mappe usa prima il blocco DATI STRUTTURATI BRAWL PLANET: contiene le righe delle tabelle, non fermarti ai soli riepiloghi del titolo.\n"
+                "- Per OGNI mappa crea sempre quattro sottosezioni: Trofei - Individuali, Trofei - Squadre, Classificata - Individuali e Classificata - Squadre. Se una tabella non è pubblicata, scrivi Non disponibile.\n"
+                "- Nei blocchi Individuali conserva le colonne Brawler, Vitt., Scelta e Stella; nei blocchi Squadre conserva la composizione esatta e Vitt. Non ridurre la risposta alle sole liste 'miglior vittoria' e 'più scelto'.\n"
+                "- Per ogni mappa riporta almeno i primi 10 Brawler della sezione Individuale e le prime 10 Squadre pubblicate da Brawl Planet, quando presenti nel blocco strutturato. Per ciascuna riga conserva tutte le metriche effettivamente pubblicate; non fermarti a un solo leader e non inventare colonne mancanti.\n"
                 "- Se elenchi più Brawler, per ciascuno riporta separatamente, quando disponibili: Tasso di vittoria, Tasso di utilizzo, Miglior Star Player, Partite analizzate/campione e Comp principali.\n"
                 "- Tutti i dati nello stesso blocco devono provenire dallo stesso contesto: stessa mappa, stessa modalità e stesso ambiente Ladder oppure Classificata.\n"
                 "- Se una metrica manca per un Brawler, scrivi Non disponibile invece di ricavarla da un altro giocatore o da un altro dataset.\n"
@@ -2283,6 +2464,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- Non rispondere con categorie generiche come tank, tiratori, supporti o brawler da mischia.\n"
                 "- Se i dati disponibili non permettono di determinare una comp affidabile, dichiaralo chiaramente e non inventare.\n"
                 "- Per richieste estese come 'ogni mappa di ogni modalità oggi', includi solo mappe dimostrate attive dai risultati forniti e raccomandazioni statistiche riferite proprio a ciascuna mappa. Non copiare lo stesso terzetto su mappe diverse. Se non puoi verificare in modo strutturato l intero elenco, spiega che la rotazione completa non è verificabile in quel momento e chiedi di scegliere una modalità: non completare l elenco a intuito.\n"
+                "- Per una richiesta estesa non aggiungere MAPPA_IMMAGINE e non scegliere una sola mappa da inviare come immagine: l'utente ha chiesto l'intera rotazione.\n"
 
                 "Alla fine della risposta aggiungi:\n"
                 "Fonti:\n"
@@ -2358,7 +2540,58 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 raise
 
-        final_text = response.text or ""
+        response_text = response.text or ""
+        broad_request = is_all_maps_request(question_for_ai)
+        validation_manifest = locals().get("rotation_manifest") or []
+
+        # A long rotation answer is easy for a generative model to compress
+        # into only the headline win/pick lists. If that happens, make one
+        # compact corrective call using the parsed Brawl Planet tables before
+        # falling back to the safe "dati non completi" response.
+        if broad_request and len(validation_manifest) >= 2:
+            candidate = translate_map_names_in_text(response_text)
+            if invalid_exhaustive_map_answer(
+                candidate,
+                validation_manifest,
+                expected_context=get_game_context(question_for_ai)
+            ):
+                retry_material = structured_stats_context or web_context
+                retry_material = compact_source_text(retry_material, 90000)
+                retry_instructions = (
+                    "Sei Sens GPT. La risposta precedente era incompleta. "
+                    "Riscrivi l'elenco completo delle mappe attive usando "
+                    "esclusivamente i dati strutturati forniti.\n"
+                    "Per ogni mappa scrivi quattro sezioni: Trofei - Individuali, "
+                    "Trofei - Squadre, Classificata - Individuali, Classificata - Squadre. "
+                    "Nelle Individuali usa Brawler | Vitt. | Scelta | Stella; "
+                    "nelle Squadre usa Composizione | Vitt. Se un dato manca scrivi "
+                    "Non disponibile. Non usare MAPPA_IMMAGINE, non inviare immagini "
+                    "e non ridurre l'elenco a cinque Brawler. Mantieni i nomi italiani.\n\n"
+                    f"ELENCO MAPPE ATTIVE:\n{rotation_instruction}\n"
+                    f"DATI BRAWL PLANET:\n{retry_material}\n\n"
+                    f"DOMANDA:\n{question_for_ai}"
+                )
+                try:
+                    retry_response = client.models.generate_content(
+                        model="gemini-3.5-flash-lite",
+                        contents=retry_instructions
+                    )
+                    if retry_response.text:
+                        response_text = retry_response.text
+                        print(
+                            "GEMINI: risposta correttiva generata per tabelle Individuali/Squadre",
+                            flush=True
+                        )
+                except Exception as retry_error:
+                    # Keep the original candidate; the validator below will
+                    # prevent an incomplete answer from being shown.
+                    print(
+                        "GEMINI: correzione tabellare non disponibile",
+                        repr(retry_error),
+                        flush=True
+                    )
+
+        final_text = response_text
         comp_brawlers = []
         recommended_map = None
 
@@ -2369,9 +2602,16 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if match_map:
-            recommended_map = resolve_map_source_name(
-                match_map.group(1).strip()
-            )
+            if not is_all_maps_request(question_for_ai):
+                recommended_map = resolve_map_source_name(
+                    match_map.group(1).strip()
+                )
+            else:
+                print(
+                    "MAPPA IMMAGINE IGNORATA: richiesta su tutta la rotazione",
+                    match_map.group(1).strip(),
+                    flush=True
+                )
 
             final_text = re.sub(
                 r"^MAPPA_IMMAGINE:\s*.+$",
@@ -2452,7 +2692,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             is_exhaustive_current_maps_query(question_for_ai)
             and invalid_exhaustive_map_answer(
                 final_text,
-                locals().get("rotation_manifest")
+                locals().get("rotation_manifest"),
+                expected_context=get_game_context(question_for_ai)
             )
         ):
             final_text = (
@@ -2496,9 +2737,13 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         map_photo_sent = False
 
         map_to_send = None
-        if "current_map" in locals() and current_map:
+        if (
+            not is_all_maps_request(question_for_ai)
+            and "current_map" in locals()
+            and current_map
+        ):
             map_to_send = current_map
-        elif recommended_map:
+        elif not is_all_maps_request(question_for_ai) and recommended_map:
             map_to_send = recommended_map
 
         if map_to_send:
