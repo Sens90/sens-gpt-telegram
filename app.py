@@ -139,14 +139,14 @@ def web_search(query):
     if is_map_query:
         search_query = (
             f"Brawl Stars {query} {today} {context_hint} "
-            f"Brawl Planet italiano mappe attive win rate pick rate giocatore stella team comp "
+            f"Brawl Planet italiano mappe attive win rate pick rate Star Player team comp "
             f"site:brawlplanet.nl/it OR site:brawlplanet.com/it "
             f"Brawl Insights Brawlify current live rotation current season"
         )
     elif is_meta_query:
         search_query = (
             f"Brawl Stars current meta {today} {query} {context_hint} "
-            f"Brawl Planet italiano win rate pick rate giocatore stella team comp "
+            f"Brawl Planet italiano win rate pick rate Star Player team comp "
             f"latest balance changes tier list competitive "
             f"gadget abilità stellare equipaggiamento overdrive nomi italiani "
             f"Supercell italiano Brawl Planet Brawlify Brawl Time Ninja Noff"
@@ -786,6 +786,8 @@ def translate_game_terms_in_text(text):
         (r"\bHypercharges\b", "overdrive"),
         (r"\bBuild\b", "configurazione"),
         (r"\bLoadout\b", "configurazione"),
+        (r"\bgiocatori?\s+stella\b", "Miglior Star Player"),
+        (r"\bstar\s+player\b", "Star Player"),
     ]
 
     translated = text
@@ -1649,10 +1651,15 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "  - Ladder/trofei: usa esclusivamente statistiche trophy-ladder e mappe della rotazione a trofei attuale.\n"
                 "  - Classificata/Ranked: usa esclusivamente statistiche Ranked e mappe del pool Classificata attuale; considera draft, ban, counterpick e sinergie.\n"
                 "  - Non mescolare mai percentuali Ladder e Ranked nella stessa raccomandazione.\n"
+                "  - Non fondere statistiche appartenenti a mappe diverse, modalità diverse o Brawler diversi.\n"
                 "  - Se la domanda non specifica Ladder o Classificata e i due contesti portano a consigli diversi, separa la risposta in due sezioni: Ladder e Classificata.\n"
                 "  - Se una mappa è indicata come solo Ranked, non proporla per Ladder. Se è archiviata o fuori pool, non proporla come attuale.\n"
-                "- Per statistiche per mappa usa Brawl Planet come fonte prioritaria quando disponibile: distingue Ladder e Ranked e mostra tasso di vittoria, utilizzo, giocatore stella e composizioni.\n"
-                "- Non scegliere automaticamente il Brawler con il win rate più alto: valuta insieme tasso di vittoria, tasso di utilizzo, frequenza giocatore stella, numero di partite/campione e qualità delle composizioni.\n"
+                "- Per statistiche per mappa usa Brawl Planet come fonte prioritaria quando disponibile: distingue Ladder e Ranked e mostra tasso di vittoria, tasso di utilizzo, Miglior Star Player e composizioni.\n"
+                "- Non scegliere automaticamente il Brawler con il win rate più alto: valuta insieme tasso di vittoria, tasso di utilizzo, percentuale/frequenza Miglior Star Player, numero di partite/campione e qualità delle composizioni.\n"
+                "- DATI PER BRAWLER: ogni Brawler deve avere il proprio blocco completo di statistiche. Non mescolare mai il tasso di vittoria di un Brawler con utilizzo, Star Player, partite o comp di un altro.\n"
+                "- Se elenchi più Brawler, per ciascuno riporta separatamente, quando disponibili: Tasso di vittoria, Tasso di utilizzo, Miglior Star Player, Partite analizzate/campione e Comp principali.\n"
+                "- Tutti i dati nello stesso blocco devono provenire dallo stesso contesto: stessa mappa, stessa modalità e stesso ambiente Ladder oppure Classificata.\n"
+                "- Se una metrica manca per un Brawler, scrivi Non disponibile invece di ricavarla da un altro giocatore o da un altro dataset.\n"
                 "- Diffida di percentuali molto alte con utilizzo o campione molto basso; preferisci dati robusti e coerenti tra più indicatori.\n"
                 "- TERMINOLOGIA ITALIANA OBBLIGATORIA: usa sempre i termini ufficiali del gioco in italiano. Gear = equipaggiamento/equipaggiamenti; Star Power = abilità stellare/abilità stellari; Hypercharge = overdrive; Gadget resta gadget.\n"
                 "- Per gadget, abilità stellari, equipaggiamenti e overdrive specifici usa il NOME UFFICIALE ITALIANO mostrato in Brawl Stars, non il nome inglese.\n"
