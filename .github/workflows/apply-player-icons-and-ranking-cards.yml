@@ -1,0 +1,62 @@
+name: Apply player icons and ranking cards
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-player-icons-and-ranking-cards.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add live profile icons and visual rankings
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # Official player icon id + BrawlAPI image lookup.
+          p=Path('player_tracking.py'); s=p.read_text()
+          if 'def _profile_icon_url(' not in s:
+              marker='\ndef get_brawltrack_player(player_tag, timeout=20):\n'
+              helper='''\n_ICON_CACHE = None\n\ndef _profile_icon_url(icon_id, timeout=10):\n    global _ICON_CACHE\n    if icon_id is None:\n        return None\n    try:\n        if _ICON_CACHE is None:\n            r=requests.get("https://api.brawlapi.com/v1/icons", timeout=timeout)\n            r.raise_for_status()\n            _ICON_CACHE=(r.json() or {}).get("player", {})\n        item=_ICON_CACHE.get(str(icon_id)) or {}\n        return item.get("imageUrl") or item.get("imageUrl2")\n    except Exception as exc:\n        print("ERRORE ICONA PROFILO:", repr(exc), flush=True)\n        return None\n\n'''
+              if marker not in s: raise SystemExit('player function marker missing')
+              s=s.replace(marker,helper+marker,1)
+          old='''        brawlers = data.get("brawlers") if isinstance(data.get("brawlers"), list) else []\n'''
+          new='''        brawlers = data.get("brawlers") if isinstance(data.get("brawlers"), list) else []\n        icon_data = data.get("icon") if isinstance(data.get("icon"), dict) else {}\n        icon_id = _number(icon_data.get("id"))\n        icon_url = _profile_icon_url(icon_id)\n'''
+          if old in s and 'icon_url = _profile_icon_url' not in s: s=s.replace(old,new,1)
+          old='''            "club_tag": club_tag,\n            "source": "Supercell Official API",\n'''
+          new='''            "club_tag": club_tag,\n            "icon_id": icon_id,\n            "icon_url": icon_url,\n            "source": "Supercell Official API",\n'''
+          if old in s: s=s.replace(old,new,1)
+          p.write_text(s)
+
+          # Explicit Pillow dependency for ranking cards.
+          p=Path('requirements.txt'); r=p.read_text()
+          if 'Pillow' not in r: r=r.rstrip()+"\nPillow\n"
+          p.write_text(r)
+
+          # Add icon URL to stat ranking rows.
+          p=Path('community_features.py'); s=p.read_text()
+          old='''            rows.append({"name":player.get("name") or member.get("player_name") or member.get("display_name") or tag,"value":value})'''
+          new='''            rows.append({"name":player.get("name") or member.get("player_name") or member.get("display_name") or tag,"value":value,"tag":tag,"icon_url":player.get("icon_url")})'''
+          if old in s: s=s.replace(old,new,1)
+          p.write_text(s)
+
+          # Profile response: send the player's real in-game icon as the photo.
+          p=Path('app.py'); s=p.read_text()
+          old='''        await context.bot.send_message(\n            chat_id=message.chat_id,\n            text=text\n        )\n        return\n\n    ranked_match = re.fullmatch('''
+          new='''        if player.get("icon_url"):\n            try:\n                await context.bot.send_photo(\n                    chat_id=message.chat_id,\n                    photo=player["icon_url"],\n                    caption=text\n                )\n            except Exception as exc:\n                print("ERRORE FOTO PROFILO:", repr(exc), flush=True)\n                await context.bot.send_message(chat_id=message.chat_id, text=text)\n        else:\n            await context.bot.send_message(chat_id=message.chat_id, text=text)\n        return\n\n    ranked_match = re.fullmatch('''
+          if old not in s: raise SystemExit('profile response block missing')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+          python -m py_compile app.py community_features.py player_tracking.py
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.py community_features.py player_tracking.py requirements.txt
+          git diff --cached --quiet && exit 0
+          git commit -m 'Add real player profile icons to profiles and ranking data'
+          git push
