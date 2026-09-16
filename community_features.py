@@ -699,9 +699,21 @@ class CommunityFeatures:
                 await message.reply_text("Non riesco a salvare la registrazione. Verifica che lo schema community sia stato creato su Supabase.")
             return True
 
-        match = re.fullmatch(r"classifica(?:\s+(7|15|30))?", q, re.I)
+        if ql == "classifica":
+            await message.reply_text(
+                "CLASSIFICA COMMUNITY\n\n"
+                "Scegli il periodo:\n"
+                "- classifica oggi\n"
+                "- classifica 7\n"
+                "- classifica 15\n"
+                "- classifica 30"
+            )
+            return True
+
+        match = re.fullmatch(r"classifica\s+(oggi|7|15|30)", q, re.I)
         if match:
-            days = int(match.group(1) or 7)
+            period = match.group(1).lower()
+            days = 0 if period == "oggi" else int(period)
             await message.reply_text(self.ranking_text(message.chat_id, days))
             return True
 
