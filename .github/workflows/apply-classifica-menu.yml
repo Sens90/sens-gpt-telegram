@@ -1,0 +1,31 @@
+name: Apply classifica menu
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-classifica-menu.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add classifica period menu
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('community_features.py')
+          s=p.read_text()
+          old='''        match = re.fullmatch(r"classifica(?:\\s+(7|15|30))?", q, re.I)\n        if match:\n            days = int(match.group(1) or 7)\n            await message.reply_text(self.ranking_text(message.chat_id, days))\n            return True\n'''
+          new='''        if ql == "classifica":\n            await message.reply_text(\n                "CLASSIFICA COMMUNITY\\n\\n"\n                "Scegli il periodo:\\n"\n                "- classifica oggi\\n"\n                "- classifica 7\\n"\n                "- classifica 15\\n"\n                "- classifica 30"\n            )\n            return True\n\n        match = re.fullmatch(r"classifica\\s+(oggi|7|15|30)", q, re.I)\n        if match:\n            period = match.group(1).lower()\n            days = 0 if period == "oggi" else int(period)\n            await message.reply_text(self.ranking_text(message.chat_id, days))\n            return True\n'''
+          if old not in s:
+              raise SystemExit('target block not found')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+          python -m py_compile community_features.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add community_features.py
+          git commit -m 'Add classifica period selection menu'
+          git push
