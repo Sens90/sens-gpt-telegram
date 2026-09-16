@@ -1609,6 +1609,24 @@ def calculate_trophy_changes(history, current_trophies):
             target
         )
 
+        # On the first monitored day there may be no snapshot at/before
+        # midnight. In that case the registration/first snapshot of that
+        # Italian calendar day is the baseline for OGGI. This makes an
+        # immediate classifica query show positive or negative movement
+        # from the moment monitoring started, without pretending that the
+        # value existed at midnight.
+        if key == "today" and old_value is None:
+            for row in history:
+                try:
+                    dt = datetime.fromisoformat(
+                        row["recorded_at"].replace("Z", "+00:00")
+                    )
+                    if dt >= start_today:
+                        old_value = int(row["trophies"])
+                        break
+                except Exception:
+                    continue
+
         changes[key] = (
             current_trophies - old_value
             if old_value is not None
