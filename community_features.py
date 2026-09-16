@@ -728,10 +728,22 @@ class CommunityFeatures:
             )
             return True
 
-        match = re.fullmatch(r"classifica\s+(oggi|7|15|30)", q, re.I)
+        match = re.fullmatch(
+            r"classifica(?:\s+(?:della\s+community))?(?:\s+di)?\s+oggi",
+            q,
+            re.I,
+        )
         if match:
-            period = match.group(1).lower()
-            days = 0 if period == "oggi" else int(period)
+            await message.reply_text(self.ranking_text(message.chat_id, 0))
+            return True
+
+        match = re.fullmatch(
+            r"classifica(?:\s+(?:della\s+community))?\s+(?:(?:degli\s+)?ultimi\s+)?(7|15|30)(?:\s+giorni)?",
+            q,
+            re.I,
+        )
+        if match:
+            days = int(match.group(1))
             await message.reply_text(self.ranking_text(message.chat_id, days))
             return True
 
