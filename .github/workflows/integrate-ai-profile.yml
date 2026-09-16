@@ -74,3 +74,4 @@ jobs:
           git add app.py
           git diff --cached --quiet || git commit -m "Connect cinematic AI profiles to Telegram"
           git push
+# direct trigger 2026-09-16
