@@ -22,6 +22,7 @@ from telegram.error import TelegramError, TimedOut, NetworkError, RetryAfter, Ba
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
 from community_features import CommunityFeatures
 from profile_card_generator import build_profile_card
+from ai_profile_experience import build_visual_prompt, choose_scene
 from player_tracking import extract_brawlzone_ranked, get_brawltrack_player
 from live_maps import collect_report, render_report, report_csv
 
