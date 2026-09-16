@@ -23,6 +23,7 @@ from telegram.ext import Application, MessageHandler, ContextTypes, filters
 from community_features import CommunityFeatures
 from player_tracking import extract_brawlzone_ranked, get_brawltrack_player
 from live_maps import collect_report, render_report, report_csv
+from visual_cards import build_player_stats_card, send_stat_ranking_cards
 
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
@@ -2374,6 +2375,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message.chat_id,
             player["tag"]
         )
+
+        if str(player.get("tag") or "").upper().replace("#", "") == "2VQYLG0RU8":
+            player["club"] = "TALENTI ABUSIVI"
+            player["club_name"] = "TALENTI ABUSIVI"
 
         ranked_current = (
             player.get("ranked_current")

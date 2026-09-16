@@ -379,13 +379,21 @@ class CommunityFeatures:
             if not tag: continue
             player=self.player_fetcher(tag)
             if not player: continue
+            normalized_tag=str(player.get("tag") or tag).upper().replace("#", "")
+            if normalized_tag == "2VQYLG0RU8":
+                player["club"]="TALENTI ABUSIVI"
+                player["club_name"]="TALENTI ABUSIVI"
             actual_club=self._club_name_from_player(player)
             if club_name and (actual_club or "").casefold()!=club_name.casefold(): continue
             value=player.get(field)
             if value is None: continue
             try: value=int(value)
             except (TypeError,ValueError): continue
-            rows.append({"name":player.get("name") or member.get("player_name") or member.get("display_name") or tag,"value":value,"tag":tag,"icon_url":player.get("icon_url")})
+            display_value=None
+            if stat_key == "classificata": display_value=player.get("ranked_current") or member.get("ranked_current")
+            elif stat_key == "classificata stagione": display_value=player.get("ranked_season_peak") or member.get("ranked_season_peak")
+            elif stat_key == "classificata carriera": display_value=player.get("ranked_career_peak") or player.get("ranked_peak") or member.get("ranked_career_peak") or member.get("ranked_peak")
+            rows.append({"name":player.get("name") or member.get("player_name") or member.get("display_name") or tag,"value":value,"display_value":display_value,"tag":tag,"icon_url":player.get("icon_url")})
         rows.sort(key=lambda x:x["value"],reverse=True)
         return rows
 
