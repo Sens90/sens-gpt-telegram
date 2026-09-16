@@ -23,7 +23,6 @@ from telegram.ext import Application, MessageHandler, ContextTypes, filters
 from community_features import CommunityFeatures
 from player_tracking import extract_brawlzone_ranked, get_brawltrack_player
 from live_maps import collect_report, render_report, report_csv
-from visual_cards import build_player_stats_card, send_stat_ranking_cards
 
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
@@ -2420,18 +2419,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"- 90 giorni: {format_trophy_change(changes.get('90d'))}"
         )
 
-        # DIRECT_VISUAL_STATS_FIX_V1
-        if player.get("tag") == "#2VQYLG0RU8" or player.get("tag") == "2VQYLG0RU8":
-            player["club_name"] = "TALENTI ABUSIVI"
-        player["ranked_current"] = ranked_current
-        player["ranked_season_peak"] = ranked_season_peak
-        player["ranked_career_peak"] = ranked_peak
-        try:
-            card = build_player_stats_card(player, changes=changes, title="STATISTICHE GIOCATORE")
-            await context.bot.send_photo(chat_id=message.chat_id, photo=card)
-        except Exception as exc:
-            print("ERRORE SCHEDA STATS GRAFICA:", repr(exc), flush=True)
-            await context.bot.send_message(chat_id=message.chat_id, text=text)
+        await context.bot.send_message(chat_id=message.chat_id, text=text)
         return
 
     ranked_match = re.fullmatch(

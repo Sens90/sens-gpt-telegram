@@ -405,7 +405,11 @@ class CommunityFeatures:
         scope=club_name or "COMMUNITY"
         if not rows: return f"Nessun dato disponibile per {label} in {scope}."
         lines=[f"CLASSIFICA {scope} - {label.upper()}",""]
-        for i,row in enumerate(rows[:60],1): lines.append(f"{i}. {row['name']} - {self.number_formatter(row['value'])}")
+        for i,row in enumerate(rows[:60],1):
+            value = self.number_formatter(row['value'])
+            if stat_key.startswith("classificata") and row.get("display_value"):
+                value = f"{value} ELO - {row['display_value']}"
+            lines.append(f"{i}. {row['name']} - {value}")
         return "\n".join(lines)
 
     def all_stats_text(self, chat_id, club_name=None):
@@ -892,17 +896,17 @@ class CommunityFeatures:
             await message.reply_text(self.all_stats_text(message.chat_id,self.CLUB_ALIASES[club_all.group(1).lower()])); return True
         stat=re.fullmatch(r"classific(?:a|he)(?:\s+(?:player|giocatori))?(?:\s+(?:della\s+)?community)?(?:\s+(?:per|di))?\s+(3v3|vittorie 3v3|solo|vittorie solo|duo|vittorie duo|trofei|coppe|brawlers?|livello(?: account)?|prestigio|classificata(?: attuale| stagione| carriera)?|ranked(?: attuale| stagione| carriera)?|record classificata (?:stagione|carriera)|record ranked (?:stagione|carriera))",q,re.I)
         if stat:
-            from app import send_stat_ranking_cards; await send_stat_ranking_cards(message, context, self, stat_aliases[stat.group(1).lower()]); return True
+            await message.reply_text(self.stat_ranking_text(message.chat_id, stat_aliases[stat.group(1).lower()])); return True
         clubstat=re.fullmatch(r"classific(?:a|he)\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)(?:\s+(?:per|di))?\s+(3v3|vittorie 3v3|solo|vittorie solo|duo|vittorie duo|trofei|coppe|brawlers?|livello(?: account)?|prestigio|classificata(?: attuale| stagione| carriera)?|ranked(?: attuale| stagione| carriera)?|record classificata (?:stagione|carriera)|record ranked (?:stagione|carriera))",q,re.I)
         if clubstat:
-            from app import send_stat_ranking_cards; await send_stat_ranking_cards(message, context, self, stat_aliases[clubstat.group(2).lower()], self.CLUB_ALIASES[clubstat.group(1).lower()]); return True
+            await message.reply_text(self.stat_ranking_text(message.chat_id, stat_aliases[clubstat.group(2).lower()], self.CLUB_ALIASES[clubstat.group(1).lower()])); return True
         if re.search(r"\bclassific(?:a|he)\b",ql) and "3v3" in ql:
             club_name=next((v for k,v in self.CLUB_ALIASES.items() if k in ql),None)
-            from app import send_stat_ranking_cards; await send_stat_ranking_cards(message, context, self, "3v3", club_name); return True
+            await message.reply_text(self.stat_ranking_text(message.chat_id, "3v3", club_name)); return True
         if re.search(r"\bclassific(?:a|he)\b", ql) and re.search(r"\b(?:classificata|ranked)\b", ql):
             club_name=next((v for k,v in self.CLUB_ALIASES.items() if k in ql),None)
             stat_key="classificata carriera" if "carriera" in ql else ("classificata stagione" if "stagione" in ql else "classificata")
-            from app import send_stat_ranking_cards; await send_stat_ranking_cards(message, context, self, stat_key, club_name); return True
+            await message.reply_text(self.stat_ranking_text(message.chat_id, stat_key, club_name)); return True
 
         if ql == "classifica":
             await message.reply_text(
