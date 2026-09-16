@@ -1,0 +1,50 @@
+name: Patch custom AI environment
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/patch-custom-environment.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch parser and generator
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('app.py'); s=p.read_text()
+          old='''r"(?:profilo ai|profilo grafico|immagine profilo|profile image)(?:\\s+(sorprendimi|brawl|cinematic|al\\s+cinema|epico|fantascienza|fantasy))?\\s*#?([0289PYLQGRJCUV]{3,15})(?:\\s+con\\s+([A-Za-z0-9À-ÿ ._'’-]{2,30}))?",'''
+          new='''r"(?:profilo ai|profilo grafico|immagine profilo|profile image)(?:\\s+(sorprendimi|brawl|cinematic|al\\s+cinema|epico|fantascienza|fantasy))?\\s*#?([0289PYLQGRJCUV]{3,15})(?:\\s+con\\s+([A-Za-z0-9À-ÿ ._'’-]{2,30}?))?(?:\\s+ambientazione\\s+(.{2,120}))?",'''
+          if old not in s: raise SystemExit('profile regex not found')
+          s=s.replace(old,new,1)
+          old2='''requested_brawler = (profile_image_match.group(3) or "").strip() or None
+        telegram_user_id = message.from_user.id'''
+          new2='''requested_brawler = (profile_image_match.group(3) or "").strip() or None
+        custom_environment = (profile_image_match.group(4) or "").strip() or None
+        telegram_user_id = message.from_user.id'''
+          if old2 not in s: raise SystemExit('requested brawler block not found')
+          s=s.replace(old2,new2,1)
+          old3='''scene_bytes, scene = await asyncio.to_thread(generate_scene, player, category)'''
+          new3='''scene_bytes, scene = await asyncio.to_thread(generate_scene, player, category, "assets/titani_logo.jpg", custom_environment)'''
+          if old3 not in s: raise SystemExit('generate_scene call not found')
+          s=s.replace(old3,new3,1); p.write_text(s)
+
+          p=Path('ai_profile_generator.py'); s=p.read_text()
+          old='''def generate_scene(player,category="random",logo_path="assets/titani_logo.jpg"):
+    prompt,scene=build_visual_prompt(player,category); brawler_ref=profile_brawler_reference(player)'''
+          new='''def generate_scene(player,category="random",logo_path="assets/titani_logo.jpg",custom_environment=None):
+    prompt,scene=build_visual_prompt(player,category,custom_environment); brawler_ref=profile_brawler_reference(player)'''
+          if old not in s: raise SystemExit('generator signature not found')
+          s=s.replace(old,new,1); p.write_text(s)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "Sens GPT Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add app.py ai_profile_generator.py
+          git commit -m "Add custom AI profile environments with Brawl fallback"
+          git push
