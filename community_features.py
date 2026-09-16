@@ -26,6 +26,7 @@ HELP_TEXT = (
     "- ranked #TAG: Classificata attuale, massima stagione e massima carriera\n"
     "- storico ranked #TAG: ultime variazioni automatiche della Classificata\n"
     "- classifica 7 / classifica 15 / classifica 30: crescita interna\n"
+    "- classifica 3v3: classifica community per vittorie 3v3\n"
     "- club: riepilogo della community registrata\n"
     "- elenco registrati: elenco dei membri con account Brawl Stars collegato\n"
     "- inattivi: membri a rischio per inattività Telegram\n"
@@ -304,6 +305,33 @@ class CommunityFeatures:
             reverse=True,
         )
         return rows
+
+    def wins_3v3_ranking_text(self, chat_id):
+        rows = []
+        for member in self.members(chat_id):
+            tag = member.get("player_tag")
+            if not tag:
+                continue
+            player = self.player_fetcher(tag)
+            if not player or player.get("wins_3v3") is None:
+                continue
+            try:
+                wins = int(player["wins_3v3"])
+            except (TypeError, ValueError):
+                continue
+            rows.append({
+                "name": player.get("name") or member.get("player_name") or member.get("display_name") or tag,
+                "wins": wins,
+            })
+        rows.sort(key=lambda row: row["wins"], reverse=True)
+        if not rows:
+            return "Non riesco a recuperare le vittorie 3v3 dei giocatori registrati in questo momento."
+        lines = ["CLASSIFICA COMMUNITY - VITTORIE 3V3", ""]
+        for index, row in enumerate(rows[:60], 1):
+            lines.append(
+                f"{index}. {row['name']} - {self.number_formatter(row['wins'])} vittorie"
+            )
+        return "\n".join(lines)
 
     def ranking_text(self, chat_id, days=7):
         rows = self.ranking(chat_id, days)
@@ -732,6 +760,14 @@ class CommunityFeatures:
             except Exception as exc:
                 print("ERRORE REGISTRAZIONE:", repr(exc), flush=True)
                 await message.reply_text("Non riesco a salvare la registrazione. Verifica che lo schema community sia stato creato su Supabase.")
+            return True
+
+        if re.fullmatch(
+            r"classifica(?:\s+(?:player|giocatori))?(?:\s+(?:della\s+)?community)?\s+(?:per\s+)?(?:vittorie\s+)?3v3",
+            q,
+            re.I,
+        ):
+            await message.reply_text(self.wins_3v3_ranking_text(message.chat_id))
             return True
 
         if ql == "classifica":
