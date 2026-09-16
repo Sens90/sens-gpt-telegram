@@ -66,18 +66,35 @@ def remove_premium_user(user_id, supabase_url, service_key):
     return True
 
 
-async def handle_premium_command(message, context, question, supabase_url, service_key):
-    q = " ".join((question or "").casefold().split())
-    if q not in {"rendi premium", "rimuovi premium", "lista premium", "premium list"}:
-        return False
-
+async def _is_admin(message, context):
     try:
         member = await context.bot.get_chat_member(message.chat_id, message.from_user.id)
-        if member.status not in {"administrator", "creator", "owner"}:
-            await message.reply_text("Questo comando è riservato agli amministratori del gruppo.")
-            return True
+        return member.status in {"administrator", "creator", "owner"}
     except Exception:
-        await message.reply_text("Non riesco a verificare i permessi amministratore in questa chat.")
+        return False
+
+
+async def handle_premium_command(message, context, question, supabase_url, service_key):
+    q = " ".join((question or "").casefold().split())
+    commands = {
+        "mio id", "id telegram", "telegram id",
+        "rendimi premium", "rimuovimi premium",
+        "rendi premium", "rimuovi premium", "lista premium", "premium list"
+    }
+    if q not in commands:
+        return False
+
+    # Everyone can read only their own Telegram numeric ID.
+    if q in {"mio id", "id telegram", "telegram id"}:
+        user = message.from_user
+        await message.reply_text(
+            f"Il tuo Telegram User ID è: {user.id}\n"
+            "Questo è l'ID Telegram numerico, non il tag di Brawl Stars."
+        )
+        return True
+
+    if not await _is_admin(message, context):
+        await message.reply_text("Questo comando è riservato agli amministratori del gruppo.")
         return True
 
     if q in {"lista premium", "premium list"}:
@@ -96,22 +113,29 @@ async def handle_premium_command(message, context, question, supabase_url, servi
             await message.reply_text("Errore durante la lettura degli utenti Premium AI.")
         return True
 
-    target_message = message.reply_to_message
-    target = target_message.from_user if target_message else None
-    if not target or target.is_bot:
-        await message.reply_text("Rispondi a un messaggio della persona che vuoi aggiungere o rimuovere e usa questo comando.")
-        return True
+    if q in {"rendimi premium", "rimuovimi premium"}:
+        target = message.from_user
+    else:
+        target_message = message.reply_to_message
+        target = target_message.from_user if target_message else None
+        if not target or target.is_bot:
+            await message.reply_text("Rispondi a un messaggio della persona che vuoi aggiungere o rimuovere e usa questo comando.")
+            return True
 
     display = target.full_name or target.username or str(target.id)
     try:
-        if q == "rendi premium":
+        if q in {"rendi premium", "rendimi premium"}:
             result = add_premium_user(target.id, display, supabase_url, service_key)
             if result == "full":
                 await message.reply_text("I 2 posti Premium AI sono già occupati. Rimuovine uno prima di aggiungerne un altro.")
             elif result == "already":
                 await message.reply_text(f"{display} è già un utente Premium AI.")
             else:
-                await message.reply_text(f"{display} è ora un utente Premium AI.\nGenerazioni AI: illimitate rispetto alla quota del bot.\nPuò generare profili di altri giocatori e usare la generazione AI libera.")
+                await message.reply_text(
+                    f"{display} è ora un utente Premium AI.\n"
+                    "Generazioni AI: illimitate rispetto alla quota del bot.\n"
+                    "Può generare profili di altri giocatori e usare la generazione AI libera."
+                )
         else:
             remove_premium_user(target.id, supabase_url, service_key)
             await message.reply_text(f"Premium AI rimosso da {display}.")
