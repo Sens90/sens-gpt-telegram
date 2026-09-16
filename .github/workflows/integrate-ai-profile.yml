@@ -47,8 +47,7 @@ jobs:
             player["club"] = player["club_name"] = "TALENTI ABUSIVI"
         member_data = community.get_member_by_player_tag(message.chat_id, player.get("tag")) or {}
         for key in ("ranked_current","ranked_season_peak","ranked_career_peak","ranked_peak","ranked_current_elo","ranked_season_peak_elo","ranked_career_peak_elo","prestige"):
-            if not player.get(key) and member_data.get(key):
-                player[key]=member_data[key]
+            if not player.get(key) and member_data.get(key): player[key]=member_data[key]
         await context.bot.send_chat_action(chat_id=message.chat_id, action="upload_photo")
         progress = await message.reply_text("Sto creando il tuo Profilo AI TITANI ABUSIVI…")
         try:
@@ -56,10 +55,7 @@ jobs:
             card = await asyncio.to_thread(overlay_stats, scene_bytes, player)
             await context.bot.send_photo(chat_id=message.chat_id, photo=card, caption=f"Profilo AI TITANI ABUSIVI • {player.get('name','Giocatore')}\nScena: {scene.get('place','cinematografica')}")
             quota = await asyncio.to_thread(consume_quota, telegram_user_id)
-            if quota["unlimited"]:
-                quota_text = "Profilo AI • quota illimitata"
-            else:
-                quota_text = f"Profilo AI generato • Questo mese {quota['used']}/{quota['limit']}"
+            quota_text = "Profilo AI • quota illimitata" if quota["unlimited"] else f"Profilo AI generato • Questo mese {quota['used']}/{quota['limit']}"
             await progress.edit_text(quota_text)
         except Exception as error:
             print("AI PROFILE GENERATION:", repr(error), flush=True)
