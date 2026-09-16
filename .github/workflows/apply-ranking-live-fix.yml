@@ -1,0 +1,39 @@
+name: Apply live ranking fix
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-ranking-live-fix.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fix live trophies, today baseline and missing history
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('community_features.py')
+          s=p.read_text()
+          s=s.replace('''        history = self.history_fetcher(tag, days=120)\n        if history:\n            try:\n                return int(history[-1]["trophies"])\n            except Exception:\n                pass\n        player = self.player_fetcher(tag)\n        return player.get("trophies") if player else None\n''','''        player = self.player_fetcher(tag)\n        if player and player.get("trophies") is not None:\n            try:\n                return int(player["trophies"])\n            except Exception:\n                pass\n        history = self.history_fetcher(tag, days=120)\n        if history:\n            try:\n                return int(history[-1]["trophies"])\n            except Exception:\n                pass\n        return None\n''',1)
+          s=s.replace('''            key = {\n                7: "7d",\n                15: "15d",\n                30: "30d",\n            }.get(days, "7d")\n            delta = changes.get(key)\n            if delta is None:\n                delta = 0\n''','''            key = {\n                0: "today",\n                7: "7d",\n                15: "15d",\n                30: "30d",\n            }.get(days, "7d")\n            delta = changes.get(key)\n''',1)
+          s=s.replace('''                    "delta": int(delta),\n''','''                    "delta": int(delta) if delta is not None else None,\n''',1)
+          s=s.replace('''        rows.sort(key=lambda x: (x["delta"], x["current"]), reverse=True)\n''','''        rows.sort(\n            key=lambda x: (\n                x["delta"] is not None,\n                x["delta"] if x["delta"] is not None else 0,\n                x["current"],\n            ),\n            reverse=True,\n        )\n''',1)
+          old='''        lines = [f"CLASSIFICA TITANI ABUSIVI - {days} GIORNI", ""]\n        for index, row in enumerate(rows[:15], 1):\n            sign = "+" if row["delta"] > 0 else ""\n            lines.append(\n                f"{index}. {row['name']} - {self.number_formatter(row['current'])} "\n                f"({sign}{row['delta']})"\n            )\n'''
+          new='''        period_label = "OGGI" if days == 0 else f"{days} GIORNI"\n        lines = [f"CLASSIFICA COMMUNITY - {period_label}", ""]\n        for index, row in enumerate(rows[:15], 1):\n            if row["delta"] is None:\n                delta_text = "storico di oggi non disponibile" if days == 0 else f"storico {days}g non ancora disponibile"\n            else:\n                sign = "+" if row["delta"] > 0 else ""\n                delta_text = f"{sign}{row['delta']}"\n            lines.append(\n                f"{index}. {row['name']} - {self.number_formatter(row['current'])} "\n                f"({delta_text})"\n            )\n'''
+          if old not in s: raise SystemExit('ranking_text target not found')
+          s=s.replace(old,new,1)
+          s=s.replace('''        growth7 = sum(r["delta"] for r in ranking7)\n        top = ranking7[:3]\n''','''        valid_growth = [r for r in ranking7 if r["delta"] is not None]\n        growth7 = sum(r["delta"] for r in valid_growth)\n        top = valid_growth[:3]\n''',1)
+          s=s.replace('''                    f"Crescita complessiva 7 giorni: {'+' if growth7 > 0 else ''}{growth7}",\n                    "",\n                    "Top crescita 7 giorni:",\n''','''                    (f"Crescita complessiva 7 giorni: {'+' if growth7 > 0 else ''}{growth7}" if valid_growth else "Crescita complessiva 7 giorni: storico non ancora disponibile"),\n                    "",\n                    "Top crescita 7 giorni:" if valid_growth else "Top crescita 7 giorni: storico non ancora disponibile",\n''',1)
+          s=s.replace('''        growth = sum(x["delta"] for x in ranking)\n''','''        valid_growth = [x for x in ranking if x["delta"] is not None]\n        growth = sum(x["delta"] for x in valid_growth)\n''',1)
+          s=s.replace('''            f"Crescita trofei (dato 7g disponibile): {'+' if growth > 0 else ''}{growth}",\n''','''            (f"Crescita trofei (7 giorni): {'+' if growth > 0 else ''}{growth}" if valid_growth else "Crescita trofei (7 giorni): storico non ancora disponibile"),\n''',1)
+          s=s.replace('''        if ranking:\n            lines.append("\\nTop crescita:")\n            for row in ranking[:5]:\n''','''        if valid_growth:\n            lines.append("\\nTop crescita:")\n            for row in valid_growth[:5]:\n''',1)
+          p.write_text(s)
+          PY
+          python -m py_compile community_features.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add community_features.py
+          git commit -m 'Fix today ranking with live trophies and valid history'
+          git push
