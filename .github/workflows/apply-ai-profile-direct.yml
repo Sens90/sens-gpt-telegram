@@ -1,0 +1,29 @@
+name: Apply AI Profile Direct
+
+on:
+  push:
+    paths:
+      - 'scripts/patch_ai_profile.py'
+      - '.github/workflows/apply-ai-profile-direct.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply patch
+        run: python scripts/patch_ai_profile.py
+      - name: Validate Python
+        run: python -m py_compile app.py ai_profile_generator.py ai_profile_experience.py premium_ai.py
+      - name: Commit app integration
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add app.py
+          if ! git diff --cached --quiet; then
+            git commit -m "Connect AI profile directly in app"
+            git push
+          fi
