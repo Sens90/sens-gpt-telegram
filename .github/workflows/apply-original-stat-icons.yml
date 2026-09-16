@@ -1,0 +1,35 @@
+name: Apply original stat icons
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-original-stat-icons.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add Brawl Stars stat icon support
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('community_features.py')
+          s=p.read_text()
+          marker='    STAT_DEFS = {'
+          helper='''    # Graphic ranking cards use the matching Brawl Stars stat artwork when available.\n    # URLs are resolved at runtime by the card renderer; text output remains the fallback.\n    STAT_ICON_KEYS = {\n        "trofei": "trophy",\n        "brawler": "brawlers",\n        "livello": "experience",\n        "prestigio": "prestige",\n        "3v3": "3v3",\n        "solo": "solo",\n        "duo": "duo",\n        "classificata": "ranked",\n        "classificata stagione": "ranked",\n        "classificata carriera": "ranked",\n    }\n\n'''
+          if 'STAT_ICON_KEYS = {' not in s:
+              if marker not in s: raise SystemExit('STAT_DEFS marker missing')
+              s=s.replace(marker,helper+marker,1)
+          p.write_text(s)
+          PY
+          python -m py_compile community_features.py
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add community_features.py
+          git diff --cached --quiet && exit 0
+          git commit -m 'Map ranking statistics to Brawl Stars icons'
+          git push
