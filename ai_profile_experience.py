@@ -15,15 +15,29 @@ FANTASY_WORLDS = [
 ]
 
 def profile_brawler(player):
-    """Prefer the Brawler represented by the player's selected profile icon when the upstream source exposes it."""
+    """Return only a Brawler explicitly associated with the selected profile icon."""
     for key in ('profile_brawler','icon_brawler','profile_icon_brawler','selected_brawler'):
         value=player.get(key)
         if isinstance(value,dict): value=value.get('name')
         if value: return str(value)
     icon=player.get('icon') or player.get('profile_icon')
     if isinstance(icon,dict):
-        for key in ('brawler','brawler_name','name'):
+        for key in ('brawler','brawler_name'):
             if icon.get(key): return str(icon[key])
+    return None
+
+def profile_brawler_reference(player):
+    """Find the strongest available visual reference for the selected profile Brawler."""
+    for key in ('profile_brawler_image_url','profile_icon_url','icon_url'):
+        value=player.get(key)
+        if isinstance(value,str) and value.startswith(('http://','https://')):
+            return value
+    icon=player.get('icon') or player.get('profile_icon')
+    if isinstance(icon,dict):
+        for key in ('imageUrl','image_url','url'):
+            value=icon.get(key)
+            if isinstance(value,str) and value.startswith(('http://','https://')):
+                return value
     return None
 
 def choose_scene(player, category='random'):
@@ -35,20 +49,22 @@ def choose_scene(player, category='random'):
     else:
         official=random.random()<0.55
         place=random.choice(OFFICIAL_WORLDS if official else FANTASY_WORLDS); source='Brawl Stars' if official else 'Fantasia Sens GPT'
-    subject=brawler or 'il Brawler associato alla foto profilo del giocatore, se identificabile'
+    subject=brawler or 'il Brawler della foto profilo'
     concepts=[
         f'{subject} osserva le statistiche del giocatore su enormi schermi integrati nella scena',
-        f'{subject} e protagonista della scena mentre trofei, Classificata e vittorie vengono rappresentati come elementi fisici e olografici',
-        f'inquadratura cinematografica di {subject}, con le statistiche raccontate attraverso cartelloni, monitor e oggetti dell ambiente',
+        f'{subject} e protagonista mentre trofei, Classificata e vittorie sono rappresentati da elementi fisici e olografici',
+        f'inquadratura cinematografica di {subject}, con statistiche raccontate attraverso cartelloni, monitor e oggetti dell ambiente',
     ]
-    return {'place':place,'source':source,'brawler':brawler,'concept':random.choice(concepts)}
+    return {'place':place,'source':source,'brawler':brawler,'brawler_reference':profile_brawler_reference(player),'concept':random.choice(concepts)}
 
 def build_visual_prompt(player, category='random'):
     scene=choose_scene(player,category)
     name=player.get('name') or 'Giocatore'; tag=player.get('tag') or ''
-    return (f"Crea una scena 3D cinematografica, realistica ma fedele all identita visiva di Brawl Stars. "
-            f"Ambientazione: {scene['place']}. Idea narrativa: {scene['concept']}. "
-            f"Profilo: {name} {tag}. Integra naturalmente il marchio TITANI ABUSIVI nell ambiente. "
-            "Illuminazione da film, profondita, volumetric light, materiali dettagliati, composizione dinamica, niente tabella piatta. "
-            "NON inventare o disegnare numeri/statistiche: saranno sovrapposti dal renderer dopo la generazione. "
-            "Lascia aree leggibili nella composizione per i dati reali."), scene
+    identity = scene['brawler'] or 'Brawler identificato dalla reference della foto profilo'
+    return (f"Crea una scena 3D cinematografica, realistica ma fedele a Brawl Stars. Ambientazione: {scene['place']}. "
+            f"Idea narrativa: {scene['concept']}. Profilo: {name} {tag}. Personaggio: {identity}. "
+            "REGOLA PRIORITARIA: il Brawler deve rimanere il piu fedele possibile al design originale della reference: "
+            "stesso volto, silhouette, colori, costume, accessori e caratteristiche distintive. Non sostituirlo con un personaggio simile e non ridisegnarlo liberamente. "
+            "La creativita deve riguardare posa, regia, ambiente, prospettiva, illuminazione ed effetti, non l identita del Brawler. "
+            "Integra naturalmente il marchio TITANI ABUSIVI nell ambiente. Illuminazione da film, profondita, volumetric light, materiali dettagliati, composizione dinamica, niente tabella piatta. "
+            "NON inventare o disegnare numeri/statistiche: saranno sovrapposti dal renderer dopo la generazione. Lascia aree leggibili nella composizione per i dati reali."), scene
