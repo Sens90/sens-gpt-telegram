@@ -602,7 +602,7 @@ def web_search(query):
             f"BrawlTrack tier list meta win rate Meta Usage Star Rate current maps team comps "
             f"latest balance changes competitive "
             f"gadget abilità stellare equipaggiamento overdrive nomi italiani "
-            f"Supercell italiano Brawlify Brawl Time Ninja Noff"
+            f"site:brawltrack.app OR site:brawlplanet.com"
         )
     elif is_image_subject_query:
         search_query = (
@@ -639,6 +639,22 @@ def web_search(query):
 
     response.raise_for_status()
     data = response.json()
+
+    if is_meta_query and not is_map_query:
+        # Meta is authoritative only when supported by BrawlTrack or Brawl Planet.
+        # Do not let Brawl Time Ninja/Brawlify/Noff statistics become a meta tier list.
+        allowed = []
+        for result in data.get("results", []):
+            url = (result.get("url") or "").casefold()
+            if "brawltrack.app" in url:
+                result["source_role"] = "primary_brawltrack"
+                allowed.append(result)
+            elif "brawlplanet.com" in url or "brawlplanet.nl" in url:
+                result["source_role"] = "fallback_brawlplanet"
+                allowed.append(result)
+        data["results"] = allowed
+        data["answer"] = None
+        data["meta_sources_verified"] = bool(allowed)
 
     if is_map_query:
         # BrawlTrack-first: extract the exact map pages returned by search.
