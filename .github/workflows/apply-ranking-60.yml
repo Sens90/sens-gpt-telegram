@@ -1,0 +1,38 @@
+name: Apply 60 player ranking
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-ranking-60.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Patch ranking limit
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('community_features.py')
+          s = p.read_text()
+          old = 'for index, row in enumerate(rows[:15], 1):'
+          new = 'for index, row in enumerate(rows[:60], 1):'
+          if old not in s:
+              raise SystemExit('ranking limit target not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+          python -m py_compile community_features.py
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add community_features.py
+          git commit -m "Show up to 60 players in community ranking"
+          git push origin main
