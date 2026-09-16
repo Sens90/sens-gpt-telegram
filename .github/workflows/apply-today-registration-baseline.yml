@@ -1,0 +1,31 @@
+name: Apply today registration baseline
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-today-registration-baseline.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch today baseline
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('app.py')
+          s = p.read_text()
+          old = '''    changes = {}\n\n    for key, target in targets.items():\n        old_value = trophy_value_at_or_before(\n            history,\n            target\n        )\n\n        changes[key] = (\n            current_trophies - old_value\n            if old_value is not None\n            else None\n        )\n\n    return changes\n'''
+          new = '''    changes = {}\n\n    for key, target in targets.items():\n        old_value = trophy_value_at_or_before(\n            history,\n            target\n        )\n\n        # On the first monitored day there may be no snapshot at/before\n        # midnight. In that case the registration/first snapshot of that\n        # Italian calendar day is the baseline for OGGI. This makes an\n        # immediate classifica query show positive or negative movement\n        # from the moment monitoring started, without pretending that the\n        # value existed at midnight.\n        if key == "today" and old_value is None:\n            for row in history:\n                try:\n                    dt = datetime.fromisoformat(\n                        row["recorded_at"].replace("Z", "+00:00")\n                    )\n                    if dt >= start_today:\n                        old_value = int(row["trophies"])\n                        break\n                except Exception:\n                    continue\n\n        changes[key] = (\n            current_trophies - old_value\n            if old_value is not None\n            else None\n        )\n\n    return changes\n'''
+          if old not in s:
+              raise SystemExit('calculate_trophy_changes anchor not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+          python -m py_compile app.py community_features.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.py
+          git commit -m 'Use first daily snapshot as first-day ranking baseline'
+          git push
