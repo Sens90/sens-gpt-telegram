@@ -336,6 +336,21 @@ class CommunityFeatures:
         "talenti": "TALENTI ABUSIVI", "talenti abusivi": "TALENTI ABUSIVI",
     }
 
+    # Graphic ranking cards use the matching Brawl Stars stat artwork when available.
+    # URLs are resolved at runtime by the card renderer; text output remains the fallback.
+    STAT_ICON_KEYS = {
+        "trofei": "trophy",
+        "brawler": "brawlers",
+        "livello": "experience",
+        "prestigio": "prestige",
+        "3v3": "3v3",
+        "solo": "solo",
+        "duo": "duo",
+        "classificata": "ranked",
+        "classificata stagione": "ranked",
+        "classificata carriera": "ranked",
+    }
+
     STAT_DEFS = {
         "trofei": ("trophies", "Trofei"),
         "brawler": ("brawlers", "Brawler"),
