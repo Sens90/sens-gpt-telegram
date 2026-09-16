@@ -1,0 +1,44 @@
+name: Apply community 3v3 ranking
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-community-3v3-ranking.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch community 3v3 ranking
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('community_features.py')
+          s = p.read_text()
+          anchor = '''    def ranking_text(self, chat_id, days=7):\n'''
+          method = '''    def wins_3v3_ranking_text(self, chat_id):\n        rows = []\n        for member in self.members(chat_id):\n            tag = member.get("player_tag")\n            if not tag:\n                continue\n            player = self.player_fetcher(tag)\n            if not player or player.get("wins_3v3") is None:\n                continue\n            try:\n                wins = int(player["wins_3v3"])\n            except (TypeError, ValueError):\n                continue\n            rows.append({\n                "name": player.get("name") or member.get("player_name") or member.get("display_name") or tag,\n                "wins": wins,\n            })\n        rows.sort(key=lambda row: row["wins"], reverse=True)\n        if not rows:\n            return "Non riesco a recuperare le vittorie 3v3 dei giocatori registrati in questo momento."\n        lines = ["CLASSIFICA COMMUNITY - VITTORIE 3V3", ""]\n        for index, row in enumerate(rows[:60], 1):\n            lines.append(\n                f"{index}. {row['name']} - {self.number_formatter(row['wins'])} vittorie"\n            )\n        return "\\n".join(lines)\n\n'''
+          if method not in s:
+              if anchor not in s:
+                  raise SystemExit('ranking_text anchor not found')
+              s = s.replace(anchor, method + anchor, 1)
+
+          cmd_anchor = '''        if ql == "classifica":\n'''
+          cmd = '''        if re.fullmatch(\n            r"classifica(?:\\s+(?:player|giocatori))?(?:\\s+(?:della\\s+)?community)?\\s+(?:per\\s+)?(?:vittorie\\s+)?3v3",\n            q,\n            re.I,\n        ):\n            await message.reply_text(self.wins_3v3_ranking_text(message.chat_id))\n            return True\n\n'''
+          if cmd not in s:
+              if cmd_anchor not in s:
+                  raise SystemExit('classifica command anchor not found')
+              s = s.replace(cmd_anchor, cmd + cmd_anchor, 1)
+
+          help_old = '''    "- classifica 7 / classifica 15 / classifica 30: crescita interna\\n"\n'''
+          help_new = help_old + '''    "- classifica 3v3: classifica community per vittorie 3v3\\n"\n'''
+          if help_new not in s and help_old in s:
+              s = s.replace(help_old, help_new, 1)
+          p.write_text(s)
+          PY
+          python -m py_compile app.py community_features.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add community_features.py
+          git commit -m 'Add community ranking by 3v3 wins'
+          git push
