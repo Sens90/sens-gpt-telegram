@@ -57,6 +57,7 @@ class CommunityFeatures:
         change_calculator,
         number_formatter,
         change_formatter,
+        snapshot_saver=None,
     ):
         self.supabase_url = (supabase_url or "").rstrip("/")
         self.supabase_key = supabase_key or ""
@@ -65,6 +66,7 @@ class CommunityFeatures:
         self.change_calculator = change_calculator
         self.number_formatter = number_formatter
         self.change_formatter = change_formatter
+        self.snapshot_saver = snapshot_saver
 
     @property
     def ready(self):
@@ -198,6 +200,11 @@ class CommunityFeatures:
             params={"on_conflict": "chat_id,telegram_user_id"},
             prefer="resolution=merge-duplicates,return=minimal",
         )
+        if self.snapshot_saver and player.get("trophies") is not None:
+            try:
+                self.snapshot_saver(player["tag"], player["name"], player["trophies"])
+            except Exception as exc:
+                print("ERRORE SNAPSHOT REGISTRAZIONE:", repr(exc), flush=True)
         return player
 
     def update_member_ranked(self, chat_id, user_id, ranked_current=None, ranked_peak=None):
@@ -241,7 +248,17 @@ class CommunityFeatures:
         player = self.player_fetcher(tag)
         if player and player.get("trophies") is not None:
             try:
-                return int(player["trophies"])
+                trophies = int(player["trophies"])
+                if self.snapshot_saver:
+                    try:
+                        self.snapshot_saver(
+                            player.get("tag") or tag,
+                            player.get("name") or member.get("player_name") or tag,
+                            trophies,
+                        )
+                    except Exception as exc:
+                        print("ERRORE SNAPSHOT LIVE:", repr(exc), flush=True)
+                return trophies
             except Exception:
                 pass
         history = self.history_fetcher(tag, days=120)

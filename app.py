@@ -2006,6 +2006,7 @@ community = CommunityFeatures(
     calculate_trophy_changes,
     format_number_it,
     format_trophy_change,
+    save_trophy_snapshot,
 )
 
 
