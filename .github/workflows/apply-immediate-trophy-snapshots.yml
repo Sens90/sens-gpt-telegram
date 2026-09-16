@@ -1,0 +1,62 @@
+name: Apply immediate trophy snapshots
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-immediate-trophy-snapshots.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch immediate snapshots
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # CommunityFeatures: allow registration and every successful live ranking read
+          # to persist a trophy snapshot immediately.
+          p = Path('community_features.py')
+          s = p.read_text()
+          old = '''        change_formatter,\n    ):\n'''
+          new = '''        change_formatter,\n        snapshot_saver=None,\n    ):\n'''
+          if old not in s:
+              raise SystemExit('constructor anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = '''        self.change_formatter = change_formatter\n'''
+          new = '''        self.change_formatter = change_formatter\n        self.snapshot_saver = snapshot_saver\n'''
+          if old not in s:
+              raise SystemExit('attribute anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = '''        self._post(\n            "community_members",\n            payload,\n            params={"on_conflict": "chat_id,telegram_user_id"},\n            prefer="resolution=merge-duplicates,return=minimal",\n        )\n        return player\n'''
+          new = '''        self._post(\n            "community_members",\n            payload,\n            params={"on_conflict": "chat_id,telegram_user_id"},\n            prefer="resolution=merge-duplicates,return=minimal",\n        )\n        if self.snapshot_saver and player.get("trophies") is not None:\n            try:\n                self.snapshot_saver(player["tag"], player["name"], player["trophies"])\n            except Exception as exc:\n                print("ERRORE SNAPSHOT REGISTRAZIONE:", repr(exc), flush=True)\n        return player\n'''
+          if old not in s:
+              raise SystemExit('registration anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = '''        if player and player.get("trophies") is not None:\n            try:\n                return int(player["trophies"])\n            except Exception:\n                pass\n'''
+          new = '''        if player and player.get("trophies") is not None:\n            try:\n                trophies = int(player["trophies"])\n                if self.snapshot_saver:\n                    try:\n                        self.snapshot_saver(\n                            player.get("tag") or tag,\n                            player.get("name") or member.get("player_name") or tag,\n                            trophies,\n                        )\n                    except Exception as exc:\n                        print("ERRORE SNAPSHOT LIVE:", repr(exc), flush=True)\n                return trophies\n            except Exception:\n                pass\n'''
+          if old not in s:
+              raise SystemExit('live trophy anchor not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          # app.py: inject the existing saver into CommunityFeatures.
+          p = Path('app.py')
+          s = p.read_text()
+          old = '''    format_number_it,\n    format_trophy_change,\n)\n'''
+          new = '''    format_number_it,\n    format_trophy_change,\n    save_trophy_snapshot,\n)\n'''
+          if old not in s:
+              raise SystemExit('community init anchor not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+          python -m py_compile app.py community_features.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.py community_features.py
+          git commit -m 'Save trophy snapshots immediately on registration and live reads'
+          git push
