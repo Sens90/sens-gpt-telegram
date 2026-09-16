@@ -1,0 +1,127 @@
+name: Fix all visual rankings and player stats outputs
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/fix-all-visual-player-outputs.yml']
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch visual output architecture
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('community_features.py'); s=p.read_text()
+          # Give app.py structured data instead of forcing text-only output.
+          if 'def stat_ranking_rows(' not in s:
+              anchor='    def stat_ranking_text(self, chat_id, stat_key, club_name=None):\n'
+              method='''    def stat_ranking_rows(self, chat_id, stat_key, club_name=None):
+        return self._stat_rows(chat_id, stat_key, club_name)
+
+'''
+              s=s.replace(anchor,method+anchor)
+          p.write_text(s)
+
+          p=Path('app.py'); a=p.read_text()
+          # Install one robust renderer independent from previous partial patches.
+          marker='def needs_web_search(question):'
+          block=r'''
+# ---- Unified Brawl Stars visual output ----
+def _bs_img(url, size):
+    try:
+        from PIL import Image
+        from io import BytesIO
+        if not url: return None
+        r=requests.get(url,timeout=7); r.raise_for_status()
+        im=Image.open(BytesIO(r.content)).convert("RGBA"); im.thumbnail((size,size)); return im
+    except Exception as e:
+        print("BS IMAGE:",repr(e),flush=True); return None
+
+BS_STAT_ICONS={
+ "trofei":"https://cdn.brawlify.com/icon/trophy.png",
+ "brawler":"https://cdn.brawlify.com/icon/brawler.png",
+ "livello":"https://cdn.brawlify.com/icon/level.png",
+ "prestigio":"https://cdn.brawlify.com/icon/prestige.png",
+ "3v3":"https://cdn.brawlify.com/icon/3v3.png",
+ "solo":"https://cdn.brawlify.com/icon/solo-showdown.png",
+ "duo":"https://cdn.brawlify.com/icon/duo-showdown.png",
+ "classificata":"https://cdn.brawlify.com/icon/ranked.png",
+ "classificata stagione":"https://cdn.brawlify.com/icon/ranked.png",
+ "classificata carriera":"https://cdn.brawlify.com/icon/ranked.png",
+}
+
+def _bs_font(size,bold=False):
+    from PIL import ImageFont
+    path="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    try:return ImageFont.truetype(path,size)
+    except:return ImageFont.load_default()
+
+def make_bs_stats_card(player, changes=None, title="STATISTICHE GIOCATORE"):
+    from PIL import Image,ImageDraw
+    from io import BytesIO
+    stats=[("trofei","Trofei",player.get("trophies")),("brawler","Brawler",player.get("brawlers")),("livello","Livello",player.get("level")),("prestigio","Prestigio",player.get("prestige")),("classificata","Ranked attuale",player.get("ranked_current")),("classificata stagione","Record stagione",player.get("ranked_season_peak")),("classificata carriera","Record massimo",player.get("ranked_career_peak") or player.get("ranked_peak")),("3v3","Vittorie 3v3",player.get("wins_3v3")),("solo","Vittorie Solo",player.get("wins_solo")),("duo","Vittorie Duo",player.get("wins_duo"))]
+    stats=[x for x in stats if x[2] is not None]
+    H=275+78*len(stats)+(230 if changes else 0); im=Image.new("RGB",(1080,H),(17,22,33)); d=ImageDraw.Draw(im)
+    prof=_bs_img(player.get("icon_url"),130)
+    if prof: im.paste(prof,(48,60),prof)
+    d.text((215,58),title,font=_bs_font(25),fill=(180,190,210)); d.text((215,100),str(player.get("name") or "Giocatore"),font=_bs_font(40,True),fill="white")
+    d.text((215,155),str(player.get("tag") or ""),font=_bs_font(25),fill=(190,200,215)); d.text((215,195),"Club: "+str(player.get("club_name") or "Senza club / non disponibile"),font=_bs_font(25),fill=(220,225,235))
+    y=260
+    for key,label,val in stats:
+        d.rounded_rectangle((42,y,1038,y+64),14,fill=(29,36,52)); ico=_bs_img(BS_STAT_ICONS.get(key),48)
+        if ico: im.paste(ico,(60,y+8),ico)
+        d.text((130,y+15),label,font=_bs_font(27),fill=(225,230,238)); txt=f"{val:,}".replace(",",".") if isinstance(val,int) else str(val); w=d.textbbox((0,0),txt,font=_bs_font(27,True))[2]; d.text((1005-w,y+15),txt,font=_bs_font(27,True),fill="white"); y+=78
+    if changes:
+        d.text((50,y+10),"ANDAMENTO TROFEI",font=_bs_font(28,True),fill="white"); y+=55
+        for label,val in changes:
+            d.text((70,y),label,font=_bs_font(24),fill=(205,215,228)); txt=str(val); w=d.textbbox((0,0),txt,font=_bs_font(24))[2]; d.text((1000-w,y),txt,font=_bs_font(24),fill="white"); y+=34
+    out=BytesIO(); im.save(out,"PNG"); out.seek(0); return out
+
+def make_bs_ranking_card(title,rows,stat_key):
+    from PIL import Image,ImageDraw
+    from io import BytesIO
+    W=1080; H=150+92*len(rows); im=Image.new("RGB",(W,H),(17,22,33)); d=ImageDraw.Draw(im); d.text((45,40),title,font=_bs_font(31,True),fill="white"); y=120
+    statico=_bs_img(BS_STAT_ICONS.get(stat_key),42)
+    for pos,row in enumerate(rows,1):
+        d.rounded_rectangle((35,y,1045,y+76),14,fill=(29,36,52)); d.text((52,y+20),str(pos),font=_bs_font(25,True),fill="white"); prof=_bs_img(row.get("icon_url"),56)
+        if prof: im.paste(prof,(105,y+10),prof)
+        d.text((180,y+20),str(row.get("name") or row.get("tag") or ""),font=_bs_font(25,True),fill="white")
+        if statico: im.paste(statico.copy(),(825,y+17),statico.copy())
+        val=row.get("value"); txt=f"{val:,}".replace(",",".") if isinstance(val,int) else str(val); w=d.textbbox((0,0),txt,font=_bs_font(25,True))[2]; d.text((1010-w,y+21),txt,font=_bs_font(25,True),fill="white"); y+=92
+    out=BytesIO(); im.save(out,"PNG"); out.seek(0); return out
+
+async def send_bs_stat_ranking(message,context,community,stat_key,club_name=None):
+    rows=community.stat_ranking_rows(message.chat_id,stat_key,club_name); label=community.STAT_DEFS.get(stat_key,(None,stat_key))[1]; scope=club_name or "COMMUNITY"
+    if not rows: await message.reply_text(f"Nessun dato disponibile per {label} in {scope}."); return
+    try:
+        for start in range(0,len(rows),10):
+            chunk=rows[start:start+10]; card=make_bs_ranking_card(f"CLASSIFICA {scope} - {label.upper()}",chunk,stat_key); await context.bot.send_photo(chat_id=message.chat_id,photo=card)
+    except Exception as e:
+        print("BS RANK CARD:",repr(e),flush=True); await message.reply_text(community.stat_ranking_text(message.chat_id,stat_key,club_name))
+
+'''
+          if 'def make_bs_stats_card(' not in a: a=a.replace(marker,block+marker)
+          p.write_text(a)
+          PY
+      - name: Patch command routing directly
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('community_features.py'); s=p.read_text()
+          # CommunityFeatures can't safely import app renderer. Instead mark visual ranking request in context for app wrapper.
+          if 'context.user_data["visual_stat_request"]' not in s:
+              s=s.replace('''    async def send_stat_ranking(self, message, context, stat_key, club_name=None):\n''','''    async def send_stat_ranking(self, message, context, stat_key, club_name=None):\n        context.user_data["visual_stat_request"]={"stat_key":stat_key,"club_name":club_name}\n''')
+          p.write_text(s)
+          PY
+      - name: Validate
+        run: python -m py_compile app.py community_features.py player_tracking.py
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.py community_features.py
+          git diff --cached --quiet && exit 0
+          git commit -m 'Unify visual stats and ranking cards'
+          git push
