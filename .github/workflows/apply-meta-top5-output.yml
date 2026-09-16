@@ -1,0 +1,31 @@
+name: Apply concise meta top 5 output
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-meta-top5-output.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make generic meta answer concise
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app.py')
+          s=p.read_text()
+          anchor='''                "- META GENERALE: per domande come 'chi è meta?', 'tier list', 'migliori brawler adesso' usa BrawlTrack come fonte primaria e confronta con gli ultimi bilanciamenti ufficiali Supercell; usa Brawl Planet solo come fallback.\\n"\n'''
+          addition='''                "- RISPOSTA META GENERICA: se l utente chiede semplicemente il meta attuale, chi è meta o i migliori Brawler senza specificare mappa, modalità, Ladder/Classificata o statistiche, mostra SOLO i 5 migliori Brawler verificabili, numerati da 1 a 5, senza percentuali, win rate, pick rate, utilizzo, Star Player, spiegazioni lunghe o altre metriche.\\n"\n                "- Dopo la Top 5 aggiungi una sola domanda breve: Vuoi sapere su quale mappa o modalità rendono meglio, distinguendo tra Ladder e Classificata, oppure vuoi le statistiche dettagliate di un Brawler?\\n"\n                "- Se l utente specifica mappa, modalità, Ladder o Classificata, rispondi direttamente nel contesto richiesto e non applicare il formato Top 5 generale quando servono dati contestuali.\\n"\n                "- Se l utente chiede statistiche dettagliate di un Brawler, allora puoi mostrare le metriche disponibili e verificate per quel Brawler, mantenendo separati Ladder e Classificata.\\n"\n'''
+          if anchor not in s:
+              raise SystemExit('meta general anchor not found')
+          s=s.replace(anchor, anchor+addition, 1)
+          p.write_text(s)
+          PY
+          python -m py_compile app.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.py
+          git commit -m 'Use concise top 5 for generic meta questions'
+          git push
