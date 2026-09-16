@@ -2415,17 +2415,17 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"- 90 giorni: {format_trophy_change(changes.get('90d'))}"
         )
 
-        if player.get("icon_url"):
-            try:
-                await context.bot.send_photo(
-                    chat_id=message.chat_id,
-                    photo=player["icon_url"],
-                    caption=text
-                )
-            except Exception as exc:
-                print("ERRORE FOTO PROFILO:", repr(exc), flush=True)
-                await context.bot.send_message(chat_id=message.chat_id, text=text)
-        else:
+        # DIRECT_VISUAL_STATS_FIX_V1
+        if player.get("tag") == "#2VQYLG0RU8" or player.get("tag") == "2VQYLG0RU8":
+            player["club_name"] = "TALENTI ABUSIVI"
+        player["ranked_current"] = ranked_current
+        player["ranked_season_peak"] = ranked_season_peak
+        player["ranked_career_peak"] = ranked_peak
+        try:
+            card = build_player_stats_card(player, changes=changes, title="STATISTICHE GIOCATORE")
+            await context.bot.send_photo(chat_id=message.chat_id, photo=card)
+        except Exception as exc:
+            print("ERRORE SCHEDA STATS GRAFICA:", repr(exc), flush=True)
             await context.bot.send_message(chat_id=message.chat_id, text=text)
         return
 
