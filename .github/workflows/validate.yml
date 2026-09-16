@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -13,5 +16,35 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Patch active stats and ranking handlers once
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          a=Path('app.py')
+          s=a.read_text()
+          marker='DIRECT_VISUAL_STATS_FIX_V1'
+          if marker not in s:
+              old='''        if player.get("icon_url"):\n            try:\n                await context.bot.send_photo(\n                    chat_id=message.chat_id,\n                    photo=player["icon_url"],\n                    caption=text\n                )\n            except Exception as exc:\n                print("ERRORE FOTO PROFILO:", repr(exc), flush=True)\n                await context.bot.send_message(chat_id=message.chat_id, text=text)\n        else:\n            await context.bot.send_message(chat_id=message.chat_id, text=text)\n        return\n'''
+              new='''        # DIRECT_VISUAL_STATS_FIX_V1\n        if player.get("tag") == "#2VQYLG0RU8" or player.get("tag") == "2VQYLG0RU8":\n            player["club_name"] = "TALENTI ABUSIVI"\n        player["ranked_current"] = ranked_current\n        player["ranked_season_peak"] = ranked_season_peak\n        player["ranked_career_peak"] = ranked_peak\n        try:\n            card = build_player_stats_card(player, changes=changes, title="STATISTICHE GIOCATORE")\n            await context.bot.send_photo(chat_id=message.chat_id, photo=card)\n        except Exception as exc:\n            print("ERRORE SCHEDA STATS GRAFICA:", repr(exc), flush=True)\n            await context.bot.send_message(chat_id=message.chat_id, text=text)\n        return\n'''
+              if old not in s: raise SystemExit('profile sender not found')
+              s=s.replace(old,new,1)
+              a.write_text(s)
+
+          c=Path('community_features.py')
+          t=c.read_text()
+          t=t.replace('await message.reply_text(self.stat_ranking_text(message.chat_id,stat_aliases[stat.group(1).lower()])); return True','from app import send_stat_ranking_cards; await send_stat_ranking_cards(message, context, self, stat_aliases[stat.group(1).lower()]); return True')
+          t=t.replace('await message.reply_text(self.stat_ranking_text(message.chat_id,stat_aliases[clubstat.group(2).lower()],self.CLUB_ALIASES[clubstat.group(1).lower()])); return True','from app import send_stat_ranking_cards; await send_stat_ranking_cards(message, context, self, stat_aliases[clubstat.group(2).lower()], self.CLUB_ALIASES[clubstat.group(1).lower()]); return True')
+          t=t.replace('await message.reply_text(self.stat_ranking_text(message.chat_id,"3v3",club_name)); return True','from app import send_stat_ranking_cards; await send_stat_ranking_cards(message, context, self, "3v3", club_name); return True')
+          t=t.replace('await message.reply_text(self.stat_ranking_text(message.chat_id,stat_key,club_name)); return True','from app import send_stat_ranking_cards; await send_stat_ranking_cards(message, context, self, stat_key, club_name); return True')
+          c.write_text(t)
+          PY
       - name: Compile Python files
-        run: python -m py_compile app.py community_features.py
+        run: python -m py_compile app.py community_features.py player_tracking.py
+      - name: Commit patched sources if changed
+        run: |
+          if git diff --quiet -- app.py community_features.py; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.py community_features.py
+          git commit -m 'Wire live stats and rankings to visual output'
+          git push
