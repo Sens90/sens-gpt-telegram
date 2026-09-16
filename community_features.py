@@ -370,7 +370,7 @@ class CommunityFeatures:
             if value is None: continue
             try: value=int(value)
             except (TypeError,ValueError): continue
-            rows.append({"name":player.get("name") or member.get("player_name") or member.get("display_name") or tag,"value":value})
+            rows.append({"name":player.get("name") or member.get("player_name") or member.get("display_name") or tag,"value":value,"tag":tag,"icon_url":player.get("icon_url")})
         rows.sort(key=lambda x:x["value"],reverse=True)
         return rows
 

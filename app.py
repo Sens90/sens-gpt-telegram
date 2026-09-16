@@ -2415,10 +2415,18 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"- 90 giorni: {format_trophy_change(changes.get('90d'))}"
         )
 
-        await context.bot.send_message(
-            chat_id=message.chat_id,
-            text=text
-        )
+        if player.get("icon_url"):
+            try:
+                await context.bot.send_photo(
+                    chat_id=message.chat_id,
+                    photo=player["icon_url"],
+                    caption=text
+                )
+            except Exception as exc:
+                print("ERRORE FOTO PROFILO:", repr(exc), flush=True)
+                await context.bot.send_message(chat_id=message.chat_id, text=text)
+        else:
+            await context.bot.send_message(chat_id=message.chat_id, text=text)
         return
 
     ranked_match = re.fullmatch(

@@ -76,6 +76,24 @@ def _legacy_enrichment(tag, timeout=15):
         return {}
 
 
+_ICON_CACHE = None
+
+def _profile_icon_url(icon_id, timeout=10):
+    global _ICON_CACHE
+    if icon_id is None:
+        return None
+    try:
+        if _ICON_CACHE is None:
+            r=requests.get("https://api.brawlapi.com/v1/icons", timeout=timeout)
+            r.raise_for_status()
+            _ICON_CACHE=(r.json() or {}).get("player", {})
+        item=_ICON_CACHE.get(str(icon_id)) or {}
+        return item.get("imageUrl") or item.get("imageUrl2")
+    except Exception as exc:
+        print("ERRORE ICONA PROFILO:", repr(exc), flush=True)
+        return None
+
+
 def get_brawltrack_player(player_tag, timeout=20):
     """Runtime player source. Supercell official is authoritative for every field it exposes."""
     tag = str(player_tag or "").upper().replace("#", "").strip()
@@ -109,6 +127,9 @@ def get_brawltrack_player(player_tag, timeout=20):
         club_name = club.get("name") or None
         club_tag = _clean_tag(club.get("tag"))
         brawlers = data.get("brawlers") if isinstance(data.get("brawlers"), list) else []
+        icon_data = data.get("icon") if isinstance(data.get("icon"), dict) else {}
+        icon_id = _number(icon_data.get("id"))
+        icon_url = _profile_icon_url(icon_id)
 
         # The old profile renderer prints only the `club` field. Include a newline
         # so Tag club is visible until all legacy renderers are removed.
@@ -128,6 +149,8 @@ def get_brawltrack_player(player_tag, timeout=20):
             "club": club_display,
             "club_name": club_name,
             "club_tag": club_tag,
+            "icon_id": icon_id,
+            "icon_url": icon_url,
             "source": "Supercell Official API",
         }
         # Ranked/Prestigio are not supplied by the official player endpoint.
