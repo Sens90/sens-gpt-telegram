@@ -1,205 +1,115 @@
 name: Apply all community and club stat rankings
 
 on:
-  push:
-    paths:
-      - '.github/workflows/apply-all-community-stat-rankings.yml'
   workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   patch:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'Fix stat rankings workflow trigger')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Patch community statistics
+        shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
           p = Path('community_features.py')
           s = p.read_text()
-
           marker = '    def wins_3v3_ranking_text(self, chat_id):\n'
           if marker not in s:
               raise SystemExit('wins_3v3 marker not found')
-
           block = '''    CLUB_ALIASES = {
-        "titani": "TITANI ABUSIVI",
-        "titani abusivi": "TITANI ABUSIVI",
-        "tamarri": "TAMARRI ABUSIVI",
-        "tamarri abusivi": "TAMARRI ABUSIVI",
-        "tornadi": "TORNADI ABUSIVI",
-        "tornadi abusivi": "TORNADI ABUSIVI",
-        "talenti": "TALENTI ABUSIVI",
-        "talenti abusivi": "TALENTI ABUSIVI",
+        "titani": "TITANI ABUSIVI", "titani abusivi": "TITANI ABUSIVI",
+        "tamarri": "TAMARRI ABUSIVI", "tamarri abusivi": "TAMARRI ABUSIVI",
+        "tornadi": "TORNADI ABUSIVI", "tornadi abusivi": "TORNADI ABUSIVI",
+        "talenti": "TALENTI ABUSIVI", "talenti abusivi": "TALENTI ABUSIVI",
     }
 
     STAT_DEFS = {
-        "trofei": ("trophies", "Trofei"),
-        "brawler": ("brawlers", "Brawler"),
-        "livello": ("level", "Livello account"),
-        "prestigio": ("prestige", "Prestigio"),
-        "3v3": ("wins_3v3", "Vittorie 3v3"),
-        "solo": ("wins_solo", "Vittorie Solo"),
-        "duo": ("wins_duo", "Vittorie Duo"),
-        "elo": ("ranked_current_elo", "ELO Classificata attuale"),
+        "trofei": ("trophies", "Trofei"), "brawler": ("brawlers", "Brawler"),
+        "livello": ("level", "Livello account"), "prestigio": ("prestige", "Prestigio"),
+        "3v3": ("wins_3v3", "Vittorie 3v3"), "solo": ("wins_solo", "Vittorie Solo"),
+        "duo": ("wins_duo", "Vittorie Duo"), "elo": ("ranked_current_elo", "ELO Classificata attuale"),
         "elo stagione": ("ranked_season_peak_elo", "Record ELO stagione"),
         "elo carriera": ("ranked_career_peak_elo", "Record ELO carriera"),
     }
 
     def _club_name_from_player(self, player):
-        if not player:
-            return None
-        value = player.get("club_name") or player.get("club")
-        if isinstance(value, dict):
-            value = value.get("name")
+        value = (player or {}).get("club_name") or (player or {}).get("club")
+        if isinstance(value, dict): value = value.get("name")
         return str(value).strip() if value else None
 
     def _stat_rows(self, chat_id, stat_key, club_name=None):
         definition = self.STAT_DEFS.get(stat_key)
-        if not definition:
-            return []
+        if not definition: return []
         field, _ = definition
         rows = []
         for member in self.members(chat_id):
             tag = member.get("player_tag")
-            if not tag:
-                continue
+            if not tag: continue
             player = self.player_fetcher(tag)
-            if not player:
-                continue
+            if not player: continue
             actual_club = self._club_name_from_player(player)
-            if club_name and (actual_club or "").casefold() != club_name.casefold():
-                continue
+            if club_name and (actual_club or "").casefold() != club_name.casefold(): continue
             value = player.get(field)
-            if value is None:
-                continue
-            try:
-                value = int(value)
-            except (TypeError, ValueError):
-                continue
-            rows.append({
-                "name": player.get("name") or member.get("player_name") or member.get("display_name") or tag,
-                "tag": tag,
-                "value": value,
-                "club": actual_club,
-            })
+            if value is None: continue
+            try: value = int(value)
+            except (TypeError, ValueError): continue
+            rows.append({"name": player.get("name") or member.get("player_name") or member.get("display_name") or tag, "value": value})
         rows.sort(key=lambda row: row["value"], reverse=True)
         return rows
 
     def stat_ranking_text(self, chat_id, stat_key, club_name=None):
         definition = self.STAT_DEFS.get(stat_key)
-        if not definition:
-            return "Statistica non riconosciuta."
+        if not definition: return "Statistica non riconosciuta."
         _, label = definition
-        rows = self._stat_rows(chat_id, stat_key, club_name=club_name)
+        rows = self._stat_rows(chat_id, stat_key, club_name)
         scope = club_name or "COMMUNITY"
-        if not rows:
-            if club_name:
-                return f"Nessun dato disponibile per {label} in {club_name}. Il club deve essere leggibile dalla sorgente live."
-            return f"Non riesco a recuperare dati per {label} in questo momento."
+        if not rows: return f"Nessun dato disponibile per {label} in {scope}."
         lines = [f"CLASSIFICA {scope} - {label.upper()}", ""]
-        for index, row in enumerate(rows[:60], 1):
-            lines.append(f"{index}. {row['name']} - {self.number_formatter(row['value'])}")
+        lines += [f"{i}. {row['name']} - {self.number_formatter(row['value'])}" for i, row in enumerate(rows[:60], 1)]
         return "\\n".join(lines)
 
     def all_stats_text(self, chat_id, club_name=None):
         scope = club_name or "COMMUNITY"
         lines = [f"STATISTICHE E CLASSIFICHE - {scope}", ""]
         for key, (_, label) in self.STAT_DEFS.items():
-            rows = self._stat_rows(chat_id, key, club_name=club_name)
-            if not rows:
-                continue
-            leader = rows[0]
-            lines.append(f"{label}: 1° {leader['name']} - {self.number_formatter(leader['value'])}")
-        lines.extend([
-            "",
-            "Puoi aprire una classifica completa scrivendo, ad esempio:",
-            "classifica 3v3 | classifica solo | classifica duo | classifica trofei | classifica prestigio",
-            "oppure aggiungi il club: classifica titani 3v3, classifica tamarri trofei, classifica tornadi prestigio, classifica talenti duo.",
-        ])
+            rows = self._stat_rows(chat_id, key, club_name)
+            if rows: lines.append(f"{label}: 1° {rows[0]['name']} - {self.number_formatter(rows[0]['value'])}")
+        lines += ["", "Classifiche disponibili: trofei, Brawler, livello, prestigio, 3v3, Solo, Duo, ELO, ELO stagione, ELO carriera.", "Aggiungi titani, tamarri, tornadi o talenti per filtrare il singolo club."]
         return "\\n".join(lines)
 
 '''
           if '    CLUB_ALIASES = {' not in s:
               s = s.replace(marker, block + marker)
 
-          start = s.index('        if re.fullmatch(\n            r"classifica(?:\\s+(?:player|giocatori))?')
+          old_start = '        if re.fullmatch(\n            r"classifica(?:\\s+(?:player|giocatori))?'
+          start = s.index(old_start)
           end = s.index('        if ql == "classifica":', start)
-          replacement = '''        # Le richieste di classifiche/statistiche interne sono gestite qui e non
-        # devono mai finire al motore meta/web.
-        stat_aliases = {
-            "3v3": "3v3", "vittorie 3v3": "3v3",
-            "solo": "solo", "vittorie solo": "solo",
-            "duo": "duo", "vittorie duo": "duo",
-            "trofei": "trofei", "coppe": "trofei",
-            "brawler": "brawler", "brawlers": "brawler",
-            "livello": "livello", "livello account": "livello",
-            "prestigio": "prestigio",
-            "elo": "elo", "elo attuale": "elo",
-            "elo stagione": "elo stagione", "record elo stagione": "elo stagione",
-            "elo carriera": "elo carriera", "record elo carriera": "elo carriera",
-        }
-
+          replacement = '''        stat_aliases = {"3v3":"3v3","vittorie 3v3":"3v3","solo":"solo","vittorie solo":"solo","duo":"duo","vittorie duo":"duo","trofei":"trofei","coppe":"trofei","brawler":"brawler","brawlers":"brawler","livello":"livello","livello account":"livello","prestigio":"prestigio","elo":"elo","elo attuale":"elo","elo stagione":"elo stagione","record elo stagione":"elo stagione","elo carriera":"elo carriera","record elo carriera":"elo carriera"}
         if ql in ("statistiche", "stats community", "statistiche community", "tutte le statistiche", "tutte le classifiche"):
-            await message.reply_text(self.all_stats_text(message.chat_id))
-            return True
-
-        all_club_match = re.fullmatch(
-            r"(?:statistiche|stats|tutte le statistiche|tutte le classifiche)(?:\\s+(?:del|dei|di))?\\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)",
-            q,
-            re.I,
-        )
+            await message.reply_text(self.all_stats_text(message.chat_id)); return True
+        all_club_match = re.fullmatch(r"(?:statistiche|stats|tutte le statistiche|tutte le classifiche)(?:\\s+(?:del|dei|di))?\\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)", q, re.I)
         if all_club_match:
-            club_name = self.CLUB_ALIASES.get(all_club_match.group(1).lower())
-            await message.reply_text(self.all_stats_text(message.chat_id, club_name=club_name))
-            return True
-
-        stat_match = re.fullmatch(
-            r"classific(?:a|he)(?:\\s+(?:player|giocatori))?(?:\\s+(?:della\\s+)?community)?(?:\\s+(?:per|di))?\\s+(3v3|vittorie 3v3|solo|vittorie solo|duo|vittorie duo|trofei|coppe|brawlers?|livello(?: account)?|prestigio|elo(?: attuale)?|elo stagione|record elo stagione|elo carriera|record elo carriera)",
-            q,
-            re.I,
-        )
+            await message.reply_text(self.all_stats_text(message.chat_id, self.CLUB_ALIASES[all_club_match.group(1).lower()])); return True
+        stat_match = re.fullmatch(r"classific(?:a|he)(?:\\s+(?:player|giocatori))?(?:\\s+(?:della\\s+)?community)?(?:\\s+(?:per|di))?\\s+(3v3|vittorie 3v3|solo|vittorie solo|duo|vittorie duo|trofei|coppe|brawlers?|livello(?: account)?|prestigio|elo(?: attuale)?|elo stagione|record elo stagione|elo carriera|record elo carriera)", q, re.I)
         if stat_match:
-            stat_key = stat_aliases[stat_match.group(1).lower()]
-            await message.reply_text(self.stat_ranking_text(message.chat_id, stat_key))
-            return True
-
-        club_stat_match = re.fullmatch(
-            r"classific(?:a|he)\\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)(?:\\s+(?:per|di))?\\s+(3v3|vittorie 3v3|solo|vittorie solo|duo|vittorie duo|trofei|coppe|brawlers?|livello(?: account)?|prestigio|elo(?: attuale)?|elo stagione|record elo stagione|elo carriera|record elo carriera)",
-            q,
-            re.I,
-        )
+            await message.reply_text(self.stat_ranking_text(message.chat_id, stat_aliases[stat_match.group(1).lower()])); return True
+        club_stat_match = re.fullmatch(r"classific(?:a|he)\\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)(?:\\s+(?:per|di))?\\s+(3v3|vittorie 3v3|solo|vittorie solo|duo|vittorie duo|trofei|coppe|brawlers?|livello(?: account)?|prestigio|elo(?: attuale)?|elo stagione|record elo stagione|elo carriera|record elo carriera)", q, re.I)
         if club_stat_match:
-            club_name = self.CLUB_ALIASES.get(club_stat_match.group(1).lower())
-            stat_key = stat_aliases[club_stat_match.group(2).lower()]
-            await message.reply_text(self.stat_ranking_text(message.chat_id, stat_key, club_name=club_name))
-            return True
-
-        # Safety net specifico: qualsiasi frase che contenga classifica/classifiche
-        # e 3v3 viene intercettata qui. Non può essere interpretata come richiesta meta.
+            await message.reply_text(self.stat_ranking_text(message.chat_id, stat_aliases[club_stat_match.group(2).lower()], self.CLUB_ALIASES[club_stat_match.group(1).lower()])); return True
         if re.search(r"\\bclassific(?:a|he)\\b", ql) and "3v3" in ql:
-            club_name = None
-            for alias, canonical in self.CLUB_ALIASES.items():
-                if alias in ql:
-                    club_name = canonical
-                    break
-            await message.reply_text(self.stat_ranking_text(message.chat_id, "3v3", club_name=club_name))
-            return True
+            club_name = next((canonical for alias, canonical in self.CLUB_ALIASES.items() if alias in ql), None)
+            await message.reply_text(self.stat_ranking_text(message.chat_id, "3v3", club_name)); return True
 
 '''
           s = s[:start] + replacement + s[end:]
-
-          # Help text: expose all available ranking families.
-          s = s.replace(
-              '    "- classifica 3v3: classifica community per vittorie 3v3\\n"',
-              '    "- classifiche statistiche: trofei, Brawler, livello, prestigio, vittorie 3v3, Solo, Duo, ELO attuale, record ELO stagione e carriera\\n"\n'
-              '    "- statistiche community / statistiche titani|tamarri|tornadi|talenti: riepilogo di tutte le statistiche disponibili\\n"\n'
-              '    "- ogni classifica statistica può essere filtrata per TITANI, TAMARRI, TORNADI o TALENTI ABUSIVI\\n"'
-          )
-
           p.write_text(s)
           PY
           python -m py_compile app.py community_features.py player_tracking.py
