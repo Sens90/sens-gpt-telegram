@@ -238,14 +238,18 @@ class CommunityFeatures:
         tag = member.get("player_tag")
         if not tag:
             return None
+        # Per le richieste dell'utente usa sempre il valore live.
+        # Lo storico resta il riferimento per oggi/7/15/30/90 giorni.
+        player = self.player_fetcher(tag)
+        if player and player.get("trophies") is not None:
+            return int(player["trophies"])
         history = self.history_fetcher(tag, days=120)
         if history:
             try:
                 return int(history[-1]["trophies"])
             except Exception:
                 pass
-        player = self.player_fetcher(tag)
-        return player.get("trophies") if player else None
+        return None
 
     def ranking(self, chat_id, days=7):
         rows = []
@@ -264,17 +268,22 @@ class CommunityFeatures:
                 30: "30d",
             }.get(days, "7d")
             delta = changes.get(key)
-            if delta is None:
-                delta = 0
             rows.append(
                 {
                     "name": member.get("player_name") or member.get("display_name") or tag,
                     "tag": tag,
                     "current": current,
-                    "delta": int(delta),
+                    "delta": int(delta) if delta is not None else None,
                 }
             )
-        rows.sort(key=lambda x: (x["delta"], x["current"]), reverse=True)
+        rows.sort(
+            key=lambda x: (
+                x["delta"] is not None,
+                x["delta"] if x["delta"] is not None else 0,
+                x["current"],
+            ),
+            reverse=True,
+        )
         return rows
 
     def ranking_text(self, chat_id, days=7):
@@ -284,12 +293,16 @@ class CommunityFeatures:
                 "Non ho ancora abbastanza giocatori registrati/storico trofei. "
                 "Ogni membro può usare: registrami #TAG"
             )
-        lines = [f"CLASSIFICA TITANI ABUSIVI - {days} GIORNI", ""]
+        lines = [f"CLASSIFICA COMMUNITY - {days} GIORNI", ""]
         for index, row in enumerate(rows[:15], 1):
-            sign = "+" if row["delta"] > 0 else ""
+            if row["delta"] is None:
+                delta_text = f"storico {days}g non ancora disponibile"
+            else:
+                sign = "+" if row["delta"] > 0 else ""
+                delta_text = f"{sign}{row['delta']}"
             lines.append(
                 f"{index}. {row['name']} - {self.number_formatter(row['current'])} "
-                f"({sign}{row['delta']})"
+                f"({delta_text})"
             )
         return "\n".join(lines)
 
@@ -298,8 +311,9 @@ class CommunityFeatures:
         registered = [m for m in members if m.get("player_tag")]
         ranking7 = self.ranking(chat_id, 7)
         total = sum(r["current"] for r in ranking7)
-        growth7 = sum(r["delta"] for r in ranking7)
-        top = ranking7[:3]
+        valid_growth = [r for r in ranking7 if r["delta"] is not None]
+        growth7 = sum(r["delta"] for r in valid_growth)
+        top = valid_growth[:3]
         lines = [
             "COMMUNITY ABUSIVI - PROFILO CLUB",
             "Ordine club: TITANI ABUSIVI > TAMARRI ABUSIVI > TORNADI ABUSIVI > TALENTI ABUSIVI",
@@ -311,7 +325,8 @@ class CommunityFeatures:
             lines.extend(
                 [
                     f"Trofei registrati complessivi: {self.number_formatter(total)}",
-                    f"Crescita complessiva 7 giorni: {'+' if growth7 > 0 else ''}{growth7}",
+                    (f"Crescita complessiva 7 giorni: {'+' if growth7 > 0 else ''}{growth7}"
+                     if valid_growth else "Crescita complessiva 7 giorni: storico non ancora disponibile"),
                     "",
                     "Top crescita 7 giorni:",
                 ]
