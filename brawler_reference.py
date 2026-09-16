@@ -9,6 +9,27 @@ BRAWLZONE_PLAYER_URL = "https://brawlzone.net/player/{tag}"
 _brawlers_cache = None
 _icons_cache = None
 
+# Alias italiani/varianti usate dalla community. I nomi dei Brawler in gioco
+# normalmente coincidono con quelli canonici, ma questo strato rende il comando
+# tollerante a forme italianizzate e varianti comuni senza cambiare la reference.
+BRAWLER_ALIASES_IT = {
+    "bombardino": "Berry",
+    "corvo": "Crow",
+    "dinamike": "Dynamike",
+    "dinamite": "Dynamike",
+    "elprimo": "El Primo",
+    "franco": "Frank",
+    "grommo": "Grom",
+    "leone": "Leon",
+    "mortisio": "Mortis",
+    "signorp": "Mr. P",
+    "misterp": "Mr. P",
+    "otto bit": "8-Bit",
+    "ottobit": "8-Bit",
+    "otto-bit": "8-Bit",
+    "spina": "Spike",
+}
+
 
 def _norm(value):
     value = unicodedata.normalize("NFKD", str(value or ""))
@@ -33,9 +54,20 @@ def _brawler_by_name(name, brawlers):
     wanted = _norm(name)
     if not wanted:
         return None
+
+    # Prima prova il nome canonico restituito dalla sorgente.
     for item in brawlers:
         if wanted in {_norm(item.get("name")), _norm(item.get("path")), _norm(item.get("hash"))}:
             return item
+
+    # Poi risolve gli alias italiani verso lo stesso Brawler canonico.
+    aliases = {_norm(alias): canonical for alias, canonical in BRAWLER_ALIASES_IT.items()}
+    canonical = aliases.get(wanted)
+    if canonical:
+        canonical_norm = _norm(canonical)
+        for item in brawlers:
+            if canonical_norm == _norm(item.get("name")):
+                return item
     return None
 
 
@@ -65,11 +97,7 @@ def _apply_brawler(player, brawler):
 
 
 def _icon_id_from_brawlzone(tag, timeout=15):
-    """Best-effort recovery when the official proxy is unavailable.
-
-    BrawlZone renders public Supercell player data. We only extract the public
-    profile-icon id/asset reference; no stats are inferred here.
-    """
+    """Best-effort recovery when the official proxy is unavailable."""
     clean_tag = str(tag or "").upper().replace("#", "").strip()
     if not clean_tag:
         return None
@@ -96,18 +124,14 @@ def _icon_id_from_brawlzone(tag, timeout=15):
 
 
 def resolve_ai_brawler_reference(player, requested_brawler=None, timeout=15):
-    """Attach a real Brawler visual reference to a player dict.
-
-    Manual selection has priority. Otherwise resolve the player's profile icon
-    to its associated Brawler through BrawlAPI. Returns (ok, message).
-    """
+    """Attach a real Brawler visual reference to a player dict."""
     try:
         brawlers, icons = _catalog(timeout=timeout)
 
         if requested_brawler:
             brawler = _brawler_by_name(requested_brawler, brawlers)
             if not brawler:
-                return False, f"Brawler '{requested_brawler}' non trovato."
+                return False, f"Brawler '{requested_brawler}' non trovato. Usa il nome italiano o quello ufficiale del Brawler."
             return (_apply_brawler(player, brawler), None)
 
         icon_id = player.get("icon_id")
@@ -122,8 +146,6 @@ def resolve_ai_brawler_reference(player, requested_brawler=None, timeout=15):
             brawler = _brawler_by_id(icon.get("brawler"), brawlers)
             if brawler and _apply_brawler(player, brawler):
                 return True, None
-            # Some profile icons are not tied to a Brawler. The real icon is
-            # still a valid visual reference; never substitute a random Brawler.
             if player.get("profile_icon_url"):
                 return True, None
 
