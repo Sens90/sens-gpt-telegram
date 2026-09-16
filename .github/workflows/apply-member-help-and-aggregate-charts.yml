@@ -1,0 +1,52 @@
+name: Apply member help and aggregate charts
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-member-help-and-aggregate-charts.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch member commands and aggregate charts
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('community_features.py')
+          s=p.read_text()
+          start=s.index('HELP_TEXT = (')
+          end=s.index('\n\n\nclass CommunityFeatures:', start)
+          help_text='''HELP_TEXT = """COMANDI SENS GPT - SOCI\n\nACCOUNT E PROFILO\n- registrami #TAG — collega il tuo account Brawl Stars\n- profilo #TAG / stats #TAG — scheda completa del giocatore\n- ranked #TAG — Classificata attuale e record\n- storico ranked #TAG — ultime variazioni della Classificata\n\nCLASSIFICHE COMMUNITY\n- classifica — mostra i periodi disponibili\n- classifica oggi / 7 / 15 / 30 — andamento trofei\n- classifica trofei\n- classifica brawler\n- classifica livello\n- classifica prestigio\n- classifica 3v3\n- classifica solo\n- classifica duo\n- classifica elo\n- classifica elo stagione\n- classifica elo carriera\n- statistiche / tutte le classifiche — riepilogo statistiche\n\nCLASSIFICHE DEI 4 CLUB\nAggiungi titani, tamarri, tornadi o talenti alla classifica.\nEsempi: classifica titani 3v3; classifica tamarri trofei; classifica tornadi prestigio; classifica talenti duo.\n- statistiche titani / tamarri / tornadi / talenti — riepilogo del club\n\nGRAFICI\n- grafico 7|15|30|90 #TAG — andamento di un giocatore\n- grafico community 7|15|30|90 — totale giocatori registrati\n- grafico titani 7|15|30|90\n- grafico tamarri 7|15|30|90\n- grafico tornadi 7|15|30|90\n- grafico talenti 7|15|30|90\n\nCOMMUNITY\n- club — riepilogo community\n- elenco registrati — account collegati\n- inattivi — situazione inattività visibile dal bot\n- assenza N — segnala N giorni di assenza\n- eventi — eventi aperti\n- partecipo ID — conferma partecipazione\n- regole / faq — regolamento\n- sito — sito ufficiale\n- discord — server Discord\n\nBRAWL STARS\nPuoi inoltre chiedere direttamente a Sens GPT meta, mappe, composizioni, Ladder o Classificata, Brawler, configurazioni, gadget, abilità stellari, equipaggiamenti, overdrive e consigli su cosa pushare.\n\nScrivi comandi in qualsiasi momento per rivedere questa guida."""'''
+          s=s[:start]+help_text+s[end:]
+          p.write_text(s)
+
+          p=Path('app.py')
+          s=p.read_text()
+          func_marker='\ndef get_brawlzone_player(player_tag):\n'
+          aggregate_func='''\ndef create_aggregate_trophy_chart(scope_name, member_histories, days=30):\n    try:\n        cutoff = datetime.now(timezone.utc) - timedelta(days=days)\n        daily = {}\n        for history in member_histories:\n            per_day = {}\n            for row in history or []:\n                try:\n                    dt = datetime.fromisoformat(row["recorded_at"].replace("Z", "+00:00"))\n                    if dt < cutoff:\n                        continue\n                    per_day[dt.date()] = int(row["trophies"])\n                except Exception:\n                    continue\n            for day, value in per_day.items():\n                daily.setdefault(day, []).append(value)\n        points = sorted((day, sum(values)) for day, values in daily.items() if values)\n        if len(points) < 2:\n            return None\n        dates=[datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc) for day,_ in points]\n        totals=[value for _,value in points]\n        fig,ax=plt.subplots(figsize=(10,5))\n        ax.plot(dates, totals, marker="o", linewidth=2)\n        ax.set_title(f"Andamento trofei - {scope_name}")\n        ax.set_xlabel("Data"); ax.set_ylabel("Trofei totali"); ax.grid(True, alpha=0.3)\n        ax.xaxis.set_major_formatter(mdates.DateFormatter("%d/%m"))\n        margin=max(50,int((max(totals)-min(totals))*0.20)) if max(totals)!=min(totals) else 50\n        ax.set_ylim(min(totals)-margin,max(totals)+margin)\n        fig.autofmt_xdate(); fig.tight_layout()\n        image=io.BytesIO(); fig.savefig(image,format="png",dpi=150); plt.close(fig)\n        image.seek(0); image.name="andamento_community.png"\n        return image\n    except Exception as e:\n        print("ERRORE GRAFICO AGGREGATO:",repr(e),flush=True); return None\n\n'''
+          if 'def create_aggregate_trophy_chart(' not in s:
+              s=s.replace(func_marker, aggregate_func+func_marker)
+
+          route_marker='    stats_match = re.fullmatch(\n'
+          route='''    aggregate_chart_match = re.fullmatch(\n        r"grafico\\s+(community|titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)(?:\\s+(7|15|30|90))?",\n        question.strip(), re.I\n    )\n    if aggregate_chart_match:\n        scope_key=aggregate_chart_match.group(1).lower()\n        days=int(aggregate_chart_match.group(2) or 30)\n        club_name=None if scope_key=="community" else community.CLUB_ALIASES.get(scope_key)\n        histories=[]\n        included=0\n        for member in community.members(message.chat_id):\n            tag=member.get("player_tag")\n            if not tag: continue\n            if club_name:\n                player=get_brawlzone_player(tag)\n                actual=community._club_name_from_player(player) if player else None\n                if (actual or "").casefold()!=club_name.casefold(): continue\n            history=get_trophy_history(tag,days=max(days,90))\n            if history:\n                histories.append(history); included+=1\n        chart=create_aggregate_trophy_chart(club_name or "COMMUNITY ABUSIVI",histories,days)\n        if not chart:\n            await message.reply_text(f"Non ci sono ancora abbastanza dati per il grafico degli ultimi {days} giorni.")\n            return\n        await context.bot.send_photo(chat_id=message.chat_id,photo=chart,caption=f"Andamento trofei - {club_name or 'COMMUNITY ABUSIVI'}\\nPeriodo: ultimi {days} giorni\\nGiocatori inclusi: {included}")\n        return\n\n'''
+          if 'aggregate_chart_match = re.fullmatch(' not in s:
+              if route_marker not in s: raise SystemExit('route marker missing')
+              s=s.replace(route_marker,route+route_marker,1)
+          p.write_text(s)
+          PY
+          python -m py_compile app.py community_features.py player_tracking.py
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.py community_features.py
+          git diff --cached --quiet && exit 0
+          git commit -m 'Add member command guide and aggregate trophy charts'
+          git push
