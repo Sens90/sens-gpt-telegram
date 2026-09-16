@@ -297,7 +297,7 @@ class CommunityFeatures:
             )
         period_label = "OGGI" if days == 0 else f"{days} GIORNI"
         lines = [f"CLASSIFICA COMMUNITY - {period_label}", ""]
-        for index, row in enumerate(rows[:15], 1):
+        for index, row in enumerate(rows[:60], 1):
             if row["delta"] is None:
                 delta_text = "storico di oggi non disponibile" if days == 0 else f"storico {days}g non ancora disponibile"
             else:
