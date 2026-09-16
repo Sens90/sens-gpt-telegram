@@ -34,7 +34,7 @@ def _month_key():
 def quota_status(telegram_user_id):
     base = (os.environ.get("SUPABASE_URL") or "").rstrip("/")
     if not base:
-        return {"unlimited": False, "premium": False, "used": 0, "limit": MONTHLY_LIMIT}
+        return {"unlimited": False, "premium": False, "used": 0, "base_limit": MONTHLY_LIMIT, "extra": 0, "limit": MONTHLY_LIMIT}
     headers = _supabase_headers()
     privileged = requests.get(
         f"{base}/rest/v1/ai_profile_privileged_users",
@@ -51,7 +51,16 @@ def quota_status(telegram_user_id):
     usage.raise_for_status()
     rows = usage.json()
     used = int(rows[0]["successful_generations"]) if rows else 0
-    return {"unlimited": False, "premium": premium, "used": used, "limit": PREMIUM_MONTHLY_LIMIT if premium else MONTHLY_LIMIT}
+    bonus = requests.get(
+        f"{base}/rest/v1/ai_profile_quota_bonus",
+        params={"telegram_user_id": f"eq.{int(telegram_user_id)}", "select": "permanent_extra", "limit": "1"},
+        headers=headers, timeout=10,
+    )
+    bonus.raise_for_status()
+    bonus_rows = bonus.json()
+    extra = int(bonus_rows[0]["permanent_extra"]) if bonus_rows else 0
+    base_limit = PREMIUM_MONTHLY_LIMIT if premium else MONTHLY_LIMIT
+    return {"unlimited": False, "premium": premium, "used": used, "base_limit": base_limit, "extra": extra, "limit": base_limit + extra}
 
 
 def consume_quota(telegram_user_id):
@@ -96,18 +105,10 @@ def generate_scene(player, category="random"):
             {"text": full_prompt},
             {"inline_data": {"mime_type": mime_type, "data": image_b64}},
         ]}],
-        "generationConfig": {
-            "responseModalities": ["TEXT", "IMAGE"],
-            "imageConfig": {"imageSize": "1K"},
-        },
+        "generationConfig": {"responseModalities": ["TEXT", "IMAGE"], "imageConfig": {"imageSize": "1K"}},
     }
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_IMAGE_MODEL}:generateContent"
-    response = requests.post(
-        url,
-        headers={"x-goog-api-key": _gemini_key(), "Content-Type": "application/json"},
-        json=payload,
-        timeout=180,
-    )
+    response = requests.post(url, headers={"x-goog-api-key": _gemini_key(), "Content-Type": "application/json"}, json=payload, timeout=180)
     if response.status_code >= 400:
         raise RuntimeError(f"Gemini Image HTTP {response.status_code}: {response.text[:500]}")
     data = response.json()
