@@ -24,6 +24,7 @@ from community_features import CommunityFeatures
 from profile_card_generator import build_profile_card
 from ai_profile_experience import build_visual_prompt, choose_scene
 from ai_profile_generator import generate_scene, overlay_stats, quota_status, consume_quota
+from brawler_reference import resolve_ai_brawler_reference
 from player_tracking import extract_brawlzone_ranked, get_brawltrack_player
 from live_maps import collect_report, render_report, report_csv
 from premium_ai import handle_premium_command
@@ -2376,11 +2377,15 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not player.get(key) and member_data.get(key):
                 player[key] = member_data[key]
 
-        # Optional override requested by the member. The generator must still
-        # receive a real visual reference before producing the final image.
-        if requested_brawler:
-            player["profile_brawler"] = requested_brawler
-            player["requested_brawler"] = requested_brawler
+        # Resolve a REAL visual reference before spending any AI generation.
+        # Manual `con BRAWLER` has priority; otherwise recover the public
+        # profile-icon id and map it to its associated Brawler when possible.
+        reference_ok, reference_error = await asyncio.to_thread(
+            resolve_ai_brawler_reference, player, requested_brawler
+        )
+        if not reference_ok:
+            await message.reply_text(reference_error or "Riferimento Brawler non disponibile.")
+            return
 
         await context.bot.send_chat_action(chat_id=message.chat_id, action="upload_photo")
         progress = await message.reply_text("Sto creando il tuo Profilo AI TITANI ABUSIVI…")
