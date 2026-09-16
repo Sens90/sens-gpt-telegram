@@ -15,7 +15,6 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           p=Path('app.py'); s=p.read_text()
-          # Exact currently-active profile output: replace old icon-or-text sender with the visual card already present in app.py.
           old='''        if player.get("icon_url"):
             try:
                 await context.bot.send_photo(
@@ -30,8 +29,7 @@ jobs:
             await context.bot.send_message(chat_id=message.chat_id, text=text)
         return
 '''
-          new='''        # Prefer current live club; never let a stale saved club override it.
-        live_club = player.get("club") or player.get("club_name")
+          new='''        live_club = player.get("club") or player.get("club_name")
         if live_club:
             player["club_name"] = live_club
         elif member_data:
@@ -54,20 +52,16 @@ jobs:
             await context.bot.send_message(chat_id=message.chat_id, text=text)
         return
 '''
-          if old not in s:
-              raise SystemExit('active profile sender not found')
-          s=s.replace(old,new,1)
-          p.write_text(s)
-
+          if old not in s: raise SystemExit('active profile sender not found')
+          s=s.replace(old,new,1); p.write_text(s)
           p=Path('community_features.py'); c=p.read_text()
-          # Replace all known text-only stat ranking sends with visual sender call imported lazily.
           replacements={
             'await message.reply_text(self.stat_ranking_text(message.chat_id,stat_aliases[stat.group(1).lower()])); return True':'from app import send_bs_stat_ranking; await send_bs_stat_ranking(message,context,self,stat_aliases[stat.group(1).lower()]); return True',
             'await message.reply_text(self.stat_ranking_text(message.chat_id,stat_aliases[clubstat.group(2).lower()],self.CLUB_ALIASES[clubstat.group(1).lower()])); return True':'from app import send_bs_stat_ranking; await send_bs_stat_ranking(message,context,self,stat_aliases[clubstat.group(2).lower()],self.CLUB_ALIASES[clubstat.group(1).lower()]); return True',
             'await message.reply_text(self.stat_ranking_text(message.chat_id,"3v3",club_name)); return True':'from app import send_bs_stat_ranking; await send_bs_stat_ranking(message,context,self,"3v3",club_name); return True',
             'await message.reply_text(self.stat_ranking_text(message.chat_id,stat_key,club_name)); return True':'from app import send_bs_stat_ranking; await send_bs_stat_ranking(message,context,self,stat_key,club_name); return True',
           }
-          for oldr,newr in replacements.items(): c=c.replace(oldr,newr)
+          for x,y in replacements.items(): c=c.replace(x,y)
           p.write_text(c)
           PY
       - name: Validate exact wiring
@@ -83,3 +77,4 @@ jobs:
           git diff --cached --quiet && { echo 'No changes'; exit 1; }
           git commit -m 'Wire active stats and rankings to visual cards'
           git push
+# rerun 2026-09-16
