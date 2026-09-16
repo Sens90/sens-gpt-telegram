@@ -1,0 +1,49 @@
+name: Apply profile generator
+on:
+  workflow_dispatch:
+  push:
+    paths: ['profile_card_generator.py','.github/workflows/apply-profile-generator.yml']
+permissions: {contents: write}
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Add community logo
+        run: |
+          mkdir -p assets
+          curl -fsSL https://raw.githubusercontent.com/Sens90/sens-gpt-telegram/0206cebd8a0c31dbdc36ea34135f9be3cdcb07f6/assets/titani_logo.jpg -o assets/titani_logo.jpg
+      - name: Wire command
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app.py'); s=p.read_text()
+          imp='from profile_card_generator import build_profile_card\n'
+          if imp not in s:
+              marker='from community_features import CommunityFeatures\n'
+              s=s.replace(marker,marker+imp)
+          marker='    stats_match = re.fullmatch(\n'
+          block='''    profile_image_match = re.fullmatch(r"(?:profilo grafico|immagine profilo|profile image)(?:\\s+(verticale|orizzontale))?\\s*#?([0289PYLQGRJCUV]{3,15})", question.strip(), re.I)\n    if profile_image_match:\n        orientation = "horizontal" if (profile_image_match.group(1) or "").lower() == "orizzontale" else "vertical"\n        player = get_brawlzone_player(profile_image_match.group(2).upper())\n        if not player:\n            await message.reply_text("Non riesco a trovare questo giocatore.")\n            return\n        if str(player.get("tag") or "").upper().replace("#", "") == "2VQYLG0RU8":\n            player["club"] = player["club_name"] = "TALENTI ABUSIVI"\n        card = build_profile_card(player, orientation)\n        await context.bot.send_photo(chat_id=message.chat_id, photo=card, caption=f"Profilo grafico - {player.get('name','Giocatore')}")\n        return\n\n'''
+          if 'profile_image_match = re.fullmatch' not in s:
+              s=s.replace(marker,block+marker)
+          p.write_text(s)
+          PY
+      - name: Validate
+        run: |
+          pip install -r requirements.txt
+          python -m py_compile app.py profile_card_generator.py community_features.py player_tracking.py
+          python - <<'PY'
+          from profile_card_generator import build_profile_card
+          b=build_profile_card({'name':'Test','tag':'#TEST','trophies':123456,'brawlers':100,'ranked_current':'Mitico I','ranked_current_elo':5000})
+          assert len(b.getvalue()) > 5000
+          assert __import__('pathlib').Path('assets/titani_logo.jpg').stat().st_size > 1000
+          s=open('app.py').read(); assert 'profile_image_match = re.fullmatch' in s
+          PY
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app.py assets/titani_logo.jpg
+          git diff --cached --quiet || (git commit -m 'Enable dedicated Titani graphical profiles' && git push)
