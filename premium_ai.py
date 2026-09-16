@@ -67,14 +67,6 @@ def remove_premium_user(user_id, supabase_url, service_key):
     return True
 
 
-async def _is_admin(message, context):
-    try:
-        member = await context.bot.get_chat_member(message.chat_id, message.from_user.id)
-        return member.status in {"administrator", "creator", "owner"}
-    except Exception:
-        return False
-
-
 def _is_owner(message):
     return bool(message.from_user and int(message.from_user.id) == OWNER_TELEGRAM_ID)
 
@@ -89,6 +81,7 @@ async def handle_premium_command(message, context, question, supabase_url, servi
     if q not in commands:
         return False
 
+    # Everyone can read only their own Telegram numeric ID.
     if q in {"mio id", "id telegram", "telegram id"}:
         user = message.from_user
         await message.reply_text(
@@ -97,13 +90,9 @@ async def handle_premium_command(message, context, question, supabase_url, servi
         )
         return True
 
-    # Removing Premium is owner-only. Group admins cannot remove Sens or Anna.
-    if q in {"rimuovi premium", "rimuovimi premium"} and not _is_owner(message):
-        await message.reply_text("Solo Sens può rimuovere un utente Premium AI.")
-        return True
-
-    if not await _is_admin(message, context):
-        await message.reply_text("Questo comando è riservato agli amministratori del gruppo.")
+    # All Premium management commands are reserved exclusively for Sens.
+    if not _is_owner(message):
+        await message.reply_text("Questo comando è riservato esclusivamente a Sens.")
         return True
 
     if q in {"lista premium", "premium list"}:
