@@ -1,0 +1,104 @@
+name: Add AI cinematic profile experience
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/add-ai-profile-experience.yml']
+permissions: {contents: write}
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Add AI profile scene engine
+        run: |
+          cat > ai_profile_experience.py <<'PY'
+          import random
+
+          OFFICIAL_WORLDS = [
+              'Starr Park','Retropoli','Bosco incantato','Paese delle caramelle','Nave pirata','Acquario dei mostri marini',
+              'Starr Force','Palude degli innamorati','Circo bizzarro','Maniero','Piramide','Giungla','Deposito rottami',
+              'Biosfera','Negozio di souvenir','Emporio delle stranezze','Festival musicale','Starr Toon Studios','Isola tropicale',
+              'Katana Kingdom','Hub','Fabbrica dei robot','Hotel delle nevi','Cimitero di Mortis','Bazar di Tara','Stunt Show'
+          ]
+          FANTASY_WORLDS = [
+              'cinema IMAX','sala di comando TITANI ABUSIVI','astronave interstellare','osservatorio spaziale',
+              'metropoli cyberpunk sotto la pioggia','arena romana','castello monumentale','sala del trono',
+              'museo dei trofei','caveau futuristico','citta sommersa','base artica','isola vulcanica',
+              'laboratorio segreto','hangar mecha','stadio gremito','red carpet cinematografico','studio televisivo',
+              'sala gaming futuristica','nave pirata nella tempesta','foresta mistica','grattacielo sopra le nuvole'
+          ]
+
+          def profile_brawler(player):
+              """Prefer the Brawler represented by the player's selected profile icon when the upstream source exposes it."""
+              for key in ('profile_brawler','icon_brawler','profile_icon_brawler','selected_brawler'):
+                  value=player.get(key)
+                  if isinstance(value,dict): value=value.get('name')
+                  if value: return str(value)
+              icon=player.get('icon') or player.get('profile_icon')
+              if isinstance(icon,dict):
+                  for key in ('brawler','brawler_name','name'):
+                      if icon.get(key): return str(icon[key])
+              return None
+
+          def choose_scene(player, category='random'):
+              brawler=profile_brawler(player)
+              if category=='official': place=random.choice(OFFICIAL_WORLDS); source='Brawl Stars'
+              elif category=='cinema': place='cinema IMAX'; source='Fantasia Sens GPT'
+              elif category=='scifi': place=random.choice(['astronave interstellare','osservatorio spaziale','sala di comando TITANI ABUSIVI','hangar mecha']); source='Fantasia Sens GPT'
+              elif category=='epic': place=random.choice(['arena romana','castello monumentale','sala del trono','museo dei trofei']); source='Fantasia Sens GPT'
+              else:
+                  official=random.random()<0.55
+                  place=random.choice(OFFICIAL_WORLDS if official else FANTASY_WORLDS); source='Brawl Stars' if official else 'Fantasia Sens GPT'
+              subject=brawler or 'il Brawler associato alla foto profilo del giocatore, se identificabile'
+              concepts=[
+                  f'{subject} osserva le statistiche del giocatore su enormi schermi integrati nella scena',
+                  f'{subject} e protagonista della scena mentre trofei, Classificata e vittorie vengono rappresentati come elementi fisici e olografici',
+                  f'inquadratura cinematografica di {subject}, con le statistiche raccontate attraverso cartelloni, monitor e oggetti dell ambiente',
+              ]
+              return {'place':place,'source':source,'brawler':brawler,'concept':random.choice(concepts)}
+
+          def build_visual_prompt(player, category='random'):
+              scene=choose_scene(player,category)
+              name=player.get('name') or 'Giocatore'; tag=player.get('tag') or ''
+              return (f"Crea una scena 3D cinematografica, realistica ma fedele all identita visiva di Brawl Stars. "
+                      f"Ambientazione: {scene['place']}. Idea narrativa: {scene['concept']}. "
+                      f"Profilo: {name} {tag}. Integra naturalmente il marchio TITANI ABUSIVI nell ambiente. "
+                      "Illuminazione da film, profondita, volumetric light, materiali dettagliati, composizione dinamica, niente tabella piatta. "
+                      "NON inventare o disegnare numeri/statistiche: saranno sovrapposti dal renderer dopo la generazione. "
+                      "Lascia aree leggibili nella composizione per i dati reali."), scene
+          PY
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app.py'); s=p.read_text()
+          if 'from ai_profile_experience import build_visual_prompt' not in s:
+              s=s.replace('from profile_card_generator import build_profile_card\n','from profile_card_generator import build_profile_card\nfrom ai_profile_experience import build_visual_prompt, choose_scene\n')
+          # Expand graphical menu categories while retaining format selection.
+          old='keyboard = [[InlineKeyboardButton("Verticale", callback_data=f"pg:vertical:{tag}"), InlineKeyboardButton("Orizzontale", callback_data=f"pg:horizontal:{tag}")]]'
+          new='keyboard = [[InlineKeyboardButton("AI Sorprendimi", callback_data=f"pai:random:{tag}")],[InlineKeyboardButton("Mondo Brawl Stars", callback_data=f"pai:official:{tag}"), InlineKeyboardButton("Cinema", callback_data=f"pai:cinema:{tag}")],[InlineKeyboardButton("Epico", callback_data=f"pai:epic:{tag}"), InlineKeyboardButton("Fantascienza", callback_data=f"pai:scifi:{tag}")],[InlineKeyboardButton("Verticale classico", callback_data=f"pg:vertical:{tag}"), InlineKeyboardButton("Orizzontale classico", callback_data=f"pg:horizontal:{tag}")]]'
+          s=s.replace(old,new)
+          # Add callback that prepares a genuine AI-generation request. Provider invocation is intentionally separated: it requires an image-generation API credential/provider available to the deployed bot.
+          anchor='async def graphical_profile_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):\n'
+          helper='''async def ai_profile_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):\n    query=update.callback_query\n    await query.answer()\n    m=re.fullmatch(r"pai:(random|official|cinema|epic|scifi):([0289PYLQGRJCUV]{3,15})", query.data or "")\n    if not m: return\n    category,tag=m.groups()\n    player=get_brawltrack_player(tag.upper())\n    if not player:\n        await query.message.reply_text("Non riesco a trovare questo giocatore.")\n        return\n    prompt,scene=build_visual_prompt(player,category)\n    context.user_data['pending_ai_profile']={'tag':tag,'category':category,'prompt':prompt,'scene':scene}\n    brawler=scene.get('brawler') or 'quello della foto profilo, appena la sorgente permette di identificarlo'\n    await query.message.reply_text(f"Scena AI pronta: {scene['place']}\\nBrawler: {brawler}\\nSto usando solo dati reali del profilo. Il generatore immagini AI deve ora essere collegato al bot per renderizzare la scena.")\n\n'''
+          if 'async def ai_profile_menu(' not in s and anchor in s: s=s.replace(anchor,helper+anchor,1)
+          reg='application.add_handler(CallbackQueryHandler(ai_profile_menu, pattern=r"^pai:"))\n'
+          mh='application.add_handler(CallbackQueryHandler(graphical_profile_menu, pattern=r"^pg:"))\n'
+          if reg not in s and mh in s: s=s.replace(mh,reg+mh,1)
+          p.write_text(s)
+          PY
+      - name: Validate
+        run: |
+          python -m py_compile app.py ai_profile_experience.py profile_card_generator.py
+          python - <<'PY'
+          from ai_profile_experience import profile_brawler,build_visual_prompt
+          assert profile_brawler({'profile_brawler':'Crow'})=='Crow'
+          prompt,scene=build_visual_prompt({'name':'TA Test','tag':'#TEST','profile_brawler':'Crow'},'cinema')
+          assert 'Crow' in prompt and 'cinema IMAX' in prompt and 'NON inventare' in prompt
+          PY
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app.py ai_profile_experience.py
+          git diff --cached --quiet || (git commit -m 'Add cinematic AI profile scene engine' && git push)
