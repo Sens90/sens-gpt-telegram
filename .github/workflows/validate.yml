@@ -16,35 +16,81 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Patch active stats and ranking handlers once
+      - name: Wire visual renderers once
         run: |
           python - <<'PY'
           from pathlib import Path
-          a=Path('app.py')
-          s=a.read_text()
-          marker='DIRECT_VISUAL_STATS_FIX_V1'
-          if marker not in s:
-              old='''        if player.get("icon_url"):\n            try:\n                await context.bot.send_photo(\n                    chat_id=message.chat_id,\n                    photo=player["icon_url"],\n                    caption=text\n                )\n            except Exception as exc:\n                print("ERRORE FOTO PROFILO:", repr(exc), flush=True)\n                await context.bot.send_message(chat_id=message.chat_id, text=text)\n        else:\n            await context.bot.send_message(chat_id=message.chat_id, text=text)\n        return\n'''
-              new='''        # DIRECT_VISUAL_STATS_FIX_V1\n        if player.get("tag") == "#2VQYLG0RU8" or player.get("tag") == "2VQYLG0RU8":\n            player["club_name"] = "TALENTI ABUSIVI"\n        player["ranked_current"] = ranked_current\n        player["ranked_season_peak"] = ranked_season_peak\n        player["ranked_career_peak"] = ranked_peak\n        try:\n            card = build_player_stats_card(player, changes=changes, title="STATISTICHE GIOCATORE")\n            await context.bot.send_photo(chat_id=message.chat_id, photo=card)\n        except Exception as exc:\n            print("ERRORE SCHEDA STATS GRAFICA:", repr(exc), flush=True)\n            await context.bot.send_message(chat_id=message.chat_id, text=text)\n        return\n'''
-              if old not in s: raise SystemExit('profile sender not found')
-              s=s.replace(old,new,1)
-              a.write_text(s)
 
-          c=Path('community_features.py')
-          t=c.read_text()
-          t=t.replace('await message.reply_text(self.stat_ranking_text(message.chat_id,stat_aliases[stat.group(1).lower()])); return True','from app import send_stat_ranking_cards; await send_stat_ranking_cards(message, context, self, stat_aliases[stat.group(1).lower()]); return True')
-          t=t.replace('await message.reply_text(self.stat_ranking_text(message.chat_id,stat_aliases[clubstat.group(2).lower()],self.CLUB_ALIASES[clubstat.group(1).lower()])); return True','from app import send_stat_ranking_cards; await send_stat_ranking_cards(message, context, self, stat_aliases[clubstat.group(2).lower()], self.CLUB_ALIASES[clubstat.group(1).lower()]); return True')
-          t=t.replace('await message.reply_text(self.stat_ranking_text(message.chat_id,"3v3",club_name)); return True','from app import send_stat_ranking_cards; await send_stat_ranking_cards(message, context, self, "3v3", club_name); return True')
-          t=t.replace('await message.reply_text(self.stat_ranking_text(message.chat_id,stat_key,club_name)); return True','from app import send_stat_ranking_cards; await send_stat_ranking_cards(message, context, self, stat_key, club_name); return True')
+          a = Path('app.py')
+          s = a.read_text()
+          imp = 'from visual_cards import build_player_stats_card, send_stat_ranking_cards\n'
+          anchor = 'from live_maps import collect_report, render_report, report_csv\n'
+          if imp not in s:
+              if anchor not in s:
+                  raise SystemExit('app import anchor not found')
+              s = s.replace(anchor, anchor + imp, 1)
+
+          # Resolve the explicit Persinox correction before both graphic and text fallback are built.
+          anchor2 = '        member_data = community.get_member_by_player_tag(\n            message.chat_id,\n            player["tag"]\n        )\n\n'
+          fix = '''        if str(player.get("tag") or "").upper().replace("#", "") == "2VQYLG0RU8":\n            player["club"] = "TALENTI ABUSIVI"\n            player["club_name"] = "TALENTI ABUSIVI"\n\n'''
+          if fix not in s:
+              if anchor2 not in s:
+                  raise SystemExit('stats member-data anchor not found')
+              s = s.replace(anchor2, anchor2 + fix, 1)
+          a.write_text(s)
+
+          c = Path('community_features.py')
+          t = c.read_text()
+          old = '''            actual_club=self._club_name_from_player(player)\n            if club_name and (actual_club or "").casefold()!=club_name.casefold(): continue\n            value=player.get(field)\n            if value is None: continue\n            try: value=int(value)\n            except (TypeError,ValueError): continue\n            rows.append({"name":player.get("name") or member.get("player_name") or member.get("display_name") or tag,"value":value,"tag":tag,"icon_url":player.get("icon_url")})\n'''
+          new = '''            normalized_tag=str(player.get("tag") or tag).upper().replace("#", "")\n            if normalized_tag == "2VQYLG0RU8":\n                player["club"]="TALENTI ABUSIVI"\n                player["club_name"]="TALENTI ABUSIVI"\n            actual_club=self._club_name_from_player(player)\n            if club_name and (actual_club or "").casefold()!=club_name.casefold(): continue\n            value=player.get(field)\n            if value is None: continue\n            try: value=int(value)\n            except (TypeError,ValueError): continue\n            display_value=None\n            if stat_key == "classificata": display_value=player.get("ranked_current") or member.get("ranked_current")\n            elif stat_key == "classificata stagione": display_value=player.get("ranked_season_peak") or member.get("ranked_season_peak")\n            elif stat_key == "classificata carriera": display_value=player.get("ranked_career_peak") or player.get("ranked_peak") or member.get("ranked_career_peak") or member.get("ranked_peak")\n            rows.append({"name":player.get("name") or member.get("player_name") or member.get("display_name") or tag,"value":value,"display_value":display_value,"tag":tag,"icon_url":player.get("icon_url")})\n'''
+          if old in t:
+              t = t.replace(old, new, 1)
+          elif 'display_value=player.get("ranked_current")' not in t:
+              raise SystemExit('stat rows block not found')
           c.write_text(t)
           PY
-      - name: Compile Python files
-        run: python -m py_compile app.py community_features.py player_tracking.py
-      - name: Commit patched sources if changed
+      - name: Install runtime dependencies
+        run: pip install -r requirements.txt
+      - name: Compile all critical Python files
+        run: python -m py_compile app.py community_features.py player_tracking.py visual_cards.py
+      - name: Static visual wiring checks
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          for f in ('app.py','community_features.py','player_tracking.py','visual_cards.py'):
+              ast.parse(Path(f).read_text(), filename=f)
+          app = Path('app.py').read_text()
+          community = Path('community_features.py').read_text()
+          visual = Path('visual_cards.py').read_text()
+          required = ['build_player_stats_card', 'send_stat_ranking_cards']
+          for name in required:
+              if f'def {name}' not in visual and f'async def {name}' not in visual:
+                  raise SystemExit(f'missing visual function: {name}')
+              if name not in app:
+                  raise SystemExit(f'app not wired to: {name}')
+          if 'from app import send_stat_ranking_cards' not in community:
+              raise SystemExit('community ranking route not wired')
+          if '2VQYLG0RU8' not in app or '2VQYLG0RU8' not in community:
+              raise SystemExit('Persinox club override missing')
+          print('visual wiring checks OK')
+          PY
+      - name: Import visual module smoke test
+        run: |
+          python - <<'PY'
+          from visual_cards import build_player_stats_card, build_ranking_card
+          p={"name":"TA | Persinox","tag":"#2VQYLG0RU8","club_name":"TITANI ABUSIVI","trophies":14452,"brawlers":49,"level":46,"prestige":11,"ranked_current":"Argento I","ranked_season_peak":"Argento I","ranked_career_peak":"Argento I","wins_3v3":215,"wins_solo":548,"wins_duo":3}
+          card=build_player_stats_card(p,{"today":0})
+          assert len(card.getvalue()) > 1000
+          rank=build_ranking_card('TEST',[{"name":"TA | Persinox","tag":"2VQYLG0RU8","value":809,"display_value":"Argento I"}], 'classificata', 1)
+          assert len(rank.getvalue()) > 1000
+          print('visual renderer smoke test OK')
+          PY
+      - name: Commit wired sources if changed
         run: |
           if git diff --quiet -- app.py community_features.py; then exit 0; fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app.py community_features.py
-          git commit -m 'Wire live stats and rankings to visual output'
+          git commit -m 'Wire and validate visual stats renderers'
           git push
