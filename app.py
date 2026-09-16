@@ -25,6 +25,7 @@ from profile_card_generator import build_profile_card
 from ai_profile_experience import build_visual_prompt, choose_scene
 from player_tracking import extract_brawlzone_ranked, get_brawltrack_player
 from live_maps import collect_report, render_report, report_csv
+from premium_ai import handle_premium_command
 
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
@@ -2223,6 +2224,11 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"@{bot_username}",
             ""
         ).strip()
+
+    if await handle_premium_command(
+        message, context, question, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+    ):
+        return
 
     if await community.continue_registration(message, context):
         return
