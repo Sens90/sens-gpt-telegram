@@ -1,0 +1,46 @@
+name: Apply Ranked stat command names
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: contains(github.event.head_commit.message, 'Add Ranked and Classificata stat command patch')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Patch member-facing Ranked commands
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('community_features.py')
+          s=p.read_text()
+          s=s.replace('- classifica elo\n- classifica elo stagione\n- classifica elo carriera', '- classifica classificata / classifica ranked — Classificata attuale\n- classifica classificata stagione / classifica ranked stagione — record stagione\n- classifica classificata carriera / classifica ranked carriera — record carriera')
+          s=s.replace('"elo": ("ranked_current_elo", "ELO Classificata attuale"),\n        "elo stagione": ("ranked_season_peak_elo", "Record ELO stagione"),\n        "elo carriera": ("ranked_career_peak_elo", "Record ELO carriera"),', '"classificata": ("ranked_current_elo", "Classificata attuale"),\n        "classificata stagione": ("ranked_season_peak_elo", "Record Classificata stagione"),\n        "classificata carriera": ("ranked_career_peak_elo", "Record Classificata carriera"),')
+          s=s.replace('Classifiche disponibili: trofei, Brawler, livello, prestigio, 3v3, Solo, Duo, ELO, ELO stagione, ELO carriera.', 'Classifiche disponibili: trofei, Brawler, livello, prestigio, 3v3, Solo, Duo, Classificata, Classificata stagione, Classificata carriera.')
+          old='''            "prestigio":"prestigio", "elo":"elo", "elo attuale":"elo",\n            "elo stagione":"elo stagione", "record elo stagione":"elo stagione",\n            "elo carriera":"elo carriera", "record elo carriera":"elo carriera",'''
+          new='''            "prestigio":"prestigio",\n            "classificata":"classificata", "ranked":"classificata",\n            "classificata attuale":"classificata", "ranked attuale":"classificata",\n            "classificata stagione":"classificata stagione", "ranked stagione":"classificata stagione",\n            "record classificata stagione":"classificata stagione", "record ranked stagione":"classificata stagione",\n            "classificata carriera":"classificata carriera", "ranked carriera":"classificata carriera",\n            "record classificata carriera":"classificata carriera", "record ranked carriera":"classificata carriera",'''
+          if old not in s: raise SystemExit('aliases block missing')
+          s=s.replace(old,new)
+          oldpat='''(3v3|vittorie 3v3|solo|vittorie solo|duo|vittorie duo|trofei|coppe|brawlers?|livello(?: account)?|prestigio|elo(?: attuale)?|elo stagione|record elo stagione|elo carriera|record elo carriera)'''
+          newpat='''(3v3|vittorie 3v3|solo|vittorie solo|duo|vittorie duo|trofei|coppe|brawlers?|livello(?: account)?|prestigio|classificata(?: attuale| stagione| carriera)?|ranked(?: attuale| stagione| carriera)?|record classificata (?:stagione|carriera)|record ranked (?:stagione|carriera))'''
+          if s.count(oldpat) < 2: raise SystemExit('ranking regex blocks missing')
+          s=s.replace(oldpat,newpat)
+          # Safety net: any statistical classifica Ranked/Classificata is handled internally before AI/meta.
+          needle='''        if re.search(r"\\bclassific(?:a|he)\\b",ql) and "3v3" in ql:\n            club_name=next((v for k,v in self.CLUB_ALIASES.items() if k in ql),None)\n            await message.reply_text(self.stat_ranking_text(message.chat_id,"3v3",club_name)); return True\n'''
+          add=needle+'''        if re.search(r"\\bclassific(?:a|he)\\b", ql) and re.search(r"\\b(?:classificata|ranked)\\b", ql):\n            club_name=next((v for k,v in self.CLUB_ALIASES.items() if k in ql),None)\n            stat_key="classificata carriera" if "carriera" in ql else ("classificata stagione" if "stagione" in ql else "classificata")\n            await message.reply_text(self.stat_ranking_text(message.chat_id,stat_key,club_name)); return True\n'''
+          if needle not in s: raise SystemExit('3v3 safety block missing')
+          s=s.replace(needle,add)
+          p.write_text(s)
+          PY
+          python -m py_compile community_features.py app.py player_tracking.py
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add community_features.py
+          git commit -m "Use Ranked and Classificata for stat rankings"
+          git push
