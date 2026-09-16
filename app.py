@@ -2332,15 +2332,21 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     profile_image_match = re.fullmatch(
-        r"(?:profilo ai|profilo grafico|immagine profilo|profile image)(?:\s+(sorprendimi|brawl|cinema|epico|fantascienza|fantasy))?\s*#?([0289PYLQGRJCUV]{3,15})(?:\s+con\s+([A-Za-z0-9À-ÿ ._'’-]{2,30}))?",
+        r"(?:profilo ai|profilo grafico|immagine profilo|profile image)(?:\s+(sorprendimi|brawl|cinematic|al\s+cinema|epico|fantascienza|fantasy))?\s*#?([0289PYLQGRJCUV]{3,15})(?:\s+con\s+([A-Za-z0-9À-ÿ ._'’-]{2,30}))?",
         question.strip(), re.I
     )
     if profile_image_match:
         category_map = {
-            "sorprendimi": "random", "brawl": "official", "cinema": "cinema",
-            "epico": "epic", "fantascienza": "scifi", "fantasy": "fantasy"
+            "sorprendimi": "random",
+            "brawl": "official",
+            "cinematic": "cinematic",
+            "al cinema": "cinema",
+            "epico": "epic",
+            "fantascienza": "scifi",
+            "fantasy": "fantasy",
         }
-        category = category_map.get((profile_image_match.group(1) or "sorprendimi").lower(), "random")
+        mode_key = re.sub(r"\s+", " ", (profile_image_match.group(1) or "sorprendimi").strip().lower())
+        category = category_map.get(mode_key, "random")
         requested_brawler = (profile_image_match.group(3) or "").strip() or None
         telegram_user_id = message.from_user.id
 
