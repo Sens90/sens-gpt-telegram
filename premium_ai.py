@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 
 MAX_PREMIUM_USERS = 2
 OWNER_TELEGRAM_ID = 437136453
+ANNA_TELEGRAM_ID = 751665886
+GENERATION_MANAGERS = {OWNER_TELEGRAM_ID, ANNA_TELEGRAM_ID}
 
 
 def _headers(service_key):
@@ -52,6 +54,10 @@ def _is_owner(message):
     return bool(message.from_user and int(message.from_user.id) == OWNER_TELEGRAM_ID)
 
 
+def _can_manage_generations(message):
+    return bool(message.from_user and int(message.from_user.id) in GENERATION_MANAGERS)
+
+
 async def handle_premium_command(message, context, question, supabase_url, service_key):
     q = " ".join((question or "").casefold().split())
     commands = {"mio id", "id telegram", "telegram id", "rendimi premium", "rimuovimi premium", "rendi premium", "rimuovi premium", "lista premium", "premium list", "aggiungi generazione", "rimuovi generazione"}
@@ -62,21 +68,11 @@ async def handle_premium_command(message, context, question, supabase_url, servi
         await message.reply_text(f"Il tuo Telegram User ID è: {user.id}\nQuesto è l'ID Telegram numerico, non il tag di Brawl Stars.")
         return True
 
-    if not _is_owner(message):
-        await message.reply_text("Questo comando è riservato esclusivamente a Sens."); return True
-
-    if q in {"lista premium", "premium list"}:
-        try:
-            rows = list_premium_users(supabase_url, service_key)
-            lines = ["UTENTI PREMIUM AI"] if rows else ["Nessun utente Premium AI configurato."]
-            for row in rows: lines.append(f"- {row.get('note') or 'Utente'} — ID {row['telegram_user_id']} — 8 generazioni/mese + eventuali extra")
-            lines.append(f"Posti disponibili: {MAX_PREMIUM_USERS-len(rows)}/{MAX_PREMIUM_USERS}")
-            await message.reply_text("\n".join(lines))
-        except Exception as exc:
-            print("PREMIUM LIST ERROR:", repr(exc), flush=True); await message.reply_text("Errore durante la lettura degli utenti Premium AI.")
-        return True
-
+    # Sens e Anna possono assegnare/rimuovere gli extra permanenti.
+    # Tutta la gestione dello stato Premium resta esclusivamente a Sens.
     if q in {"aggiungi generazione", "rimuovi generazione"}:
+        if not _can_manage_generations(message):
+            await message.reply_text("Questo comando è riservato a Sens e Anna."); return True
         target_message = message.reply_to_message
         target = target_message.from_user if target_message else None
         if not target or target.is_bot:
@@ -94,6 +90,20 @@ async def handle_premium_command(message, context, question, supabase_url, servi
                 await message.reply_text(f"Generazione extra {sign} per {display}.\nExtra permanenti: {new}.\nNuova quota mensile: {base + new} generazioni.")
         except Exception as exc:
             print("AI QUOTA BONUS ERROR:", repr(exc), flush=True); await message.reply_text("Errore durante l'aggiornamento delle generazioni extra.")
+        return True
+
+    if not _is_owner(message):
+        await message.reply_text("Questo comando è riservato esclusivamente a Sens."); return True
+
+    if q in {"lista premium", "premium list"}:
+        try:
+            rows = list_premium_users(supabase_url, service_key)
+            lines = ["UTENTI PREMIUM AI"] if rows else ["Nessun utente Premium AI configurato."]
+            for row in rows: lines.append(f"- {row.get('note') or 'Utente'} — ID {row['telegram_user_id']} — 8 generazioni/mese + eventuali extra")
+            lines.append(f"Posti disponibili: {MAX_PREMIUM_USERS-len(rows)}/{MAX_PREMIUM_USERS}")
+            await message.reply_text("\n".join(lines))
+        except Exception as exc:
+            print("PREMIUM LIST ERROR:", repr(exc), flush=True); await message.reply_text("Errore durante la lettura degli utenti Premium AI.")
         return True
 
     if q in {"rendimi premium", "rimuovimi premium"}: target = message.from_user
