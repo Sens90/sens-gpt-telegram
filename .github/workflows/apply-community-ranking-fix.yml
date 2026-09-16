@@ -1,0 +1,37 @@
+name: Apply community ranking fix
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/apply-community-ranking-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-live-community-ranking
+      - name: Patch community ranking
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('community_features.py')
+          s = p.read_text()
+          s = s.replace('''        history = self.history_fetcher(tag, days=120)\n        if history:\n            try:\n                return int(history[-1]["trophies"])\n            except Exception:\n                pass\n        player = self.player_fetcher(tag)\n        return player.get("trophies") if player else None\n''', '''        # Per le richieste dell'utente usa sempre il valore live.\n        # Lo storico resta il riferimento per oggi/7/15/30/90 giorni.\n        player = self.player_fetcher(tag)\n        if player and player.get("trophies") is not None:\n            return int(player["trophies"])\n        history = self.history_fetcher(tag, days=120)\n        if history:\n            try:\n                return int(history[-1]["trophies"])\n            except Exception:\n                pass\n        return None\n''')
+          s = s.replace('''            delta = changes.get(key)\n            if delta is None:\n                delta = 0\n            rows.append(\n                {\n                    "name": member.get("player_name") or member.get("display_name") or tag,\n                    "tag": tag,\n                    "current": current,\n                    "delta": int(delta),\n                }\n            )\n        rows.sort(key=lambda x: (x["delta"], x["current"]), reverse=True)\n''', '''            delta = changes.get(key)\n            rows.append(\n                {\n                    "name": member.get("player_name") or member.get("display_name") or tag,\n                    "tag": tag,\n                    "current": current,\n                    "delta": int(delta) if delta is not None else None,\n                }\n            )\n        rows.sort(\n            key=lambda x: (\n                x["delta"] is not None,\n                x["delta"] if x["delta"] is not None else 0,\n                x["current"],\n            ),\n            reverse=True,\n        )\n''')
+          s = s.replace('''        lines = [f"CLASSIFICA TITANI ABUSIVI - {days} GIORNI", ""]\n        for index, row in enumerate(rows[:15], 1):\n            sign = "+" if row["delta"] > 0 else ""\n            lines.append(\n                f"{index}. {row['name']} - {self.number_formatter(row['current'])} "\n                f"({sign}{row['delta']})"\n            )\n''', '''        lines = [f"CLASSIFICA COMMUNITY - {days} GIORNI", ""]\n        for index, row in enumerate(rows[:15], 1):\n            if row["delta"] is None:\n                delta_text = f"storico {days}g non ancora disponibile"\n            else:\n                sign = "+" if row["delta"] > 0 else ""\n                delta_text = f"{sign}{row['delta']}"\n            lines.append(\n                f"{index}. {row['name']} - {self.number_formatter(row['current'])} "\n                f"({delta_text})"\n            )\n''')
+          s = s.replace('''        growth7 = sum(r["delta"] for r in ranking7)\n        top = ranking7[:3]\n''', '''        valid_growth = [r for r in ranking7 if r["delta"] is not None]\n        growth7 = sum(r["delta"] for r in valid_growth)\n        top = valid_growth[:3]\n''')
+          s = s.replace('''                    f"Crescita complessiva 7 giorni: {'+' if growth7 > 0 else ''}{growth7}",\n                    "",\n                    "Top crescita 7 giorni:",\n''', '''                    (f"Crescita complessiva 7 giorni: {'+' if growth7 > 0 else ''}{growth7}"\n                     if valid_growth else "Crescita complessiva 7 giorni: storico non ancora disponibile"),\n                    "",\n                    "Top crescita 7 giorni:",\n''')
+          p.write_text(s)
+          PY
+          python -m py_compile community_features.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add community_features.py
+          git commit -m 'Fix live community ranking and missing history' || exit 0
+          git push origin fix-live-community-ranking
