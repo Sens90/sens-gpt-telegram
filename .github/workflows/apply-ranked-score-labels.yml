@@ -6,36 +6,76 @@ permissions:
   contents: write
 jobs:
   patch:
-    if: contains(github.event.head_commit.message, 'Add Ranked score labels patch')
+    if: contains(github.event.head_commit.message, 'Fix Italian Ranked score labels patch')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Patch Ranked score labels
+      - name: Patch Italian Ranked score labels
         run: |
           python - <<'PY'
           from pathlib import Path
           p=Path('community_features.py')
           s=p.read_text()
-          marker='''    def _club_name_from_player(self, player):\n'''
-          helper='''    @staticmethod\n    def ranked_score_label(score):\n        try:\n            score = int(score)\n        except (TypeError, ValueError):\n            return None\n        # Current Ranked score thresholds. Legendary uses 750-point minor ranks;\n        # Masters uses 1000-point minor ranks; Pro begins at 11250.\n        thresholds = [\n            (11250, "Pro"),\n            (10250, "Masters III"), (9250, "Masters II"), (8250, "Masters I"),\n            (7500, "Legendary III"), (6750, "Legendary II"), (6000, "Legendary I"),\n            (5500, "Mythic III"), (5000, "Mythic II"), (4500, "Mythic I"),\n            (4000, "Diamond III"), (3500, "Diamond II"), (3000, "Diamond I"),\n            (2500, "Gold III"), (2000, "Gold II"), (1500, "Gold I"),\n            (1250, "Silver III"), (1000, "Silver II"), (750, "Silver I"),\n            (500, "Bronze III"), (250, "Bronze II"), (0, "Bronze I"),\n        ]\n        for minimum, label in thresholds:\n            if score >= minimum:\n                return label\n        return "Bronze I"\n\n    def _ranked_value_text(self, value):\n        label = self.ranked_score_label(value)\n        score = self.number_formatter(value)\n        return f"{score} punti - {label}" if label else score\n\n'''
-          if helper not in s:
+          marker='    def _club_name_from_player(self, player):\n'
+          helper='''    @staticmethod
+    def ranked_score_label(score):
+        try:
+            score = int(score)
+        except (TypeError, ValueError):
+            return None
+        thresholds = [
+            (11250, "Pro"),
+            (10250, "Campioni III"), (9250, "Campioni II"), (8250, "Campioni I"),
+            (7500, "Leggendario III"), (6750, "Leggendario II"), (6000, "Leggendario I"),
+            (5500, "Mitico III"), (5000, "Mitico II"), (4500, "Mitico I"),
+            (4000, "Diamante III"), (3500, "Diamante II"), (3000, "Diamante I"),
+            (2500, "Oro III"), (2000, "Oro II"), (1500, "Oro I"),
+            (1250, "Argento III"), (1000, "Argento II"), (750, "Argento I"),
+            (500, "Bronzo III"), (250, "Bronzo II"), (0, "Bronzo I"),
+        ]
+        for minimum, label in thresholds:
+            if score >= minimum:
+                return label
+        return "Bronzo I"
+
+    def _ranked_value_text(self, value):
+        label = self.ranked_score_label(value)
+        score = self.number_formatter(value)
+        return f"{score} punti - {label}" if label else score
+
+'''
+          if 'def ranked_score_label(' not in s:
               if marker not in s: raise SystemExit('club marker missing')
               s=s.replace(marker,helper+marker,1)
-          old='''        for i,row in enumerate(rows[:60],1):\n            lines.append(f"{i}. {row['name']} - {self.number_formatter(row['value'])}")\n'''
-          new='''        for i,row in enumerate(rows[:60],1):\n            if stat_key.startswith("classificata"):\n                value_text = self._ranked_value_text(row["value"])\n            else:\n                value_text = self.number_formatter(row["value"])\n            lines.append(f"{i}. {row['name']} - {value_text}")\n'''
-          if old not in s: raise SystemExit('stat ranking output block missing')
-          s=s.replace(old,new,1)
-          old2='''            if rows: lines.append(f"{label}: 1° {rows[0]['name']} - {self.number_formatter(rows[0]['value'])}")\n'''
-          new2='''            if rows:\n                value_text = self._ranked_value_text(rows[0]["value"]) if key.startswith("classificata") else self.number_formatter(rows[0]["value"])\n                lines.append(f"{label}: 1° {rows[0]['name']} - {value_text}")\n'''
-          if old2 not in s: raise SystemExit('all stats output block missing')
-          s=s.replace(old2,new2,1)
+          # Patch only the statistical ranking function, independent of its row limit/formatting.
+          a=s.index('    def stat_ranking_text(')
+          b=s.index('    def all_stats_text(',a)
+          block=s[a:b]
+          target='lines.append(f"{i}. {row[\'name\']} - {self.number_formatter(row[\'value\'])}")'
+          if target not in block:
+              target='lines.append(f"{i}. {row[\'name\']} - {row[\'value\']}")'
+          replacement='''value_text = self._ranked_value_text(row["value"]) if stat_key.startswith("classificata") else self.number_formatter(row["value"])
+            lines.append(f"{i}. {row['name']} - {value_text}")'''
+          if target not in block: raise SystemExit('ranking value line missing')
+          block=block.replace(target,replacement,1)
+          s=s[:a]+block+s[b:]
+          # Summary/top-player output too.
+          a=s.index('    def all_stats_text(')
+          b=s.index('    def wins_3v3_ranking_text(',a)
+          block=s[a:b]
+          old='if rows: lines.append(f"{label}: 1° {rows[0][\'name\']} - {self.number_formatter(rows[0][\'value\'])}")'
+          new='''if rows:
+                value_text = self._ranked_value_text(rows[0]["value"]) if key.startswith("classificata") else self.number_formatter(rows[0]["value"])
+                lines.append(f"{label}: 1° {rows[0]['name']} - {value_text}")'''
+          if old in block: block=block.replace(old,new,1)
+          s=s[:a]+block+s[b:]
           p.write_text(s)
           PY
           python -m py_compile community_features.py app.py player_tracking.py
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add community_features.py
-          git commit -m "Show Ranked score with rank division"
+          git commit -m "Show Classificata score with Italian division" || exit 0
           git push
