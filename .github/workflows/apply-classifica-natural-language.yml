@@ -1,0 +1,30 @@
+name: Apply natural language classifica
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-classifica-natural-language.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Accept natural classifica phrases
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('community_features.py')
+          s=p.read_text()
+          old='''        match = re.fullmatch(r"classifica\\s+(oggi|7|15|30)", q, re.I)\n        if match:\n            period = match.group(1).lower()\n            days = 0 if period == "oggi" else int(period)\n            await message.reply_text(self.ranking_text(message.chat_id, days))\n            return True\n'''
+          new='''        match = re.fullmatch(\n            r"classifica(?:\\s+(?:della\\s+community))?(?:\\s+di)?\\s+oggi",\n            q,\n            re.I,\n        )\n        if match:\n            await message.reply_text(self.ranking_text(message.chat_id, 0))\n            return True\n\n        match = re.fullmatch(\n            r"classifica(?:\\s+(?:della\\s+community))?\\s+(?:(?:degli\\s+)?ultimi\\s+)?(7|15|30)(?:\\s+giorni)?",\n            q,\n            re.I,\n        )\n        if match:\n            days = int(match.group(1))\n            await message.reply_text(self.ranking_text(message.chat_id, days))\n            return True\n'''
+          if old not in s:
+              raise SystemExit('classifica target block not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+          python -m py_compile community_features.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add community_features.py
+          git commit -m 'Accept natural language classifica commands'
+          git push
