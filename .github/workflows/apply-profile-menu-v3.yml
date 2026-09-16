@@ -1,0 +1,62 @@
+name: Apply profile graphics menu v3
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/apply-profile-menu-v3.yml']
+permissions: {contents: write}
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Patch bot
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app.py'); s=p.read_text()
+          s=s.replace('from telegram import Update\n','from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup\n')
+          s=s.replace('from telegram.ext import Application, MessageHandler, ContextTypes, filters\n','from telegram.ext import Application, MessageHandler, CallbackQueryHandler, ContextTypes, filters\n')
+          anchor='async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):\n'
+          helper='''async def graphical_profile_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):\n    query = update.callback_query\n    await query.answer()\n    m = re.fullmatch(r"pg:(vertical|horizontal):([0289PYLQGRJCUV]{3,15})", query.data or "")\n    if not m:\n        return\n    orientation, tag = m.groups()\n    player = get_brawltrack_player(tag.upper())\n    if not player:\n        await query.message.reply_text("Non riesco a trovare questo giocatore.")\n        return\n    if str(player.get("tag") or tag).upper().replace("#", "") == "2VQYLG0RU8":\n        player["club"] = player["club_name"] = "TALENTI ABUSIVI"\n    card = build_profile_card(player, orientation)\n    label = "Verticale" if orientation == "vertical" else "Orizzontale"\n    await query.message.reply_photo(photo=card, caption=f"Profilo grafico {label} - {player.get('name','Giocatore')}")\n\n'''
+          if 'async def graphical_profile_menu(' not in s:
+              if anchor not in s: raise SystemExit('handle_message anchor missing')
+              s=s.replace(anchor,helper+anchor,1)
+          marker='    stats_match = re.fullmatch(\n'
+          block='''    profile_menu_match = re.fullmatch(r"(?:profilo grafico|immagine profilo)\\s*#?([0289PYLQGRJCUV]{3,15})", question.strip(), re.I)\n    if profile_menu_match:\n        tag = profile_menu_match.group(1).upper().replace("#", "")\n        keyboard = [[InlineKeyboardButton("Verticale", callback_data=f"pg:vertical:{tag}"), InlineKeyboardButton("Orizzontale", callback_data=f"pg:horizontal:{tag}")]]\n        await message.reply_text("Scegli il formato del profilo grafico:", reply_markup=InlineKeyboardMarkup(keyboard))\n        return\n\n'''
+          if 'profile_menu_match = re.fullmatch' not in s:
+              if marker not in s: raise SystemExit('stats anchor missing')
+              s=s.replace(marker,block+marker,1)
+          reg='application.add_handler(CallbackQueryHandler(graphical_profile_menu, pattern=r"^pg:"))\n'
+          if reg not in s:
+              mh='application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))'
+              if mh not in s: raise SystemExit('handler registration anchor missing')
+              s=s.replace(mh,reg+mh,1)
+          p.write_text(s)
+          v=Path('.github/workflows/validate.yml')
+          if v.exists():
+              t=v.read_text()
+              old="if 'from app import send_stat_ranking_cards' not in community:\n    raise SystemExit('community ranking route not wired')"
+              new="if 'from app import send_stat_ranking_cards' in community:\n    raise SystemExit('community rankings must remain text-only')"
+              t=t.replace(old,new)
+              v.write_text(t)
+          PY
+      - name: Validate
+        run: |
+          pip install -r requirements.txt
+          python -m py_compile app.py profile_card_generator.py community_features.py player_tracking.py
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('app.py').read_text()
+          assert 'CallbackQueryHandler(graphical_profile_menu' in s
+          assert 'profile_menu_match = re.fullmatch' in s
+          c=Path('community_features.py').read_text()
+          assert 'from app import send_stat_ranking_cards' not in c
+          PY
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app.py .github/workflows/validate.yml
+          git diff --cached --quiet || (git commit -m 'Enable graphical profile format menu' && git push)
