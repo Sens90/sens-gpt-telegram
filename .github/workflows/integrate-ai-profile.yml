@@ -22,9 +22,9 @@ jobs:
               s=s.replace(anchor, anchor+imp)
           start=s.index('    profile_image_match = re.fullmatch(')
           end=s.index('\n    stats_match = re.fullmatch(', start)
-          block=r'''    profile_image_match = re.fullmatch(r"(?:profilo ai|profilo grafico|immagine profilo|profile image)(?:\s+(sorprendimi|brawl|cinema|epico|fantascienza))?\s*#?([0289PYLQGRJCUV]{3,15})", question.strip(), re.I)
+          block=r'''    profile_image_match = re.fullmatch(r"(?:profilo ai|profilo grafico|immagine profilo|profile image)(?:\s+(sorprendimi|brawl|cinema|epico|fantascienza|fantasy))?\s*#?([0289PYLQGRJCUV]{3,15})", question.strip(), re.I)
     if profile_image_match:
-        category_map = {"sorprendimi":"random", "brawl":"official", "cinema":"cinema", "epico":"epic", "fantascienza":"scifi"}
+        category_map = {"sorprendimi":"random", "brawl":"official", "cinema":"cinema", "epico":"epic", "fantascienza":"scifi", "fantasy":"fantasy"}
         category = category_map.get((profile_image_match.group(1) or "sorprendimi").lower(), "random")
         telegram_user_id = message.from_user.id
         try:
@@ -34,17 +34,21 @@ jobs:
             await message.reply_text("Il controllo della quota AI non è disponibile. Riprova tra poco.")
             return
         if not quota["unlimited"] and quota["used"] >= quota["limit"]:
-            await message.reply_text(f"Hai già usato le {quota['limit']} generazioni Profilo AI disponibili questo mese.")
+            await message.reply_text(f"Hai già usato le {quota['limit']} generazioni Profilo AI disponibili questo mese. Puoi chiedere al Presidente Sens o ad Anna di generarlo per te.")
             return
-        player = await asyncio.to_thread(get_brawlzone_player, profile_image_match.group(2).upper())
+        tag = profile_image_match.group(2).upper()
+        player = await asyncio.to_thread(get_brawltrack_player, tag)
+        if not player:
+            player = await asyncio.to_thread(get_brawlzone_player, tag)
         if not player:
             await message.reply_text("Non riesco a trovare questo giocatore.")
             return
         if str(player.get("tag") or "").upper().replace("#", "") == "2VQYLG0RU8":
             player["club"] = player["club_name"] = "TALENTI ABUSIVI"
         member_data = community.get_member_by_player_tag(message.chat_id, player.get("tag")) or {}
-        for key in ("ranked_current","ranked_season_peak","ranked_career_peak","ranked_peak","prestige"):
-            if not player.get(key) and member_data.get(key): player[key]=member_data[key]
+        for key in ("ranked_current","ranked_season_peak","ranked_career_peak","ranked_peak","ranked_current_elo","ranked_season_peak_elo","ranked_career_peak_elo","prestige"):
+            if not player.get(key) and member_data.get(key):
+                player[key]=member_data[key]
         await context.bot.send_chat_action(chat_id=message.chat_id, action="upload_photo")
         progress = await message.reply_text("Sto creando il tuo Profilo AI TITANI ABUSIVI…")
         try:
@@ -65,6 +69,8 @@ jobs:
           s=s[:start]+block+s[end:]
           p.write_text(s)
           PY
+      - name: Compile check
+        run: python -m py_compile app.py ai_profile_generator.py ai_profile_experience.py premium_ai.py
       - name: Commit integration
         run: |
           git config user.name github-actions
