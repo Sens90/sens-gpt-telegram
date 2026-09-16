@@ -1,0 +1,88 @@
+name: Fix visual statistic ranking routing
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/fix-visual-stat-routing.yml']
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('community_features.py'); s=p.read_text()
+          # Add a structured sender inside CommunityFeatures so stat commands no longer return text only.
+          anchor='    def stat_ranking_text(self, chat_id, stat_key, club_name=None):\n'
+          method='''    async def send_stat_ranking(self, message, context, stat_key, club_name=None):
+        definition=self.STAT_DEFS.get(stat_key)
+        if not definition:
+            await message.reply_text("Statistica non riconosciuta.")
+            return
+        _,label=definition
+        rows=self._stat_rows(message.chat_id,stat_key,club_name)
+        scope=club_name or "COMMUNITY"
+        if not rows:
+            await message.reply_text(f"Nessun dato disponibile per {label} in {scope}.")
+            return
+        # app.py owns the image renderer; import lazily to avoid circular import at startup.
+        try:
+            import app as bot_app
+            icon_key=self.STAT_ICON_KEYS.get(stat_key)
+            title=f"CLASSIFICA {scope} - {label.upper()}"
+            ok=await bot_app.send_ranking_cards(
+                context, message.chat_id, title, rows,
+                value_formatter=lambda v: self.number_formatter(v),
+                stat_icon_key=icon_key,
+            )
+            if ok is not False:
+                return
+        except Exception as exc:
+            print("ERRORE CLASSIFICA GRAFICA:",repr(exc),flush=True)
+        await message.reply_text(self.stat_ranking_text(message.chat_id,stat_key,club_name))
+
+'''
+          if 'async def send_stat_ranking(' not in s: s=s.replace(anchor,method+anchor)
+          # Replace every stat text-only route.
+          s=s.replace('await message.reply_text(self.stat_ranking_text(message.chat_id,stat_aliases[stat.group(1).lower()])); return True','await self.send_stat_ranking(message,context,stat_aliases[stat.group(1).lower()]); return True')
+          s=s.replace('await message.reply_text(self.stat_ranking_text(message.chat_id,stat_aliases[clubstat.group(2).lower()],self.CLUB_ALIASES[clubstat.group(1).lower()])); return True','await self.send_stat_ranking(message,context,stat_aliases[clubstat.group(2).lower()],self.CLUB_ALIASES[clubstat.group(1).lower()]); return True')
+          s=s.replace('await message.reply_text(self.stat_ranking_text(message.chat_id,"3v3",club_name)); return True','await self.send_stat_ranking(message,context,"3v3",club_name); return True')
+          s=s.replace('await message.reply_text(self.stat_ranking_text(message.chat_id,stat_key,club_name)); return True','await self.send_stat_ranking(message,context,stat_key,club_name); return True')
+          p.write_text(s)
+
+          p=Path('app.py'); a=p.read_text()
+          # Make send_ranking_cards accept a stat icon and return success.
+          if 'def send_ranking_cards' in a:
+              a=a.replace('async def send_ranking_cards(context, chat_id, title, rows, value_formatter=None, chunk_size=10):','async def send_ranking_cards(context, chat_id, title, rows, value_formatter=None, chunk_size=10, stat_icon_key=None):')
+              # Pass icon key into renderer where supported; keep compatibility.
+              a=a.replace('build_ranking_card(title, chunk, value_formatter)', 'build_ranking_card(title, chunk, value_formatter, stat_icon_key=stat_icon_key)')
+              # Signature renderer
+              a=a.replace('def build_ranking_card(title, rows, value_formatter=None):','def build_ranking_card(title, rows, value_formatter=None, stat_icon_key=None):')
+              # Add stat icon in each ranking row before value using existing STAT_VISUAL_ICON_URLS mapping.
+              needle='''txt = value_formatter(row.get("value")) if value_formatter else str(row.get("value", ""))'''
+              if needle in a:
+                  repl='''stat_url = None
+        key_map={"trophy":"trophies","brawlers":"brawlers","experience":"level","prestige":"prestige","3v3":"wins_3v3","solo":"wins_solo","duo":"wins_duo","ranked":"ranked_current"}
+        if stat_icon_key: stat_url=STAT_VISUAL_ICON_URLS.get(key_map.get(stat_icon_key,stat_icon_key))
+        stat_img=_visual_fetch_image(stat_url,42) if stat_url else None
+        if stat_img: img.paste(stat_img,(820,y+18),stat_img)
+        txt = value_formatter(row.get("value")) if value_formatter else str(row.get("value", ""))'''
+                  a=a.replace(needle,repl)
+              # explicit successful completion
+              marker='''        await context.bot.send_photo(chat_id=chat_id, photo=card'''
+              # Don't risk changing Telegram calls; append return True at function boundary if detectable.
+          p.write_text(a)
+          PY
+      - name: Validate
+        run: python -m py_compile app.py community_features.py player_tracking.py
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.py community_features.py
+          git diff --cached --quiet && exit 0
+          git commit -m 'Route statistic rankings through visual cards'
+          git push
