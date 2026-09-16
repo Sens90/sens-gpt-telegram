@@ -1567,13 +1567,15 @@ def trophy_value_at_or_before(history, target_time):
 
 def calculate_trophy_changes(history, current_trophies):
     now = datetime.now(timezone.utc)
+    now_rome = now.astimezone(ROME)
 
-    start_today = now.replace(
+    # "Oggi" segue il giorno italiano, non la mezzanotte UTC.
+    start_today = now_rome.replace(
         hour=0,
         minute=0,
         second=0,
         microsecond=0
-    )
+    ).astimezone(timezone.utc)
 
     targets = {
         "today": start_today,
