@@ -36,9 +36,9 @@ CLASSIFICHE COMMUNITY
 - classifica 3v3
 - classifica solo
 - classifica duo
-- classifica elo
-- classifica elo stagione
-- classifica elo carriera
+- classifica classificata / classifica ranked — Classificata attuale
+- classifica classificata stagione / classifica ranked stagione — record stagione
+- classifica classificata carriera / classifica ranked carriera — record carriera
 - statistiche / tutte le classifiche — riepilogo statistiche
 
 CLASSIFICHE DEI 4 CLUB
@@ -344,9 +344,9 @@ class CommunityFeatures:
         "3v3": ("wins_3v3", "Vittorie 3v3"),
         "solo": ("wins_solo", "Vittorie Solo"),
         "duo": ("wins_duo", "Vittorie Duo"),
-        "elo": ("ranked_current_elo", "ELO Classificata attuale"),
-        "elo stagione": ("ranked_season_peak_elo", "Record ELO stagione"),
-        "elo carriera": ("ranked_career_peak_elo", "Record ELO carriera"),
+        "classificata": ("ranked_current_elo", "Classificata attuale"),
+        "classificata stagione": ("ranked_season_peak_elo", "Record Classificata stagione"),
+        "classificata carriera": ("ranked_career_peak_elo", "Record Classificata carriera"),
     }
 
     def _club_name_from_player(self, player):
@@ -391,7 +391,7 @@ class CommunityFeatures:
         for key,(_,label) in self.STAT_DEFS.items():
             rows=self._stat_rows(chat_id,key,club_name)
             if rows: lines.append(f"{label}: 1° {rows[0]['name']} - {self.number_formatter(rows[0]['value'])}")
-        lines += ["","Classifiche disponibili: trofei, Brawler, livello, prestigio, 3v3, Solo, Duo, ELO, ELO stagione, ELO carriera."]
+        lines += ["","Classifiche disponibili: trofei, Brawler, livello, prestigio, 3v3, Solo, Duo, Classificata, Classificata stagione, Classificata carriera."]
         return "\n".join(lines)
 
     def wins_3v3_ranking_text(self, chat_id):
@@ -854,24 +854,32 @@ class CommunityFeatures:
             "3v3":"3v3", "vittorie 3v3":"3v3", "solo":"solo", "vittorie solo":"solo",
             "duo":"duo", "vittorie duo":"duo", "trofei":"trofei", "coppe":"trofei",
             "brawler":"brawler", "brawlers":"brawler", "livello":"livello", "livello account":"livello",
-            "prestigio":"prestigio", "elo":"elo", "elo attuale":"elo",
-            "elo stagione":"elo stagione", "record elo stagione":"elo stagione",
-            "elo carriera":"elo carriera", "record elo carriera":"elo carriera",
+            "prestigio":"prestigio",
+            "classificata":"classificata", "ranked":"classificata",
+            "classificata attuale":"classificata", "ranked attuale":"classificata",
+            "classificata stagione":"classificata stagione", "ranked stagione":"classificata stagione",
+            "record classificata stagione":"classificata stagione", "record ranked stagione":"classificata stagione",
+            "classificata carriera":"classificata carriera", "ranked carriera":"classificata carriera",
+            "record classificata carriera":"classificata carriera", "record ranked carriera":"classificata carriera",
         }
         if ql in ("statistiche","stats community","statistiche community","tutte le statistiche","tutte le classifiche"):
             await message.reply_text(self.all_stats_text(message.chat_id)); return True
         club_all=re.fullmatch(r"(?:statistiche|stats|tutte le statistiche|tutte le classifiche)(?:\s+(?:del|dei|di))?\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)",q,re.I)
         if club_all:
             await message.reply_text(self.all_stats_text(message.chat_id,self.CLUB_ALIASES[club_all.group(1).lower()])); return True
-        stat=re.fullmatch(r"classific(?:a|he)(?:\s+(?:player|giocatori))?(?:\s+(?:della\s+)?community)?(?:\s+(?:per|di))?\s+(3v3|vittorie 3v3|solo|vittorie solo|duo|vittorie duo|trofei|coppe|brawlers?|livello(?: account)?|prestigio|elo(?: attuale)?|elo stagione|record elo stagione|elo carriera|record elo carriera)",q,re.I)
+        stat=re.fullmatch(r"classific(?:a|he)(?:\s+(?:player|giocatori))?(?:\s+(?:della\s+)?community)?(?:\s+(?:per|di))?\s+(3v3|vittorie 3v3|solo|vittorie solo|duo|vittorie duo|trofei|coppe|brawlers?|livello(?: account)?|prestigio|classificata(?: attuale| stagione| carriera)?|ranked(?: attuale| stagione| carriera)?|record classificata (?:stagione|carriera)|record ranked (?:stagione|carriera))",q,re.I)
         if stat:
             await message.reply_text(self.stat_ranking_text(message.chat_id,stat_aliases[stat.group(1).lower()])); return True
-        clubstat=re.fullmatch(r"classific(?:a|he)\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)(?:\s+(?:per|di))?\s+(3v3|vittorie 3v3|solo|vittorie solo|duo|vittorie duo|trofei|coppe|brawlers?|livello(?: account)?|prestigio|elo(?: attuale)?|elo stagione|record elo stagione|elo carriera|record elo carriera)",q,re.I)
+        clubstat=re.fullmatch(r"classific(?:a|he)\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)(?:\s+(?:per|di))?\s+(3v3|vittorie 3v3|solo|vittorie solo|duo|vittorie duo|trofei|coppe|brawlers?|livello(?: account)?|prestigio|classificata(?: attuale| stagione| carriera)?|ranked(?: attuale| stagione| carriera)?|record classificata (?:stagione|carriera)|record ranked (?:stagione|carriera))",q,re.I)
         if clubstat:
             await message.reply_text(self.stat_ranking_text(message.chat_id,stat_aliases[clubstat.group(2).lower()],self.CLUB_ALIASES[clubstat.group(1).lower()])); return True
         if re.search(r"\bclassific(?:a|he)\b",ql) and "3v3" in ql:
             club_name=next((v for k,v in self.CLUB_ALIASES.items() if k in ql),None)
             await message.reply_text(self.stat_ranking_text(message.chat_id,"3v3",club_name)); return True
+        if re.search(r"\bclassific(?:a|he)\b", ql) and re.search(r"\b(?:classificata|ranked)\b", ql):
+            club_name=next((v for k,v in self.CLUB_ALIASES.items() if k in ql),None)
+            stat_key="classificata carriera" if "carriera" in ql else ("classificata stagione" if "stagione" in ql else "classificata")
+            await message.reply_text(self.stat_ranking_text(message.chat_id,stat_key,club_name)); return True
 
         if ql == "classifica":
             await message.reply_text(
