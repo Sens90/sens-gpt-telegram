@@ -13,12 +13,6 @@ FANTASY_WORLDS = [
     'laboratorio segreto','hangar mecha','stadio gremito','red carpet cinematografico','studio televisivo',
     'sala gaming futuristica','nave pirata nella tempesta','foresta mistica','grattacielo sopra le nuvole'
 ]
-CINEMATIC_WORLDS = [
-    'metropoli notturna sotto la pioggia','rovine monumentali illuminate da luce volumetrica',
-    'campo di battaglia cinematografico con fumo e particelle','hangar industriale fotorealistico',
-    'deserto epico durante la golden hour','foresta cinematografica immersa nella nebbia','arena monumentale realistica',
-    'Starr Park reinterpretato come set live-action fotorealistico'
-]
 
 
 def profile_brawler(player):
@@ -46,7 +40,6 @@ def profile_brawler_reference(player):
 
 
 def cinematic_identity_rules(brawler):
-    """Keep the official Brawler identity while translating only its rendering to reality."""
     name=(brawler or '').casefold().strip()
     special={
         'crow': "Crow deve restare il CORVO ANTROPOMORFO di Brawl Stars: conserva ESATTAMENTE testa e becco stilizzati, occhi, silhouette, proporzioni umanoidi, piumaggio nero/blu, giacca e pugnali della reference. Aggiungi microdettaglio realistico alle piume e ai materiali, ma NON usare anatomia/proporzioni di un corvo reale e NON trasformarlo in uomo o uomo mascherato.",
@@ -60,56 +53,30 @@ def cinematic_identity_rules(brawler):
         'surge': "Surge deve restare ESATTAMENTE il robot/mecha Brawl Stars della reference: stessa silhouette, armatura, testa e colori. Materiali hard-surface realistici senza redesign umano.",
         '8-bit': "8-Bit deve restare ESATTAMENTE la macchina arcade antropomorfa Brawl Stars della reference: stessa forma, display, arti e proporzioni. Fotorealismo solo dei materiali.",
     }
-    if name in special:
-        return special[name]
-    return (
-        "TRADUZIONE IN REALTA, NON REDESIGN: la reference ufficiale e la fonte visiva assoluta. Mantieni specie/natura, anatomia STILIZZATA, volto, silhouette, proporzioni, palette, costume, accessori e segni distintivi esattamente riconoscibili. "
-        "Il risultato deve sembrare IL PERSONAGGIO DI BRAWL STARS RESO FISICAMENTE REALE, non una persona/animale/robot reale che gli assomiglia o indossa il suo costume. "
-        "Se umano, conserva lineamenti e proporzioni iconiche e rendi realistici pelle/capelli/barba solo se presenti. Se animale o creatura, conserva l'anatomia antropomorfa/stilizzata della reference: NON convertirla nell'anatomia di un animale reale. Se robot/mecha resta interamente meccanico e con la geometria originale. Se vegetale, gelatinoso o soprannaturale conserva quella natura. "
-        "NON umanizzare, NON animalizzare, NON cambiare specie, NON reinterpretare il volto, NON alterare silhouette o proporzioni, NON creare un cosplay e NON sostituire il Brawler con un equivalente realistico generico."
-    )
+    if name in special: return special[name]
+    return ("TRADUZIONE IN REALTA, NON REDESIGN: la reference ufficiale e la fonte visiva assoluta. Mantieni specie/natura, anatomia STILIZZATA, volto, silhouette, proporzioni, palette, costume, accessori e segni distintivi esattamente riconoscibili. Il risultato deve sembrare IL PERSONAGGIO DI BRAWL STARS RESO FISICAMENTE REALE, non una persona/animale/robot reale che gli assomiglia o indossa il suo costume. Se umano, conserva lineamenti e proporzioni iconiche. Se animale o creatura, conserva l'anatomia antropomorfa/stilizzata della reference: NON convertirla nell'anatomia di un animale reale. Se robot/mecha resta interamente meccanico e con la geometria originale. NON umanizzare, NON animalizzare, NON cambiare specie, NON reinterpretare il volto, NON alterare silhouette o proporzioni, NON creare un cosplay.")
 
 
-def choose_scene(player, category='random'):
+def choose_scene(player, category='random', custom_environment=None):
     brawler=profile_brawler(player)
-    if category=='official': place=random.choice(OFFICIAL_WORLDS); source='Brawl Stars'
+    custom=(custom_environment or '').strip()
+    if custom:
+        place=custom[:120]; source='Ambientazione richiesta dall utente'
     elif category=='cinema': place='cinema IMAX'; source='Location cinema Sens GPT'
-    elif category=='cinematic': place=random.choice(CINEMATIC_WORLDS); source='Cinematic Sens GPT'
-    elif category=='scifi': place=random.choice(['astronave interstellare','osservatorio spaziale','sala di comando TITANI ABUSIVI','hangar mecha']); source='Fantasia Sens GPT'
-    elif category=='epic': place=random.choice(['arena romana','castello monumentale','sala del trono','museo dei trofei']); source='Fantasia Sens GPT'
-    elif category=='fantasy': place=random.choice(['foresta mistica','castello monumentale','citta sommersa','isola vulcanica']); source='Fantasia Sens GPT'
     else:
-        official=random.random()<0.55
-        place=random.choice(OFFICIAL_WORLDS if official else FANTASY_WORLDS)
-        source='Brawl Stars' if official else 'Fantasia Sens GPT'
+        # Regola globale: se l'utente NON indica un'ambientazione, usa SEMPRE
+        # una vera ambientazione/un tema ufficiale di Brawl Stars.
+        place=random.choice(OFFICIAL_WORLDS); source='Brawl Stars'
     subject=brawler or 'il Brawler della foto profilo'
-    concepts=[
-        f'{subject} osserva le statistiche del giocatore integrate fisicamente nell architettura e negli oggetti della scena',
-        f'{subject} e protagonista mentre trofei, Classificata e vittorie fanno parte dell ambiente senza pannelli UI',
-        f'inquadratura cinematografica di {subject}, con statistiche fuse nella scenografia e mai sovrapposte in box'
-    ]
-    return {'place':place,'source':source,'brawler':brawler,'brawler_reference':profile_brawler_reference(player),'concept':random.choice(concepts),'category':category}
+    concepts=[f'{subject} osserva le statistiche del giocatore integrate fisicamente nell architettura e negli oggetti della scena',f'{subject} e protagonista mentre trofei, Classificata e vittorie fanno parte dell ambiente senza pannelli UI',f'inquadratura cinematografica di {subject}, con statistiche fuse nella scenografia e mai sovrapposte in box']
+    return {'place':place,'source':source,'brawler':brawler,'brawler_reference':profile_brawler_reference(player),'concept':random.choice(concepts),'category':category,'custom_environment':custom or None}
 
 
-def build_visual_prompt(player, category='random'):
-    scene=choose_scene(player,category)
-    name=player.get('name') or 'Giocatore'; tag=player.get('tag') or ''
-    identity=scene['brawler'] or 'Brawler identificato dalla reference della foto profilo'
+def build_visual_prompt(player, category='random', custom_environment=None):
+    scene=choose_scene(player,category,custom_environment)
+    name=player.get('name') or 'Giocatore'; tag=player.get('tag') or ''; identity=scene['brawler'] or 'Brawler identificato dalla reference della foto profilo'
     if category=='cinematic':
-        style=(
-            "MODALITA CINEMATIC PHOTOREALISTIC: obiettivo visivo = 'the exact Brawl Stars character brought into the real world', NON 'a real animal/person dressed like the Brawler'. 8K photorealistic render, produzione live-action ad altissimo budget, physically plausible textures, realistic global illumination, volumetric light, cinematic depth of field, realistic reflections e micro-dettagli. "
-            "PRIORITA ASSOLUTA ALLA REFERENCE: prima copia identita, silhouette, volto, anatomia stilizzata, proporzioni, costume e accessori; soltanto dopo applica materiali e luce fotorealistici. Se fotorealismo e fedelta entrano in conflitto, VINCE SEMPRE LA FEDELTA ALLA REFERENCE. "
-            "Capelli/peli/barba SOLO quando realmente presenti nel design. Materiali coerenti con il soggetto: piume, pelo, squame, pelle, tessuti, metallo, vegetazione, gel o superfici soprannaturali, ma senza cambiare la forma originale. "
-            + cinematic_identity_rules(scene['brawler']) + " "
-            "Evita cartoon generico, giocattolo, low-poly, CGI economica, cosplay, animale reale, persona reale sostitutiva e redesign. "
-        )
-    elif category=='cinema':
-        style=("MODALITA AL CINEMA: ambientazione obbligatoria cinema IMAX/sala cinematografica. Questa e una LOCATION, NON la modalita Cinematic fotorealistica. Mantieni la normale resa 3D cinematografica fedele a Brawl Stars. ")
-    else:
-        style="Crea una scena 3D cinematografica, realistica ma fedele a Brawl Stars. "
-    return (
-        style+f"Ambientazione: {scene['place']}. Idea narrativa: {scene['concept']}. Profilo: {name} {tag}. Personaggio: {identity}. "
-        "REGOLA PRIORITARIA BRAWLER: deve essere immediatamente riconoscibile come lo STESSO personaggio della reference, non una reinterpretazione. Mantieni identita, silhouette, anatomia/proporzioni stilizzate, palette, costume, accessori e caratteristiche distintive. "
-        "REGOLA TESTI E STATISTICHE: VIETATI box, card, pannelli UI, targhette traslucide, rettangoli arrotondati, cornici, HUD sospesi e blocchi di testo sovrapposti. Nome, tag, trofei, vittorie, Classificata e altri dati devono sembrare parte fisica o luminosa della scenografia: incisioni su pietra/metallo, insegne, pareti, gradini, pavimento, stendardi, ologrammi diegetici o altri elementi coerenti con il luogo. Distribuisci i dati nello scenario senza coprire il Brawler e lascia margine di sicurezza dai quattro bordi affinche nessun testo venga tagliato. "
-        "Integra naturalmente TITANI ABUSIVI nell ambiente usando il logo di riferimento come identita visiva: niente badge bianco, watermark o logo galleggiante; deve apparire su un elemento fisico coerente della scena. Mantieni il Brawler come protagonista."
-    ), scene
+        style=("MODALITA CINEMATIC PHOTOREALISTIC: obiettivo visivo = 'the exact Brawl Stars character brought into the real world', NON 'a real animal/person dressed like the Brawler'. 8K photorealistic render, produzione live-action ad altissimo budget, physically plausible textures, realistic global illumination, volumetric light, cinematic depth of field, realistic reflections e micro-dettagli. PRIORITA ASSOLUTA ALLA REFERENCE: prima copia identita, silhouette, volto, anatomia stilizzata, proporzioni, costume e accessori; soltanto dopo applica materiali e luce fotorealistici. Se fotorealismo e fedelta entrano in conflitto, VINCE SEMPRE LA FEDELTA ALLA REFERENCE. "+cinematic_identity_rules(scene['brawler'])+" Evita cartoon generico, giocattolo, low-poly, CGI economica, cosplay, animale reale, persona reale sostitutiva e redesign. ")
+    elif category=='cinema': style="MODALITA AL CINEMA: ambientazione obbligatoria cinema IMAX/sala cinematografica salvo ambientazione personalizzata esplicita. Mantieni la normale resa 3D cinematografica fedele a Brawl Stars. "
+    else: style="Crea una scena 3D cinematografica, realistica ma fedele a Brawl Stars. "
+    return (style+f"Ambientazione OBBLIGATORIA: {scene['place']}. Idea narrativa: {scene['concept']}. Profilo: {name} {tag}. Personaggio: {identity}. REGOLA PRIORITARIA BRAWLER: deve essere immediatamente riconoscibile come lo STESSO personaggio della reference, non una reinterpretazione. Mantieni identita, silhouette, anatomia/proporzioni stilizzate, palette, costume, accessori e caratteristiche distintive. REGOLA TESTI E STATISTICHE: VIETATI box, card, pannelli UI, targhette traslucide, rettangoli arrotondati, cornici, HUD sospesi e blocchi di testo sovrapposti. Nome, tag, trofei, vittorie, Classificata e altri dati devono sembrare parte fisica o luminosa della scenografia. Distribuisci i dati senza coprire il Brawler e lascia margine di sicurezza dai quattro bordi. Integra naturalmente TITANI ABUSIVI nell ambiente usando il logo di riferimento come identita visiva: niente badge bianco, watermark o logo galleggiante; deve apparire su un elemento fisico coerente della scena. Mantieni il Brawler come protagonista."), scene
