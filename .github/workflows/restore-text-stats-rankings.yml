@@ -1,0 +1,80 @@
+name: Restore text-only stats and rankings
+
+on:
+  push:
+    paths:
+      - '.github/workflows/restore-text-stats-rankings.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Patch text-only responses
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('community_features.py')
+          s=p.read_text()
+          old='''        if stat:\n            from app import send_stat_ranking_cards; await send_stat_ranking_cards(message, context, self, stat_aliases[stat.group(1).lower()]); return True\n'''
+          new='''        if stat:\n            await message.reply_text(self.stat_ranking_text(message.chat_id, stat_aliases[stat.group(1).lower()])); return True\n'''
+          assert old in s
+          s=s.replace(old,new)
+          old='''        if clubstat:\n            from app import send_stat_ranking_cards; await send_stat_ranking_cards(message, context, self, stat_aliases[clubstat.group(2).lower()], self.CLUB_ALIASES[clubstat.group(1).lower()]); return True\n'''
+          new='''        if clubstat:\n            await message.reply_text(self.stat_ranking_text(message.chat_id, stat_aliases[clubstat.group(2).lower()], self.CLUB_ALIASES[clubstat.group(1).lower()])); return True\n'''
+          assert old in s
+          s=s.replace(old,new)
+          old='''            from app import send_stat_ranking_cards; await send_stat_ranking_cards(message, context, self, "3v3", club_name); return True\n'''
+          new='''            await message.reply_text(self.stat_ranking_text(message.chat_id, "3v3", club_name)); return True\n'''
+          assert old in s
+          s=s.replace(old,new)
+          old='''            from app import send_stat_ranking_cards; await send_stat_ranking_cards(message, context, self, stat_key, club_name); return True\n'''
+          new='''            await message.reply_text(self.stat_ranking_text(message.chat_id, stat_key, club_name)); return True\n'''
+          assert old in s
+          s=s.replace(old,new)
+
+          # Ranked text: expose score + division, never image.
+          old='''        for i,row in enumerate(rows[:60],1): lines.append(f"{i}. {row['name']} - {self.number_formatter(row['value'])}")\n'''
+          new='''        for i,row in enumerate(rows[:60],1):\n            value = self.number_formatter(row['value'])\n            if stat_key.startswith("classificata") and row.get("display_value"):\n                value = f"{value} ELO - {row['display_value']}"\n            lines.append(f"{i}. {row['name']} - {value}")\n'''
+          assert old in s
+          s=s.replace(old,new)
+          p.write_text(s)
+
+          p=Path('app.py')
+          s=p.read_text()
+          s=s.replace('from visual_cards import build_player_stats_card, send_stat_ranking_cards\n','')
+          old='''        # DIRECT_VISUAL_STATS_FIX_V1\n        if player.get("tag") == "#2VQYLG0RU8" or player.get("tag") == "2VQYLG0RU8":\n            player["club_name"] = "TALENTI ABUSIVI"\n        player["ranked_current"] = ranked_current\n        player["ranked_season_peak"] = ranked_season_peak\n        player["ranked_career_peak"] = ranked_peak\n        try:\n            card = build_player_stats_card(player, changes=changes, title="STATISTICHE GIOCATORE")\n            await context.bot.send_photo(chat_id=message.chat_id, photo=card)\n        except Exception as exc:\n            print("ERRORE SCHEDA STATS GRAFICA:", repr(exc), flush=True)\n            await context.bot.send_message(chat_id=message.chat_id, text=text)\n        return\n'''
+          new='''        await context.bot.send_message(chat_id=message.chat_id, text=text)\n        return\n'''
+          assert old in s
+          s=s.replace(old,new)
+          p.write_text(s)
+          PY
+      - name: Validate
+        run: |
+          python -m py_compile app.py community_features.py player_tracking.py
+          python - <<'PY'
+          from pathlib import Path
+          a=Path('app.py').read_text(); c=Path('community_features.py').read_text()
+          assert 'build_player_stats_card' not in a
+          assert 'send_stat_ranking_cards' not in a
+          assert 'from app import send_stat_ranking_cards' not in c
+          assert 'ELO - {row['"'"'display_value'"'"']}' in c
+          print('Text-only stats/rankings validation OK')
+          PY
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app.py community_features.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Use text-only stats and rankings"
+          git push
