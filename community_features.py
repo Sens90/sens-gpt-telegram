@@ -18,35 +18,57 @@ FAQ_TEXT = (
     "- Reclutamento: titaniabusivi.it"
 )
 
-HELP_TEXT = (
-    "FUNZIONI COMMUNITY\n\n"
-    "- profilo #TAG / stats #TAG: scheda giocatore\n"
-    "- grafico 7|15|30|90 #TAG: andamento trofei\n"
-    "- registrami #TAG: collega il tuo account Brawl Stars e salva Ranked attuale/Ranked massima\n"
-    "- ranked #TAG: Classificata attuale, massima stagione e massima carriera\n"
-    "- storico ranked #TAG: ultime variazioni automatiche della Classificata\n"
-    "- classifica 7 / classifica 15 / classifica 30: crescita interna\n"
-    "- classifiche statistiche: trofei, Brawler, livello, prestigio, 3v3, Solo, Duo, ELO attuale/stagione/carriera\n"
-    "- aggiungi titani, tamarri, tornadi o talenti per filtrare un club\n"
-    "- club: riepilogo della community registrata\n"
-    "- elenco registrati: elenco dei membri con account Brawl Stars collegato\n"
-    "- inattivi: membri a rischio per inattività Telegram\n"
-    "- assenza 7: segnala 7 giorni di assenza\n"
-    "- eventi: eventi aperti\n"
-    "- evento crea NOME | GG/MM/AAAA HH:MM | obbligatorio: crea evento (admin)\n"
-    "- partecipo ID: conferma partecipazione\n"
-    "- reclutamento: avvia candidatura guidata\n"
-    "- candidature: mostra candidature pendenti (admin)\n"
-    "- regole / faq: regole TITANI ABUSIVI\n"
-    "- sito: informazioni e link al sito ufficiale titaniabusivi.it\n"
-    "- discord: link diretto al server Discord della community\n"
-    "- report: report operativo immediato\n"
-    "- report giornaliero on|off / report settimanale on|off: report automatici (admin)\n"
-    "- autokick on|off: espulsione automatica oltre soglia (admin)\n"
-    "- soglie inattività 5 10: avviso/kick in giorni (admin)\n"
-    "- push NOME BRAWLER: consiglio personalizzato aggiornato\n"
-    "- cosa pushare adesso?: consigli basati su meta e rotazioni attuali"
-)
+HELP_TEXT = """COMANDI SENS GPT - SOCI
+
+ACCOUNT E PROFILO
+- registrami #TAG — collega il tuo account Brawl Stars
+- profilo #TAG / stats #TAG — scheda completa del giocatore
+- ranked #TAG — Classificata attuale e record
+- storico ranked #TAG — ultime variazioni della Classificata
+
+CLASSIFICHE COMMUNITY
+- classifica — mostra i periodi disponibili
+- classifica oggi / 7 / 15 / 30 — andamento trofei
+- classifica trofei
+- classifica brawler
+- classifica livello
+- classifica prestigio
+- classifica 3v3
+- classifica solo
+- classifica duo
+- classifica elo
+- classifica elo stagione
+- classifica elo carriera
+- statistiche / tutte le classifiche — riepilogo statistiche
+
+CLASSIFICHE DEI 4 CLUB
+Aggiungi titani, tamarri, tornadi o talenti alla classifica.
+Esempi: classifica titani 3v3; classifica tamarri trofei; classifica tornadi prestigio; classifica talenti duo.
+- statistiche titani / tamarri / tornadi / talenti — riepilogo del club
+
+GRAFICI
+- grafico 7|15|30|90 #TAG — andamento di un giocatore
+- grafico community 7|15|30|90 — totale giocatori registrati
+- grafico titani 7|15|30|90
+- grafico tamarri 7|15|30|90
+- grafico tornadi 7|15|30|90
+- grafico talenti 7|15|30|90
+
+COMMUNITY
+- club — riepilogo community
+- elenco registrati — account collegati
+- inattivi — situazione inattività visibile dal bot
+- assenza N — segnala N giorni di assenza
+- eventi — eventi aperti
+- partecipo ID — conferma partecipazione
+- regole / faq — regolamento
+- sito — sito ufficiale
+- discord — server Discord
+
+BRAWL STARS
+Puoi inoltre chiedere direttamente a Sens GPT meta, mappe, composizioni, Ladder o Classificata, Brawler, configurazioni, gadget, abilità stellari, equipaggiamenti, overdrive e consigli su cosa pushare.
+
+Scrivi comandi in qualsiasi momento per rivedere questa guida."""
 
 
 class CommunityFeatures:

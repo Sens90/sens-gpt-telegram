@@ -1931,6 +1931,42 @@ def create_trophy_chart(player_tag, player_name, history, days=30):
         return None
 
 
+def create_aggregate_trophy_chart(scope_name, member_histories, days=30):
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        daily = {}
+        for history in member_histories:
+            per_day = {}
+            for row in history or []:
+                try:
+                    dt = datetime.fromisoformat(row["recorded_at"].replace("Z", "+00:00"))
+                    if dt < cutoff:
+                        continue
+                    per_day[dt.date()] = int(row["trophies"])
+                except Exception:
+                    continue
+            for day, value in per_day.items():
+                daily.setdefault(day, []).append(value)
+        points = sorted((day, sum(values)) for day, values in daily.items() if values)
+        if len(points) < 2:
+            return None
+        dates=[datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc) for day,_ in points]
+        totals=[value for _,value in points]
+        fig,ax=plt.subplots(figsize=(10,5))
+        ax.plot(dates, totals, marker="o", linewidth=2)
+        ax.set_title(f"Andamento trofei - {scope_name}")
+        ax.set_xlabel("Data"); ax.set_ylabel("Trofei totali"); ax.grid(True, alpha=0.3)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%d/%m"))
+        margin=max(50,int((max(totals)-min(totals))*0.20)) if max(totals)!=min(totals) else 50
+        ax.set_ylim(min(totals)-margin,max(totals)+margin)
+        fig.autofmt_xdate(); fig.tight_layout()
+        image=io.BytesIO(); fig.savefig(image,format="png",dpi=150); plt.close(fig)
+        image.seek(0); image.name="andamento_community.png"
+        return image
+    except Exception as e:
+        print("ERRORE GRAFICO AGGREGATO:",repr(e),flush=True); return None
+
+
 def get_brawlzone_player(player_tag):
     # BrawlTrack is the primary live source. BrawlZone is only a fallback.
     primary = get_brawltrack_player(player_tag)
@@ -2256,6 +2292,33 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Trofei attuali: {format_number_it(player["trophies"])}"
             )
         )
+        return
+
+    aggregate_chart_match = re.fullmatch(
+        r"grafico\s+(community|titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)(?:\s+(7|15|30|90))?",
+        question.strip(), re.I
+    )
+    if aggregate_chart_match:
+        scope_key=aggregate_chart_match.group(1).lower()
+        days=int(aggregate_chart_match.group(2) or 30)
+        club_name=None if scope_key=="community" else community.CLUB_ALIASES.get(scope_key)
+        histories=[]
+        included=0
+        for member in community.members(message.chat_id):
+            tag=member.get("player_tag")
+            if not tag: continue
+            if club_name:
+                player=get_brawlzone_player(tag)
+                actual=community._club_name_from_player(player) if player else None
+                if (actual or "").casefold()!=club_name.casefold(): continue
+            history=get_trophy_history(tag,days=max(days,90))
+            if history:
+                histories.append(history); included+=1
+        chart=create_aggregate_trophy_chart(club_name or "COMMUNITY ABUSIVI",histories,days)
+        if not chart:
+            await message.reply_text(f"Non ci sono ancora abbastanza dati per il grafico degli ultimi {days} giorni.")
+            return
+        await context.bot.send_photo(chat_id=message.chat_id,photo=chart,caption=f"Andamento trofei - {club_name or 'COMMUNITY ABUSIVI'}\nPeriodo: ultimi {days} giorni\nGiocatori inclusi: {included}")
         return
 
     stats_match = re.fullmatch(
