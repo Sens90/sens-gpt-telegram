@@ -21,6 +21,7 @@ from telegram import Update
 from telegram.error import TelegramError, TimedOut, NetworkError, RetryAfter, BadRequest
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
 from community_features import CommunityFeatures
+from profile_card_generator import build_profile_card
 from player_tracking import extract_brawlzone_ranked, get_brawltrack_player
 from live_maps import collect_report, render_report, report_csv
 
@@ -2319,6 +2320,19 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text(f"Non ci sono ancora abbastanza dati per il grafico degli ultimi {days} giorni.")
             return
         await context.bot.send_photo(chat_id=message.chat_id,photo=chart,caption=f"Andamento trofei - {club_name or 'COMMUNITY ABUSIVI'}\nPeriodo: ultimi {days} giorni\nGiocatori inclusi: {included}")
+        return
+
+    profile_image_match = re.fullmatch(r"(?:profilo grafico|immagine profilo|profile image)(?:\s+(verticale|orizzontale))?\s*#?([0289PYLQGRJCUV]{3,15})", question.strip(), re.I)
+    if profile_image_match:
+        orientation = "horizontal" if (profile_image_match.group(1) or "").lower() == "orizzontale" else "vertical"
+        player = get_brawlzone_player(profile_image_match.group(2).upper())
+        if not player:
+            await message.reply_text("Non riesco a trovare questo giocatore.")
+            return
+        if str(player.get("tag") or "").upper().replace("#", "") == "2VQYLG0RU8":
+            player["club"] = player["club_name"] = "TALENTI ABUSIVI"
+        card = build_profile_card(player, orientation)
+        await context.bot.send_photo(chat_id=message.chat_id, photo=card, caption=f"Profilo grafico - {player.get('name','Giocatore')}")
         return
 
     stats_match = re.fullmatch(
