@@ -26,4 +26,18 @@ def sync_verified_rows():
  for i in range(0,len(new),800):
   r=requests.post(url+"/rest/v1/skins_catalog",headers=h,json=new[i:i+800],timeout=60); r.raise_for_status()
  return {"ok":True,"mapped":len(rows),"unmapped":len(unmapped),"existing_preserved":len(rows)-len(new),"inserted":len(new)}
-if __name__=="__main__": print(inspect_skin_master())
+
+def inspect_unmapped_relations():
+ skins=_get("/game/csv_logic/skins"); chars=_get("/game/csv_logic/characters"); confs=_get("/game/csv_logic/skin_confs")
+ char_by_internal={x.get("Name"):x for x in chars.values() if x.get("id") and x.get("Name")}
+ conf_by_name={x.get("Name"):x for x in confs.values() if x.get("Name")}
+ fields=set()
+ out=[]
+ for s in skins.values():
+  if s.get("Disabled") or not s.get("TID"): continue
+  cf=conf_by_name.get(s.get("Conf") or s.get("Name"))
+  if cf and char_by_internal.get(cf.get("Character")): continue
+  if cf: fields.update(cf.keys())
+  out.append({"skin_id":s.get("id"),"skin":s.get("Name"),"conf":s.get("Conf"),"skin_fields":{k:v for k,v in s.items() if v not in (None,"",0,False,[])}, "conf_fields":{k:v for k,v in (cf or {}).items() if v not in (None,"",0,False,[])}})
+ return {"count":len(out),"candidate_fields":sorted(fields),"rows":out}
+\nif __name__=="__main__": print(inspect_unmapped_relations())
