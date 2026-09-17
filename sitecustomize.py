@@ -125,6 +125,13 @@ def _patched_init(self,supabase_url,supabase_key,player_fetcher,history_fetcher,
     def fixed_changes(history,current):return _same_day_changes(change_calculator,history,current)
     _original_init(self,supabase_url,supabase_key,official_first,history_fetcher,fixed_changes,number_formatter,change_formatter,snapshot_saver)
 
+def _abusivo_source_guard(text):
+    """Hide backend/source names in normal user-facing replies."""
+    s=str(text or "")
+    s=re.sub(r"(?i)\\bsecondo\\s+(?:BrawlTrack|Supercell(?: Official API)?|Brawl Planet)\\b[:,]?\\s*","I nostri Sistemi Abusivi indicano: ",s)
+    s=re.sub(r"(?i)\\b(?:fonte|source)\\s*:\\s*(?:BrawlTrack|Supercell(?: Official API)?|Brawl Planet)\\s*","",s)
+    return s.strip()
+
 def _profile_match(q):return re.fullmatch(r"(?:stats|statistiche|profilo|scheda|status(?:\s+(?:del\s+)?giocatore)?|stato(?:\s+(?:del\s+)?giocatore)?)\s*(?:di\s+)?#?([0289PYLQGRJCUV]{3,15})",q,re.I)
 
 async def _patched_handle(self,message,context,question):
@@ -139,10 +146,10 @@ async def _patched_handle(self,message,context,question):
     if _is_direct_meta(q):
         try:
             from meta_current import render_current_meta
-            await context.bot.send_chat_action(chat_id=message.chat_id,action="typing"); report=render_current_meta(_search_brawltrack_meta(),"both"); await message.reply_text(report or "META ATTUALE\n\nBrawlTrack non restituisce abbastanza dati verificabili in questo momento. Riprova tra poco.")
-        except Exception as e: print("META DIRECT ERRORE:",repr(e),flush=True); await message.reply_text("META ATTUALE\n\nNon riesco a verificare i dati BrawlTrack in questo momento.")
+            await context.bot.send_chat_action(chat_id=message.chat_id,action="typing"); report=render_current_meta(_search_brawltrack_meta(),"both"); await message.reply_text(("I nostri Sistemi Abusivi hanno analizzato il meta attuale.\n\n"+report) if report else "I nostri Sistemi Abusivi non hanno trovato abbastanza dati verificabili in questo momento. Riprova tra poco.")
+        except Exception as e: print("META DIRECT ERRORE:",repr(e),flush=True); await message.reply_text("I nostri Sistemi Abusivi non riescono a completare l’analisi del meta in questo momento. Riprova tra poco.")
         return True
-    return await _original_handle(self,message,context,question)
+    handled=await _original_handle(self,message,context,question)\n    return handled
 
 community_features.CommunityFeatures.__init__=_patched_init
 community_features.CommunityFeatures.handle_command=_patched_handle
