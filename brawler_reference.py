@@ -22,13 +22,36 @@ BRAWLER_ALIASES_IT = {
     "barryl":"Darryl","semino":"Sprout","energetik":"Surge","gelindo":"Gale","maxine":"Max",
     "iris":"Nani"
 }
-# Official Italian skin names that differ completely from the asset/catalogue
-# English name.  Keep the Italian label for the user, but resolve against the
-# canonical graphical asset name.
+
+# Verified Italian names whose catalogue asset uses a different English label.
+# Keys are normalized; both short form and "Brawler + skin" form are accepted.
 SKIN_ALIASES_IT = {
     "griff": {
-        "bauledemoniaco": "Sunken Chest Griff",
-        "griffbauledemoniaco": "Sunken Chest Griff",
+        "bauledemoniaco":"Sunken Chest Griff",
+        "griffbauledemoniaco":"Sunken Chest Griff",
+    },
+    "ruffs": {
+        "tutanringhioii":"Tutan Ruffs II",
+        "ringhiotutanringhioii":"Tutan Ruffs II",
+        "ruffstutanringhioii":"Tutan Ruffs II",
+    },
+    "surge": {
+        "scheletro":"Skeletal Surge",
+        "energetikscheletro":"Skeletal Surge",
+        "scheletromalefico":"Skeletal Surge Evil",
+        "energetikscheletromalefico":"Skeletal Surge Evil",
+        "scheletroperfido":"Skeletal Surge Evil",
+        "energetikscheletroperfido":"Skeletal Surge Evil",
+        "scheletrogiustiziere":"Skeletal Surge Light",
+        "energetikscheletrogiustiziere":"Skeletal Surge Light",
+    },
+    "frank": {
+        "mummia":"Mummy Frank",
+        "frankmummia":"Mummy Frank",
+    },
+    "crow": {
+        "testadosso":"Bone Crow",
+        "corvotestadosso":"Bone Crow",
     },
 }
 
@@ -87,14 +110,11 @@ def _icon_id_from_brawlzone(tag,timeout=15):
 def _extract_image_urls(fragment,base_url):
     urls=[]
     decoded=html.unescape(fragment).replace("\\u002F","/").replace("\\/","/")
-    patterns=(
-        r'''(?:src|data-src|imageUrl|image_url)["']?\s*[:=]\s*["']([^"']+)''',
-        r'''(https?://[^"'<>\s]+\.(?:png|webp|jpg|jpeg)(?:\?[^"'<>\s]*)?)''',
-    )
+    patterns=(r'''(?:src|data-src|imageUrl|image_url)["']?\s*[:=]\s*["']([^"']+)''',r'''(https?://[^"'<>\s]+\.(?:png|webp|jpg|jpeg)(?:\?[^"'<>\s]*)?)''')
     for pattern in patterns:
         for raw in re.findall(pattern,decoded,re.I):
             url=urljoin(base_url,raw)
-            if url.startswith("http") and url not in urls: urls.append(url)
+            if url.startswith("http") and url not in urls:urls.append(url)
     return urls
 
 
@@ -105,77 +125,85 @@ def _is_skin_image(url,timeout=10):
     except Exception:return False
 
 
-def _skin_search_names(brawler, skin_name):
-    """Return normalized labels accepted for a requested Italian skin name."""
+def _skin_alias(brawler,skin_name):
     requested=_norm(skin_name)
-    names=[requested]
-    aliases=SKIN_ALIASES_IT.get(_norm(brawler.get("name")), {})
-    canonical=aliases.get(requested)
+    aliases=SKIN_ALIASES_IT.get(_norm(brawler.get("name")),{})
+    return aliases.get(requested)
+
+
+def _skin_search_names(brawler,skin_name):
+    requested=_norm(skin_name); names=[requested]; canonical=_skin_alias(brawler,skin_name)
     if canonical:
-        names.append(_norm(canonical))
-        # Catalogues commonly include the brawler in the English skin label;
-        # also accept the skin-only portion when matching URLs/alt text.
-        bnorm=_norm(brawler.get("name"))
-        cnorm=_norm(canonical)
-        if cnorm.endswith(bnorm): names.append(cnorm[:-len(bnorm)])
+        cnorm=_norm(canonical); names.append(cnorm); bnorm=_norm(brawler.get("name"))
+        if cnorm.endswith(bnorm):names.append(cnorm[:-len(bnorm)])
+        if cnorm.startswith(bnorm):names.append(cnorm[len(bnorm):])
     return list(dict.fromkeys(x for x in names if x))
 
 
-def _italian_skin_reference(brawler,skin_name,timeout=15):
-    slug=_norm(brawler.get("name"))
-    if not slug:return None,None
-    page_url=BRAWLVALUE_SKINS_URL.format(brawler_slug=slug)
-    try:
-        r=requests.get(page_url,headers={"User-Agent":"Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)","Accept-Language":"it-IT,it;q=0.9"},timeout=timeout)
-        if r.status_code!=200:return None,None
-    except Exception:return None,None
-    text=html.unescape(r.text); requested=_norm(skin_name); search_names=_skin_search_names(brawler,skin_name); brawler_norm=_norm(brawler.get("name")); entries=[]
-    for m in re.finditer(r'''(?i)(?:alt|title)=["']([^"']+?)(?:\s*-\s*[^"']*Skin)?["']''',text):
-        label=m.group(1).strip(); label_norm=_norm(label)
-        if not label_norm:continue
-        short_norm=label_norm
-        if short_norm.startswith(brawler_norm):short_norm=short_norm[len(brawler_norm):]
-        if requested not in {"casuale","random"} and not any(q==label_norm or q==short_norm or q in label_norm or q in short_norm for q in search_names):continue
-        fragment=text[max(0,m.start()-1800):min(len(text),m.end()+1800)]
-        for u in _extract_image_urls(fragment,page_url):
-            if "/skins/" in u.casefold() or "brawlers/skins" in u.casefold():entries.append((label,u))
-    if requested in {"casuale","random"}:random.shuffle(entries)
-    for label,url in entries:
-        if _is_skin_image(url):
-            # User-facing label stays the official Italian request when an
-            # alias was required to find the English catalogue asset.
-            display = skin_name if len(search_names)>1 else re.sub(rf"(?i)^\s*{re.escape(str(brawler.get('name') or ''))}\s+","",label).strip()
-            return url,display or label
+def _candidate_skin_pages(brawler):
+    # Try both canonical English slug and known Italian alias slug. This makes
+    # catalogue lookup independent from what skin the player owns.
+    slugs=[_norm(brawler.get("name"))]
+    for italian,canonical in BRAWLER_ALIASES_IT.items():
+        if _norm(canonical)==_norm(brawler.get("name")):slugs.append(_norm(italian))
+    return [BRAWLVALUE_SKINS_URL.format(brawler_slug=s) for s in dict.fromkeys(slugs) if s]
+
+
+def _catalogue_skin_reference(brawler,skin_name,timeout=15):
+    requested=_norm(skin_name); search_names=_skin_search_names(brawler,skin_name); brawler_norm=_norm(brawler.get("name"))
+    for page_url in _candidate_skin_pages(brawler):
+        try:
+            r=requests.get(page_url,headers={"User-Agent":"Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)","Accept-Language":"it-IT,it;q=0.9,en;q=0.7"},timeout=timeout)
+            if r.status_code!=200:continue
+        except Exception:continue
+        text=html.unescape(r.text); entries=[]
+        for m in re.finditer(r'''(?i)(?:alt|title)=["']([^"']+?)(?:\s*-\s*[^"']*Skin)?["']''',text):
+            label=m.group(1).strip(); label_norm=_norm(label)
+            if not label_norm:continue
+            short_norm=label_norm
+            if short_norm.startswith(brawler_norm):short_norm=short_norm[len(brawler_norm):]
+            if requested not in {"casuale","random"} and not any(q==label_norm or q==short_norm or q in label_norm or q in short_norm for q in search_names):continue
+            fragment=text[max(0,m.start()-2500):min(len(text),m.end()+2500)]
+            for u in _extract_image_urls(fragment,page_url):
+                lower=u.casefold()
+                if "skin" in lower or "brawler" in lower or "/images/" in lower:entries.append((label,u))
+        if requested in {"casuale","random"}:random.shuffle(entries)
+        for label,url in entries:
+            if _is_skin_image(url):return url,(skin_name if _skin_alias(brawler,skin_name) else label)
     return None,None
 
 
 def _skin_reference(player,brawler,skin_name,timeout=15):
-    skin_url,skin_label=_italian_skin_reference(brawler,skin_name,timeout=timeout)
+    skin_url,skin_label=_catalogue_skin_reference(brawler,skin_name,timeout=timeout)
     if skin_url:return skin_url,skin_label
     tag=str(player.get("tag") or "").upper().replace("#","").strip()
     if not tag or not brawler or not brawler.get("id"):return None,None
     page_url=BRAWLIFY_BRAWLER_URL.format(tag=tag,brawler_id=brawler["id"])
-    r=requests.get(page_url,headers={"User-Agent":"Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)","Accept-Language":"it-IT,it;q=0.9"},timeout=timeout)
-    if r.status_code!=200:return None,None
+    try:
+        r=requests.get(page_url,headers={"User-Agent":"Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)","Accept-Language":"it-IT,it;q=0.9"},timeout=timeout)
+        if r.status_code!=200:return None,None
+    except Exception:return None,None
     text=html.unescape(r.text); requested=_norm(skin_name); search_names=_skin_search_names(brawler,skin_name); candidates=[]; name_candidates=[]
     for m in re.finditer(r'''(?i)(?:skinName|name|title|alt)["']?\s*[:=]\s*["']([^"']{2,100})''',text):
         label=html.unescape(m.group(1)).strip(); label_norm=_norm(label)
         if not label_norm:continue
         if requested in {"casuale","random"}:name_candidates.append((label,m.start()))
         elif any(q==label_norm or q in label_norm or label_norm in q for q in search_names):name_candidates.append((label,m.start()))
+    terms=[str(skin_name)]; canonical=_skin_alias(brawler,skin_name)
+    if canonical:terms.append(canonical)
     if not name_candidates and requested not in {"casuale","random"}:
-        for term in [str(skin_name)] + [x for x in (SKIN_ALIASES_IT.get(_norm(brawler.get('name')),{}).get(requested),) if x]:
+        for term in terms:
             for m in re.finditer(re.escape(term),text,re.I):name_candidates.append((term,m.start()))
     if requested in {"casuale","random"}:random.shuffle(name_candidates)
     for label,pos in name_candidates:
-        fragment=text[max(0,pos-3500):min(len(text),pos+3500)]
+        fragment=text[max(0,pos-4000):min(len(text),pos+4000)]
         for url in _extract_image_urls(fragment,page_url):
             lower=url.casefold()
             if any(part in lower for part in ("profile-icons","star-powers","gadgets","gears","maps/","ranked/","club-badges")):continue
             score=(4 if any(q in _norm(url) for q in search_names) else 0)+(3 if _norm(label) in _norm(url) else 0)+(2 if "skin" in lower else 0)+(1 if "brawler" in lower or "cdn" in lower else 0)
             candidates.append((score,label,url))
     for _,label,url in sorted(candidates,key=lambda x:x[0],reverse=True):
-        if _is_skin_image(url):return url,(skin_name if len(search_names)>1 else label)
+        if _is_skin_image(url):return url,(skin_name if canonical else label)
     return None,None
 
 
@@ -185,18 +213,20 @@ def resolve_ai_brawler_reference(player,requested_brawler=None,timeout=15):
         if requested_brawler:
             requested=str(requested_brawler).strip(); skin_name=None
             env_match=re.match(r"^(.+?)\s+ambientazione\s+(.+)$",requested,re.I)
-            if env_match:requested=env_match.group(1).strip(); player["ai_custom_environment"]=env_match.group(2).strip()[:120]
+            if env_match:requested=env_match.group(1).strip(); player["ai_custom_environment"]=env_match.group(2).strip()[:160]
             natural_skin=re.match(r"^skin\s+di\s+(.+)$",requested,re.I)
             if natural_skin:
                 rest=natural_skin.group(1).strip(); brawler=None
-                for candidate in sorted(list(BRAWLER_ALIASES_IT)+[str(x.get('name') or '') for x in brawlers],key=len,reverse=True):
+                candidates=sorted(list(BRAWLER_ALIASES_IT)+[str(x.get('name') or '') for x in brawlers],key=len,reverse=True)
+                for candidate in candidates:
+                    # Compare normalized prefixes but remove the actual written
+                    # token sequence so apostrophes/accents do not break parsing.
                     if _norm(rest).startswith(_norm(candidate)):
-                        brawler=_brawler_by_name(candidate,brawlers)
-                        if brawler:
-                            m=re.match(rf"^{re.escape(candidate)}\s+(.+)$",rest,re.I)
-                            if m:skin_name=m.group(1).strip(); requested=candidate
-                            break
-            skin_match=re.match(r"^(.+?)\s+skin\s+(.+)$",requested,re.I)
+                        pattern=r"^"+r"\s*".join(re.escape(x) for x in candidate.split())+r"\s+(.+)$"
+                        m=re.match(pattern,rest,re.I)
+                        if m and _brawler_by_name(candidate,brawlers):
+                            requested=candidate; skin_name=m.group(1).strip(); break
+            skin_match=re.match(r"^(.+?)\s+skin(?:\s+di)?\s+(.+)$",requested,re.I)
             if skin_match:requested=skin_match.group(1).strip(); skin_name=skin_match.group(2).strip()
             brawler=_brawler_by_name(requested,brawlers)
             if not brawler:return False,f"Brawler '{requested}' non trovato. Usa il nome italiano o quello ufficiale del Brawler."
