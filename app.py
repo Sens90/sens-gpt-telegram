@@ -593,7 +593,19 @@ def web_search(query):
         "brawler", "brawlers", "skin", "skins", "costume"
     ])
 
-    if is_map_query:
+    brawler_map_performance_query = is_map_query and any(term in query_lower for term in [
+        "win rate", "percentuale di vittoria", "percentuali di vittoria",
+        "mappe migliori", "migliori mappe", "mappa migliore", "che mappa",
+        "quale mappa", "mappe con", "per ogni modalità", "per ogni modalita"
+    ])
+
+    if brawler_map_performance_query:
+        search_query = (
+            f"Brawl Stars {query} {today} {context_hint} "
+            f"site:brawltrack.app/brawlers "
+            f"BrawlTrack Best Maps Best Game Modes win rate battles"
+        )
+    elif is_map_query:
         search_query = (
             f"Brawl Stars {query} {today} {context_hint} "
             f"site:brawltrack.app/maps OR site:brawltrack.app/pro/maps "
@@ -2332,7 +2344,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     profile_image_match = re.fullmatch(
-        r"(?:profilo ai|profilo grafico|immagine profilo|profile image)(?:\s+(sorprendimi|brawl|cinematic|pixar|epico|fantascienza|fantasy))?\s*#?([0289PYLQGRJCUV]{3,15})(?:\s+con\s+(.+?))?(?:\s+ambientazione\s+(.+))?",
+        r"(?:profilo ai|profilo grafico|immagine profilo|profile image)(?:\s+(sorprendimi|brawl|cinematic|pixar|epico|fantascienza|fantasy))?\s*#?([0289PYLQGRJCUV]{3,15})(?:\s+(?:con\s+)?(.+?))?(?:\s+ambientazione\s+(.+))?",
         question.strip(), re.I
     )
     if profile_image_match:
