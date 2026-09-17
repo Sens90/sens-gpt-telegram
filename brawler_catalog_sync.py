@@ -81,7 +81,6 @@ def sync_official_brawlers(timeout=30):
     if not supabase_url:
         raise RuntimeError("SUPABASE_URL non configurata")
 
-    # Il router e indipendente dalla riuscita della sincronizzazione catalogo.
     install_club_ranking_router()
 
     items = _proxy_brawlers(timeout=timeout)
@@ -121,7 +120,7 @@ def sync_official_brawlers(timeout=30):
         "updated_at": now,
     }
     r = requests.post(
-        f"{supabase_url}/rest/v1/content_sync_state?on_conflict=dataset,source",
+        f"{supabase_url}/rest/v1/content_sync_state?on_conflict=dataset",
         headers=_headers(),
         json=state,
         timeout=timeout,
