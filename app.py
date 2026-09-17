@@ -2332,7 +2332,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     profile_image_match = re.fullmatch(
-        r"(?:profilo ai|profilo grafico|immagine profilo|profile image)(?:\s+(sorprendimi|brawl|cinematic|pixar|al\s+cinema|epico|fantascienza|fantasy))?\s*#?([0289PYLQGRJCUV]{3,15})(?:\s+con\s+([A-Za-z0-9À-ÿ ._'’-]{2,30}))?",
+        r"(?:profilo ai|profilo grafico|immagine profilo|profile image)(?:\s+(sorprendimi|brawl|cinematic|pixar|epico|fantascienza|fantasy))?\s*#?([0289PYLQGRJCUV]{3,15})(?:\s+con\s+(.+?))?(?:\s+ambientazione\s+(.+))?",
         question.strip(), re.I
     )
     if profile_image_match:
@@ -2341,7 +2341,6 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "brawl": "official",
             "cinematic": "cinematic",
             "pixar": "pixar",
-            "al cinema": "cinema",
             "epico": "epic",
             "fantascienza": "scifi",
             "fantasy": "fantasy",
@@ -2349,6 +2348,13 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mode_key = re.sub(r"\s+", " ", (profile_image_match.group(1) or "sorprendimi").strip().lower())
         category = category_map.get(mode_key, "random")
         requested_brawler = (profile_image_match.group(3) or "").strip() or None
+        custom_environment = (profile_image_match.group(4) or "").strip() or None
+        # Backward-compatible natural syntax: `profilo ai ... #TAG al cinema`
+        # means environment, never rendering style.
+        if requested_brawler and requested_brawler.casefold() == "al cinema" and not custom_environment:
+            custom_environment = "al cinema"
+            requested_brawler = None
+        player_environment = custom_environment
         telegram_user_id = message.from_user.id
 
         try:
@@ -2390,6 +2396,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reference_ok, reference_error = await asyncio.to_thread(
             resolve_ai_brawler_reference, player, requested_brawler
         )
+        if player_environment:
+            player["requested_environment"] = player_environment
         if not reference_ok:
             await message.reply_text(reference_error or "Riferimento Brawler non disponibile.")
             return
