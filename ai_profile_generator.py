@@ -4,7 +4,6 @@ import os
 from datetime import datetime, timezone
 
 import requests
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 from ai_profile_experience import build_visual_prompt, profile_brawler_reference
 
@@ -70,11 +69,9 @@ def _fmt(v): return f"{v:,}".replace(",",".") if isinstance(v,int) else str(v)
 
 
 def _club_value(player):
-    """Use the live club first; if missing, recover the registered community club."""
     club_name=player.get("club_name")
     club=player.get("club")
-    if isinstance(club,dict):
-        club=club.get("name")
+    if isinstance(club,dict): club=club.get("name")
     for value in (club_name,club):
         if value and str(value).strip() not in {"—","-","Senza club","Senza club / non disponibile"}:
             return str(value).split("\n",1)[0].strip()
@@ -82,16 +79,11 @@ def _club_value(player):
     tag=str(player.get("tag") or "").upper().replace("#","").strip()
     if base and tag:
         try:
-            r=requests.get(
-                f"{base}/rest/v1/community_members",
-                params={"player_tag":f"eq.{tag}","select":"*","limit":"1"},
-                headers=_supabase_headers(),timeout=8,
-            )
+            r=requests.get(f"{base}/rest/v1/community_members",params={"player_tag":f"eq.{tag}","select":"*","limit":"1"},headers=_supabase_headers(),timeout=8)
             r.raise_for_status(); rows=r.json()
             if rows:
-                row=rows[0]
                 for key in ("club_name","club"):
-                    value=row.get(key)
+                    value=rows[0].get(key)
                     if value and str(value).strip() not in {"—","-","Senza club","Senza club / non disponibile"}:
                         return str(value).split("\n",1)[0].strip()
         except Exception as exc:
@@ -99,74 +91,60 @@ def _club_value(player):
     return "—"
 
 
+def _profile_data_prompt(player):
+    rows=[
+        ("NOME",_value(player,"name")),
+        ("TAG",_value(player,"tag")),
+        ("CLUB",_club_value(player)),
+        ("TROFEI",_fmt(_value(player,"trophies"))),
+        ("LIVELLO",_fmt(_value(player,"level"))),
+        ("BRAWLER",_fmt(_value(player,"brawlers"))),
+        ("PRESTIGIO",_fmt(_value(player,"prestige"))),
+        ("VITTORIE 3v3",_fmt(_value(player,"wins_3v3"))),
+        ("SOLO",_fmt(_value(player,"wins_solo"))),
+        ("DUO",_fmt(_value(player,"wins_duo"))),
+        ("CLASSIFICATA",_fmt(_value(player,"ranked_current"))),
+        ("RECORD",_fmt(_value(player,"ranked_career_peak","ranked_peak"))),
+    ]
+    return "\n".join(f"{label}: {value}" for label,value in rows)
+
+
 def generate_scene(player,category="random",logo_path="assets/titani_logo.jpg"):
     prompt,scene=build_visual_prompt(player,category); brawler_ref=profile_brawler_reference(player)
     if not brawler_ref: raise RuntimeError("Foto profilo Brawler non disponibile: generazione annullata per non inventare il personaggio.")
     b_mime,b_data=_download_reference(brawler_ref); l_mime,l_data=_local_reference(logo_path)
-    strict_lock=(
-        "CHARACTER LOCK ASSOLUTO SULLA PRIMA IMMAGINE. La reference e il modello canonico: copia esattamente silhouette, proporzioni, testa, corpo, arti, costume, accessori, palette e OGNI elemento del volto. "
-        "DIVIETO ASSOLUTO di inventare anatomia o tratti facciali. Se nella reference NON sono visibili sclere bianche, pupille, iridi, sopracciglia, naso, bocca, denti, baffi o altre parti del volto, NON aggiungerle. Se il volto e una zona nera/maschera con sole forme luminose degli occhi, deve rimanere esattamente cosi: nessun occhio umano o animale dietro la maschera. "
-        "Non trasformare il soggetto in topo, uccello, animale reale, essere umano, cosplay, mascotte o personaggio ispirato. Non rendere il volto piu espressivo modificando il design. La posa puo cambiare, il design no. "
-        "Lo stile richiesto modifica ESCLUSIVAMENTE rendering, materiali, texture, illuminazione, profondita, ombre e qualita cinematografica. CHARACTER DESIGN INVARIATO. Fedelta reference > stile > creativita. "
+    character_lock=(
+        "CHARACTER LOCK ASSOLUTO: la PRIMA immagine allegata e la reference canonica e VINCOLANTE del Brawler. Riproduci lo STESSO personaggio, non una reinterpretazione. "
+        "Prima di generare, osserva e conserva TUTTI gli elementi visibili nella reference: silhouette, proporzioni, testa, corpo, arti, costume, copricapo/elmetto/cappello, capelli, barba, guanti, scarpe, armi, strumenti, zaino, accessori, colori, simboli e tratti del volto. "
+        "NESSUN elemento visibile nella reference puo essere rimosso, sostituito o ridisegnato. In particolare, se il Brawler indossa un ELMETTO o altro copricapo nella reference, deve indossare ESATTAMENTE quel copricapo anche nell'immagine finale, con forma e colori coerenti. "
+        "Non inventare anatomia o tratti facciali assenti. Non trasformare il Brawler in umano, animale, cosplay o mascotte. La posa puo cambiare, il character design NO. "
+        "Lo stile richiesto puo modificare soltanto rendering, materiali, texture, luce, profondita e atmosfera. FEDELTA ALLA REFERENCE > STILE > CREATIVITA. "
     )
-    if category=="cinematic":
-        character_lock=strict_lock+"Per Cinematic applica fotorealismo soltanto ai materiali e alla fotografia, mai all'anatomia. "
-    elif category=="pixar":
-        character_lock=strict_lock+"Per Pixar usa hyper detailed 3D cinematic animation, high fidelity render, ma NON applicare convenzioni facciali Pixar: niente occhi grandi, pupille, sopracciglia, bocca o naso se non esistono nella reference. Deve sembrare lo STESSO Brawler originale renderizzato in un film 3D, non una sua reinterpretazione. "
-    else:
-        character_lock="La PRIMA immagine allegata e la reference visiva obbligatoria del Brawler: mantieni il personaggio fedele e non aggiungere tratti anatomici assenti. "
-    no_text_lock=(
-        "TEXT LOCK ASSOLUTO: l'arte generata deve essere una SCENA PURAMENTE VISIVA. NON generare alcun testo, lettera, parola, numero o valore leggibile, ad eccezione esclusivamente delle scritte gia presenti nel logo reference TITANI ABUSIVI. "
-        "VIETATI nomi giocatore, tag, nomi club aggiuntivi, trofei, livelli, numero Brawler, Prestigio, vittorie, Solo, Duo, 3v3, Classificata, record, rank, percentuali, contatori e qualsiasi statistica. "
-        "VIETATI cartelli informativi, lapidi con dati, tabelloni, classifiche, schede profilo, HUD, monitor, targhe, lavagne, pannelli o interfacce contenenti testo o numeri. Se la scena richiede cartelli o schermi, devono essere privi di caratteri e mostrare solo forme astratte/decorative. "
-        "NON copiare nell'ambiente i dati del giocatore e NON inventare dati fittizi. Tutta la tipografia del profilo verra applicata deterministicamente dal bot DOPO la generazione. "
+    if category=="cinematic": character_lock += "Cinematic: fotorealismo solo nei materiali e nella fotografia; character design invariato. "
+    elif category=="pixar": character_lock += "Pixar: hyper detailed 3D cinematic animation e high fidelity render, ma nessuna modifica al character design o al volto. "
+
+    data=_profile_data_prompt(player)
+    data_lock=(
+        "Crea una LOCANDINA PROFILO COMPLETA: Nano Banana deve generare DIRETTAMENTE nell'immagine tutta la tipografia e tutti i dati del giocatore, integrandoli artisticamente e naturalmente nell'ambientazione (per esempio cartelli, insegne, pietra, monitor, targhe, pannelli o elementi scenografici coerenti). "
+        "NON lasciare bande nere o aree predisposte per un overlay successivo. NON usare il vecchio layout con testo bianco sovrapposto in alto o in basso. La composizione deve sembrare un'unica opera grafica generata. "
+        "I seguenti dati sono DATI REALI BLOCCATI. Trascrivili ESATTAMENTE, carattere per carattere. Non correggere, reinterpretare, abbreviare, tradurre, arrotondare o sostituire alcun valore. Non inventare statistiche aggiuntive e non ripetere valori diversi in altri punti.\n"
+        "--- DATI OBBLIGATORI ---\n"+data+"\n--- FINE DATI ---\n"
+        "Devono essere tutti chiaramente leggibili e presenti UNA SOLA VOLTA. Dai priorita assoluta alla correttezza di lettere e cifre rispetto alle decorazioni. "
     )
-    full_prompt=(prompt+" "+character_lock+no_text_lock+
-        "La SECONDA immagine allegata e il LOGO ORIGINALE TITANI ABUSIVI: deve comparire riconoscibile e fedele, INTEGRATO FISICAMENTE nella scena, non come watermark o badge. Mantieni forma, simbolo, scritte e identita del logo; non sostituirlo con un logo inventato. Deve essere completamente dentro l'inquadratura. "
-        "Lascia aree visivamente pulite e con contrasto sufficiente nella parte alta e nella parte bassa per la tipografia finale. Il Brawler resta protagonista. Per icone e marchi ufficiali Brawl Stars non inventare imitazioni: se non disponibili, omettili.")
+    logo_lock=(
+        "La SECONDA immagine allegata e il LOGO ORIGINALE TITANI ABUSIVI: integralo fisicamente nella scena, riconoscibile e fedele. Non sostituirlo con un logo inventato e non ridisegnarne l'identita. "
+    )
+    full_prompt=prompt+" "+character_lock+logo_lock+data_lock
     payload={"contents":[{"role":"user","parts":[{"text":full_prompt},{"inline_data":{"mime_type":b_mime,"data":b_data}},{"inline_data":{"mime_type":l_mime,"data":l_data}}]}],"generationConfig":{"responseModalities":["TEXT","IMAGE"],"imageConfig":{"imageSize":"1K"}}}
     url=f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_IMAGE_MODEL}:generateContent"; r=requests.post(url,headers={"x-goog-api-key":_gemini_key(),"Content-Type":"application/json"},json=payload,timeout=180)
     if r.status_code>=400: raise RuntimeError(f"Gemini Image HTTP {r.status_code}: {r.text[:500]}")
     for candidate in r.json().get("candidates") or []:
         for part in (candidate.get("content") or {}).get("parts") or []:
-            inline=part.get("inlineData") or part.get("inline_data") or {}; data=inline.get("data"); mime=inline.get("mimeType") or inline.get("mime_type") or ""
-            if data and mime.startswith("image/"): return base64.b64decode(data),scene
+            inline=part.get("inlineData") or part.get("inline_data") or {}; encoded=inline.get("data"); mime=inline.get("mimeType") or inline.get("mime_type") or ""
+            if encoded and mime.startswith("image/"): return base64.b64decode(encoded),scene
     raise RuntimeError("Gemini non ha restituito un'immagine")
 
 
-def _font(size,bold=False):
-    paths=["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf","/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"]
-    for path in paths:
-        if os.path.exists(path): return ImageFont.truetype(path,size)
-    return ImageFont.load_default()
-
-
-def _fit_canvas(image,w=1080,h=1350):
-    ratio=min(w/image.width,h/image.height)
-    fg=image.resize((max(1,int(image.width*ratio)),max(1,int(image.height*ratio))),Image.Resampling.LANCZOS)
-    bg=image.resize((w,h),Image.Resampling.LANCZOS).filter(ImageFilter.GaussianBlur(28))
-    bg.paste(fg,((w-fg.width)//2,(h-fg.height)//2))
-    return bg
-
-
-def _draw_text(draw,xy,text,font,anchor="la"):
-    x,y=xy
-    draw.text((x,y),str(text),font=font,fill=(255,255,255,255),stroke_width=3,stroke_fill=(10,10,10,235),anchor=anchor)
-
-
 def overlay_stats(image_bytes,player,logo_path="assets/titani_logo.jpg"):
-    """Gemini genera l'arte; i dati reali vengono applicati localmente una sola volta."""
-    image=_fit_canvas(Image.open(io.BytesIO(image_bytes)).convert("RGB"),1080,1350).convert("RGBA")
-    draw=ImageDraw.Draw(image,"RGBA")
-    title=_font(42,True); normal=_font(27,True); small=_font(24,True)
-    name=str(_value(player,'name')); tag=str(_value(player,'tag')); club=_club_value(player)
-    trophies=_fmt(_value(player,'trophies')); level=_fmt(_value(player,'level')); brawlers=_fmt(_value(player,'brawlers')); prestige=_fmt(_value(player,'prestige'))
-    wins3=_fmt(_value(player,'wins_3v3')); solo=_fmt(_value(player,'wins_solo')); duo=_fmt(_value(player,'wins_duo')); ranked=_fmt(_value(player,'ranked_current')); record=_fmt(_value(player,'ranked_career_peak','ranked_peak'))
-    _draw_text(draw,(55,55),name,title); _draw_text(draw,(56,108),tag,small); _draw_text(draw,(56,145),f"CLUB  {club}",small)
-    left=[f"TROFEI  {trophies}",f"LIVELLO  {level}",f"BRAWLER  {brawlers}",f"PRESTIGIO  {prestige}"]
-    right=[f"VITTORIE 3v3  {wins3}",f"SOLO  {solo}   DUO  {duo}",f"CLASSIFICATA  {ranked}",f"RECORD  {record}"]
-    y=1160
-    for row in left: _draw_text(draw,(55,y),row,normal); y+=39
-    y=1160
-    for row in right: _draw_text(draw,(1025,y),row,normal,"ra"); y+=39
-    out=io.BytesIO(); image.convert("RGB").save(out,"JPEG",quality=95,optimize=True); out.seek(0); return out
+    """Compatibility hook: Nano Banana now renders the complete profile itself."""
+    out=io.BytesIO(image_bytes); out.seek(0); out.name="profilo_ai.jpg"; return out
