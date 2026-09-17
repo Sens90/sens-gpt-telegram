@@ -69,10 +69,34 @@ def _value(player,*keys):
 def _fmt(v): return f"{v:,}".replace(",",".") if isinstance(v,int) else str(v)
 
 
-def _profile_data_prompt(player):
-    return (f"DATI REALI: Nome {_value(player,'name')}; Tag {_value(player,'tag')}; Club {_value(player,'club_name','club')}; "
-            f"Trofei {_fmt(_value(player,'trophies'))}; Livello {_fmt(_value(player,'level'))}; Brawler {_fmt(_value(player,'brawlers'))}; Prestigio {_fmt(_value(player,'prestige'))}; "
-            f"Vittorie 3v3 {_fmt(_value(player,'wins_3v3'))}; Solo/Duo {_fmt(_value(player,'wins_solo'))}/{_fmt(_value(player,'wins_duo'))}; Classificata {_fmt(_value(player,'ranked_current'))}; Record {_fmt(_value(player,'ranked_career_peak','ranked_peak'))}. ")
+def _club_value(player):
+    """Use the live club first; if missing, recover the registered community club."""
+    club_name=player.get("club_name")
+    club=player.get("club")
+    if isinstance(club,dict):
+        club=club.get("name")
+    for value in (club_name,club):
+        if value and str(value).strip() not in {"—","-","Senza club","Senza club / non disponibile"}:
+            return str(value).split("\n",1)[0].strip()
+    base=(os.environ.get("SUPABASE_URL") or "").rstrip("/")
+    tag=str(player.get("tag") or "").upper().replace("#","").strip()
+    if base and tag:
+        try:
+            r=requests.get(
+                f"{base}/rest/v1/community_members",
+                params={"player_tag":f"eq.{tag}","select":"*","limit":"1"},
+                headers=_supabase_headers(),timeout=8,
+            )
+            r.raise_for_status(); rows=r.json()
+            if rows:
+                row=rows[0]
+                for key in ("club_name","club"):
+                    value=row.get(key)
+                    if value and str(value).strip() not in {"—","-","Senza club","Senza club / non disponibile"}:
+                        return str(value).split("\n",1)[0].strip()
+        except Exception as exc:
+            print("AI PROFILE CLUB FALLBACK:",repr(exc),flush=True)
+    return "—"
 
 
 def generate_scene(player,category="random",logo_path="assets/titani_logo.jpg"):
@@ -91,10 +115,15 @@ def generate_scene(player,category="random",logo_path="assets/titani_logo.jpg"):
         character_lock=strict_lock+"Per Pixar usa hyper detailed 3D cinematic animation, high fidelity render, ma NON applicare convenzioni facciali Pixar: niente occhi grandi, pupille, sopracciglia, bocca o naso se non esistono nella reference. Deve sembrare lo STESSO Brawler originale renderizzato in un film 3D, non una sua reinterpretazione. "
     else:
         character_lock="La PRIMA immagine allegata e la reference visiva obbligatoria del Brawler: mantieni il personaggio fedele e non aggiungere tratti anatomici assenti. "
-    full_prompt=(prompt+" "+character_lock+
+    no_text_lock=(
+        "TEXT LOCK ASSOLUTO: l'arte generata deve essere una SCENA PURAMENTE VISIVA. NON generare alcun testo, lettera, parola, numero o valore leggibile, ad eccezione esclusivamente delle scritte gia presenti nel logo reference TITANI ABUSIVI. "
+        "VIETATI nomi giocatore, tag, nomi club aggiuntivi, trofei, livelli, numero Brawler, Prestigio, vittorie, Solo, Duo, 3v3, Classificata, record, rank, percentuali, contatori e qualsiasi statistica. "
+        "VIETATI cartelli informativi, lapidi con dati, tabelloni, classifiche, schede profilo, HUD, monitor, targhe, lavagne, pannelli o interfacce contenenti testo o numeri. Se la scena richiede cartelli o schermi, devono essere privi di caratteri e mostrare solo forme astratte/decorative. "
+        "NON copiare nell'ambiente i dati del giocatore e NON inventare dati fittizi. Tutta la tipografia del profilo verra applicata deterministicamente dal bot DOPO la generazione. "
+    )
+    full_prompt=(prompt+" "+character_lock+no_text_lock+
         "La SECONDA immagine allegata e il LOGO ORIGINALE TITANI ABUSIVI: deve comparire riconoscibile e fedele, INTEGRATO FISICAMENTE nella scena, non come watermark o badge. Mantieni forma, simbolo, scritte e identita del logo; non sostituirlo con un logo inventato. Deve essere completamente dentro l'inquadratura. "
-        "IMPORTANTE: NON scrivere nell'immagine nome giocatore, tag, club, trofei, livello, numero Brawler, Prestigio, vittorie, Classificata, record o altri valori statistici. Il bot applichera questi dati esatti dopo la generazione. Non duplicare ne inventare statistiche. "
-        "Lascia aree visivamente pulite e con contrasto sufficiente nella parte alta e nella parte bassa per la tipografia finale. Non creare box, card, pannelli, HUD, monitor o targhe destinati alle statistiche. Il Brawler resta protagonista. Per icone e marchi ufficiali Brawl Stars non inventare imitazioni: se non disponibili, omettili.")
+        "Lascia aree visivamente pulite e con contrasto sufficiente nella parte alta e nella parte bassa per la tipografia finale. Il Brawler resta protagonista. Per icone e marchi ufficiali Brawl Stars non inventare imitazioni: se non disponibili, omettili.")
     payload={"contents":[{"role":"user","parts":[{"text":full_prompt},{"inline_data":{"mime_type":b_mime,"data":b_data}},{"inline_data":{"mime_type":l_mime,"data":l_data}}]}],"generationConfig":{"responseModalities":["TEXT","IMAGE"],"imageConfig":{"imageSize":"1K"}}}
     url=f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_IMAGE_MODEL}:generateContent"; r=requests.post(url,headers={"x-goog-api-key":_gemini_key(),"Content-Type":"application/json"},json=payload,timeout=180)
     if r.status_code>=400: raise RuntimeError(f"Gemini Image HTTP {r.status_code}: {r.text[:500]}")
@@ -130,7 +159,7 @@ def overlay_stats(image_bytes,player,logo_path="assets/titani_logo.jpg"):
     image=_fit_canvas(Image.open(io.BytesIO(image_bytes)).convert("RGB"),1080,1350).convert("RGBA")
     draw=ImageDraw.Draw(image,"RGBA")
     title=_font(42,True); normal=_font(27,True); small=_font(24,True)
-    name=str(_value(player,'name')); tag=str(_value(player,'tag')); club=str(_value(player,'club_name','club'))
+    name=str(_value(player,'name')); tag=str(_value(player,'tag')); club=_club_value(player)
     trophies=_fmt(_value(player,'trophies')); level=_fmt(_value(player,'level')); brawlers=_fmt(_value(player,'brawlers')); prestige=_fmt(_value(player,'prestige'))
     wins3=_fmt(_value(player,'wins_3v3')); solo=_fmt(_value(player,'wins_solo')); duo=_fmt(_value(player,'wins_duo')); ranked=_fmt(_value(player,'ranked_current')); record=_fmt(_value(player,'ranked_career_peak','ranked_peak'))
     _draw_text(draw,(55,55),name,title); _draw_text(draw,(56,108),tag,small); _draw_text(draw,(56,145),f"CLUB  {club}",small)
