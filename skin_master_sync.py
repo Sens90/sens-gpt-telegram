@@ -40,4 +40,5 @@ def inspect_unmapped_relations():
   if cf: fields.update(cf.keys())
   out.append({"skin_id":s.get("id"),"skin":s.get("Name"),"conf":s.get("Conf"),"skin_fields":{k:v for k,v in s.items() if v not in (None,"",0,False,[])}, "conf_fields":{k:v for k,v in (cf or {}).items() if v not in (None,"",0,False,[])}})
  return {"count":len(out),"candidate_fields":sorted(fields),"rows":out}
-\nif __name__=="__main__": print(inspect_unmapped_relations())
+
+if __name__=="__main__": print(inspect_unmapped_relations())
