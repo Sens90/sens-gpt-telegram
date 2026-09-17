@@ -10,6 +10,7 @@ BRAWLERS_URL = "https://api.brawlapi.com/v1/brawlers"
 ICONS_URL = "https://api.brawlapi.com/v1/icons"
 BRAWLZONE_PLAYER_URL = "https://brawlzone.net/player/{tag}"
 BRAWLIFY_BRAWLER_URL = "https://brawlify.com/player/{tag}/brawlers/{brawler_id}"
+BRAWLVALUE_SKINS_URL = "https://brawlvalue.com/skins/{brawler_slug}"
 _brawlers_cache = None
 _icons_cache = None
 BRAWLER_ALIASES_IT = {"bombardino":"Berry","corvo":"Crow","dinamike":"Dynamike","dinamite":"Dynamike","elprimo":"El Primo","franco":"Frank","grommo":"Grom","leone":"Leon","mortisio":"Mortis","signorp":"Mr. P","misterp":"Mr. P","otto bit":"8-Bit","ottobit":"8-Bit","otto-bit":"8-Bit","spina":"Spike"}
@@ -88,35 +89,62 @@ def _is_skin_image(url,timeout=10):
         return False
 
 
+def _italian_skin_reference(brawler,skin_name,timeout=15):
+    """Resolve skins from an Italian, brawler-wide catalog, independent of player ownership."""
+    slug=_norm(brawler.get("name"))
+    if not slug:return None,None
+    page_url=BRAWLVALUE_SKINS_URL.format(brawler_slug=slug)
+    try:
+        r=requests.get(page_url,headers={"User-Agent":"Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)","Accept-Language":"it-IT,it;q=0.9"},timeout=timeout)
+        if r.status_code!=200:return None,None
+    except Exception:
+        return None,None
+    text=html.unescape(r.text)
+    requested=_norm(skin_name)
+    brawler_norm=_norm(brawler.get("name"))
+    entries=[]
+    # BrawlValue exposes the official Italian display name in image alt/title text.
+    for m in re.finditer(r'''(?i)(?:alt|title)=["']([^"']+?)(?:\s*-\s*[^"']*Skin)?["']''',text):
+        label=m.group(1).strip()
+        label_norm=_norm(label)
+        if not label_norm or brawler_norm not in label_norm:continue
+        short_norm=label_norm
+        if short_norm.startswith(brawler_norm):short_norm=short_norm[len(brawler_norm):]
+        if requested not in {"casuale","random"} and requested not in {label_norm,short_norm} and requested not in short_norm:continue
+        fragment=text[max(0,m.start()-1800):min(len(text),m.end()+1800)]
+        urls=[u for u in _extract_image_urls(fragment,page_url) if "/skins/" in u.casefold() or "brawlers/skins" in u.casefold()]
+        for url in urls:entries.append((label,url))
+    if requested in {"casuale","random"}:random.shuffle(entries)
+    for label,url in entries:
+        if _is_skin_image(url):
+            # Keep the exact Italian catalog name, removing only the brawler prefix for profile_skin.
+            clean=re.sub(rf"(?i)^\s*{re.escape(str(brawler.get('name') or ''))}\s+","",label).strip()
+            return url,clean or label
+    return None,None
+
+
 def _skin_reference(player,brawler,skin_name,timeout=15):
-    """Resolve a skin reference from Brawlify's live wardrobe; no local skin DB required."""
+    """Resolve a skin independently of ownership; Italian catalog first, player wardrobe only as fallback."""
+    skin_url,skin_label=_italian_skin_reference(brawler,skin_name,timeout=timeout)
+    if skin_url:return skin_url,skin_label
+
     tag=str(player.get("tag") or "").upper().replace("#","").strip()
     if not tag or not brawler or not brawler.get("id"): return None,None
     page_url=BRAWLIFY_BRAWLER_URL.format(tag=tag,brawler_id=brawler["id"])
     r=requests.get(page_url,headers={"User-Agent":"Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)"},timeout=timeout)
     if r.status_code!=200:return None,None
     text=r.text
-
     requested=_norm(skin_name)
-    candidates=[]
-    name_candidates=[]
+    candidates=[]; name_candidates=[]
     for m in re.finditer(r'''(?i)(?:skinName|name|title|alt)["']?\s*[:=]\s*["']([^"']{2,80})''',text):
-        label=html.unescape(m.group(1)).strip()
-        label_norm=_norm(label)
+        label=html.unescape(m.group(1)).strip(); label_norm=_norm(label)
         if not label_norm:continue
-        if requested=="casuale" or requested=="random":
-            if _norm(brawler.get("name")) in label_norm or len(label.split())>=2:
-                name_candidates.append((label,m.start()))
-        elif requested in label_norm or label_norm in requested:
-            name_candidates.append((label,m.start()))
-
+        if requested in {"casuale","random"}:
+            if _norm(brawler.get("name")) in label_norm or len(label.split())>=2:name_candidates.append((label,m.start()))
+        elif requested in label_norm or label_norm in requested:name_candidates.append((label,m.start()))
     if not name_candidates and requested not in {"casuale","random"}:
-        for m in re.finditer(re.escape(str(skin_name)),text,re.I):
-            name_candidates.append((str(skin_name),m.start()))
-
-    if requested in {"casuale","random"} and name_candidates:
-        random.shuffle(name_candidates)
-
+        for m in re.finditer(re.escape(str(skin_name)),text,re.I):name_candidates.append((str(skin_name),m.start()))
+    if requested in {"casuale","random"} and name_candidates:random.shuffle(name_candidates)
     for label,pos in name_candidates:
         fragment=text[max(0,pos-2200):min(len(text),pos+2200)]
         for url in _extract_image_urls(fragment,page_url):
@@ -128,7 +156,6 @@ def _skin_reference(player,brawler,skin_name,timeout=15):
             if "skin" in lower:score+=2
             if "brawler" in lower or "cdn" in lower:score+=1
             candidates.append((score,label,url))
-
     for _,label,url in sorted(candidates,key=lambda x:x[0],reverse=True):
         if _is_skin_image(url):return url,label
     return None,None
@@ -142,35 +169,23 @@ def resolve_ai_brawler_reference(player,requested_brawler=None,timeout=15):
             env_match=re.match(r"^(.+?)\s+ambientazione\s+(.+)$",requested,re.I)
             if env_match:
                 requested=env_match.group(1).strip(); player["ai_custom_environment"]=env_match.group(2).strip()[:120]
-
-            skin_match=re.match(r"^(.+?)\s+skin\s+(.+)$",requested,re.I)
-            skin_name=None
+            skin_match=re.match(r"^(.+?)\s+skin\s+(.+)$",requested,re.I); skin_name=None
             if skin_match:
                 requested=skin_match.group(1).strip(); skin_name=skin_match.group(2).strip()
-
             brawler=_brawler_by_name(requested,brawlers)
             if not brawler:return False,f"Brawler '{requested}' non trovato. Usa il nome italiano o quello ufficiale del Brawler."
-
             if skin_name:
                 skin_url,resolved_name=_skin_reference(player,brawler,skin_name,timeout=timeout)
-                if not skin_url:
-                    return False,f"Skin '{skin_name}' di {brawler.get('name')} non trovata con una reference verificabile. Nessuna generazione è stata consumata."
-                player["profile_brawler"]=brawler.get("name")
-                player["profile_brawler_id"]=brawler.get("id")
-                player["profile_brawler_image_url"]=skin_url
-                player["profile_skin"]=resolved_name or skin_name
-                return True,None
-
+                if not skin_url:return False,f"Skin '{skin_name}' di {brawler.get('name')} non trovata con una reference verificabile. Nessuna generazione è stata consumata."
+                player["profile_brawler"]=brawler.get("name"); player["profile_brawler_id"]=brawler.get("id"); player["profile_brawler_image_url"]=skin_url; player["profile_skin"]=resolved_name or skin_name; return True,None
             return (_apply_brawler(player,brawler),None)
-
         icon_id=player.get("icon_id")
         if icon_id is None:
             icon_id=_icon_id_from_brawlzone(player.get("tag"),timeout=timeout)
             if icon_id is not None:player["icon_id"]=icon_id
         icon=icons.get(str(icon_id)) if icon_id is not None else None
         if icon:
-            player["profile_icon_url"]=icon.get("imageUrl2") or icon.get("imageUrl")
-            brawler=_brawler_by_id(icon.get("brawler"),brawlers)
+            player["profile_icon_url"]=icon.get("imageUrl2") or icon.get("imageUrl"); brawler=_brawler_by_id(icon.get("brawler"),brawlers)
             if _apply_brawler(player,brawler):return True,None
         return False,"Non riesco a collegare la tua icona profilo a un Brawler. Usa: profilo ai cinematic #TAG con NOME_BRAWLER"
     except Exception as exc:
