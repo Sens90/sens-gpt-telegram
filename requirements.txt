@@ -5,3 +5,4 @@ gunicorn
 requests
 matplotlib
 Pillow
+beautifulsoup4
