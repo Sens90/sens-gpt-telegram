@@ -187,9 +187,9 @@ def _inspect_skin_master_later():
     import time
     time.sleep(35)
     try:
-        from skin_master_sync import inspect_skin_master
-        info=inspect_skin_master()
-        print("SKIN MASTER INSPECT:",info,flush=True)
+        from skin_master_sync import sync_verified_rows
+        info=sync_verified_rows()
+        print("SKIN MASTER SYNC:",info,flush=True)
     except Exception as exc:
         print("SKIN MASTER INSPECT ERROR:",repr(exc),flush=True)
 
