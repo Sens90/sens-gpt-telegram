@@ -7,6 +7,8 @@ OWNER_TELEGRAM_ID = 437136453
 ANNA_TELEGRAM_ID = 751665886
 GENERATION_MANAGERS = {OWNER_TELEGRAM_ID, ANNA_TELEGRAM_ID}
 MAX_GENERATION_CHANGE = 100
+STANDARD_MONTHLY_LIMIT = 2
+PREMIUM_MONTHLY_LIMIT = 8
 
 
 def _headers(service_key):
@@ -30,6 +32,33 @@ def list_premium_users(supabase_url, service_key):
 def is_premium_user(user_id,supabase_url,service_key):
     if not user_id or not supabase_url or not service_key:return False
     r=requests.get(f"{supabase_url}/rest/v1/ai_profile_privileged_users",headers=_headers(service_key),params={"telegram_user_id":f"eq.{int(user_id)}","select":"telegram_user_id","limit":"1"},timeout=15); r.raise_for_status(); return bool(r.json())
+
+
+def get_monthly_usage(user_id,supabase_url,service_key):
+    r=requests.get(
+        f"{supabase_url}/rest/v1/ai_profile_usage",
+        headers=_headers(service_key),
+        params={
+            "telegram_user_id":f"eq.{int(user_id)}",
+            "month_key":f"eq.{_month_key()}",
+            "select":"successful_generations",
+            "limit":"1"
+        },
+        timeout=15
+    )
+    r.raise_for_status()
+    rows=r.json()
+    return int(rows[0].get("successful_generations") or 0) if rows else 0
+
+
+def generation_status(user_id,supabase_url,service_key):
+    premium=is_premium_user(user_id,supabase_url,service_key)
+    used=get_monthly_usage(user_id,supabase_url,service_key)
+    extra=get_monthly_extra(user_id,supabase_url,service_key)
+    base=PREMIUM_MONTHLY_LIMIT if premium else STANDARD_MONTHLY_LIMIT
+    limit=base+extra
+    remaining=max(0,limit-used)
+    return {"premium":premium,"used":used,"extra":extra,"base":base,"limit":limit,"remaining":remaining}
 
 
 def add_premium_user(user_id,note,supabase_url,service_key):
@@ -73,12 +102,37 @@ def _generation_change(q):
 
 async def handle_premium_command(message,context,question,supabase_url,service_key):
     q=" ".join((question or "").casefold().split())
-    fixed_commands={"mio id","id telegram","telegram id","rendimi premium","rimuovimi premium","rendi premium","rimuovi premium","lista premium","premium list"}
+    fixed_commands={"mio id","id telegram","telegram id","rendimi premium","rimuovimi premium","rendi premium","rimuovi premium","lista premium","premium list","generazioni","generazione","mie generazioni","generazioni rimaste"}
     generation_delta=_generation_change(q)
     is_generation_command=bool(re.match(r"^(aggiungi|rimuovi)\s+generazion(?:e|i)(?:\s|$)",q))
+    is_generation_status=q in {"generazioni","generazione","mie generazioni","generazioni rimaste"}
     if q not in fixed_commands and not is_generation_command:return False
     if q in {"mio id","id telegram","telegram id"}:
         user=message.from_user; await message.reply_text(f"Il tuo Telegram User ID è: {user.id}\nQuesto è l'ID Telegram numerico, non il tag di Brawl Stars."); return True
+    if is_generation_status:
+        target=message.from_user
+        target_message=message.reply_to_message
+        if target_message and target_message.from_user and not target_message.from_user.is_bot:
+            if not _can_manage_generations(message):
+                await message.reply_text("Puoi controllare solo le tue generazioni rimanenti. Sens e Anna possono controllare anche quelle degli altri utenti.")
+                return True
+            target=target_message.from_user
+        display=target.full_name or target.username or str(target.id)
+        try:
+            status=generation_status(target.id,supabase_url,service_key)
+            tipo="Premium AI" if status["premium"] else "Standard"
+            await message.reply_text(
+                f"Generazioni Profilo AI — {display}\n"
+                f"Rimanenti: {status['remaining']}\n"
+                f"Utilizzate: {status['used']}\n"
+                f"Quota del mese: {status['limit']}\n"
+                f"Quota base: {status['base']} ({tipo})\n"
+                f"Extra del mese: {status['extra']}"
+            )
+        except Exception as exc:
+            print("AI GENERATION STATUS ERROR:",repr(exc),flush=True)
+            await message.reply_text("Errore durante il controllo delle generazioni rimanenti.")
+        return True
     if is_generation_command:
         if generation_delta=="invalid_sign":
             await message.reply_text("Usa + per aggiungere e - per rimuovere. Esempi: 'aggiungi generazioni +3' oppure 'rimuovi generazioni -3'."); return True
