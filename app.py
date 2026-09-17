@@ -19,7 +19,7 @@ from flask import Flask
 from google import genai
 from telegram import Update
 from telegram.error import TelegramError, TimedOut, NetworkError, RetryAfter, BadRequest
-from telegram.ext import Application, MessageHandler, ContextTypes, filters
+from telegram.ext import Application, MessageHandler, CommandHandler, ContextTypes, filters
 from community_features import CommunityFeatures
 from profile_card_generator import build_profile_card
 from ai_profile_experience import build_visual_prompt, choose_scene
@@ -3367,6 +3367,15 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+
+async def generazioni_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.effective_message
+    if not message or not message.from_user:
+        return
+    await handle_premium_command(
+        message, context, "generazioni", SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+    )
+
 def main():
     application = Application.builder().token(
         TELEGRAM_TOKEN
@@ -3379,6 +3388,10 @@ def main():
             first=45,
             name="community_jobs"
         )
+
+    application.add_handler(
+        CommandHandler("generazioni", generazioni_command)
+    )
 
     application.add_handler(
         MessageHandler(
