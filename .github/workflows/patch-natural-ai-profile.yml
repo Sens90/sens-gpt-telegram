@@ -1,0 +1,23 @@
+name: Patch natural AI profile syntax
+on:
+  push:
+    paths:
+      - 'scripts/patch_natural_ai_profile.py'
+      - '.github/workflows/patch-natural-ai-profile.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python scripts/patch_natural_ai_profile.py
+      - run: python -m py_compile app.py brawler_reference.py ai_profile_generator.py
+      - run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add app.py
+          if ! git diff --cached --quiet; then
+            git commit -m "Accept natural AI profile skin syntax and improve map lookup"
+            git push
+          fi
