@@ -110,7 +110,7 @@ def _search_brawltrack_meta():
 
 _original_init=community_features.CommunityFeatures.__init__; _original_handle=community_features.CommunityFeatures.handle_command
 
-def _patched_init(self,supabase_url,supabase_key,player_fetcher,history_fetcher,change_calculator,number_formatter,change_formatter):
+def _patched_init(self,supabase_url,supabase_key,player_fetcher,history_fetcher,change_calculator,number_formatter,change_formatter,snapshot_saver=None):
     legacy=player_fetcher
     def official_first(tag):
         official=fetch_official_player(tag); secondary=fetch_brawltrack_player(tag)
@@ -123,7 +123,7 @@ def _patched_init(self,supabase_url,supabase_key,player_fetcher,history_fetcher,
             except Exception as e:print("ERRORE FALLBACK PLAYER:",repr(e),flush=True)
         return _merge_priority(official,secondary)
     def fixed_changes(history,current):return _same_day_changes(change_calculator,history,current)
-    _original_init(self,supabase_url,supabase_key,official_first,history_fetcher,fixed_changes,number_formatter,change_formatter)
+    _original_init(self,supabase_url,supabase_key,official_first,history_fetcher,fixed_changes,number_formatter,change_formatter,snapshot_saver)
 
 def _profile_match(q):return re.fullmatch(r"(?:stats|statistiche|profilo|scheda|status(?:\s+(?:del\s+)?giocatore)?|stato(?:\s+(?:del\s+)?giocatore)?)\s*(?:di\s+)?#?([0289PYLQGRJCUV]{3,15})",q,re.I)
 
