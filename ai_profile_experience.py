@@ -44,7 +44,7 @@ def cinematic_identity_rules(brawler):
 def choose_scene(player,category='random',custom_environment=None):
     brawler=profile_brawler(player)
     skin=(player.get('profile_skin') or '').strip()
-    custom=(custom_environment or player.get('ai_custom_environment') or '').strip()
+    custom=(custom_environment or player.get('requested_environment') or player.get('ai_custom_environment') or '').strip()
     if custom: place=custom[:120]; source='Ambientazione richiesta dall utente'
     elif category=='cinema': place='cinema IMAX'; source='Location cinema Sens GPT'
     else: place=random.choice(OFFICIAL_WORLDS); source='Brawl Stars'
