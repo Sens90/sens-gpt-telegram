@@ -1,3 +1,4 @@
+import re
 import requests
 from datetime import datetime, timezone
 
@@ -5,6 +6,7 @@ MAX_PREMIUM_USERS = 2
 OWNER_TELEGRAM_ID = 437136453
 ANNA_TELEGRAM_ID = 751665886
 GENERATION_MANAGERS = {OWNER_TELEGRAM_ID, ANNA_TELEGRAM_ID}
+MAX_GENERATION_CHANGE = 100
 
 
 def _headers(service_key):
@@ -58,36 +60,56 @@ def _can_manage_generations(message):
     return bool(message.from_user and int(message.from_user.id) in GENERATION_MANAGERS)
 
 
+def _generation_change(q):
+    """Return signed quota delta for e.g. 'aggiungi generazione +3' or 'rimuovi generazione +4'."""
+    match = re.fullmatch(r"(aggiungi|rimuovi)\s+generazion(?:e|i)(?:\s+([+-]?\d+))?", q)
+    if not match:
+        return None
+    amount = int(match.group(2) or "1")
+    amount = abs(amount)
+    if amount < 1 or amount > MAX_GENERATION_CHANGE:
+        return "invalid"
+    return amount if match.group(1) == "aggiungi" else -amount
+
+
 async def handle_premium_command(message, context, question, supabase_url, service_key):
     q = " ".join((question or "").casefold().split())
-    commands = {"mio id", "id telegram", "telegram id", "rendimi premium", "rimuovimi premium", "rendi premium", "rimuovi premium", "lista premium", "premium list", "aggiungi generazione", "rimuovi generazione"}
-    if q not in commands: return False
+    fixed_commands = {"mio id", "id telegram", "telegram id", "rendimi premium", "rimuovimi premium", "rendi premium", "rimuovi premium", "lista premium", "premium list"}
+    generation_delta = _generation_change(q)
+    if q not in fixed_commands and generation_delta is None: return False
 
     if q in {"mio id", "id telegram", "telegram id"}:
         user = message.from_user
         await message.reply_text(f"Il tuo Telegram User ID è: {user.id}\nQuesto è l'ID Telegram numerico, non il tag di Brawl Stars.")
         return True
 
-    # Sens e Anna possono assegnare/rimuovere gli extra permanenti.
-    # Tutta la gestione dello stato Premium resta esclusivamente a Sens.
-    if q in {"aggiungi generazione", "rimuovi generazione"}:
+    # Sens e Anna possono assegnare/rimuovere gli extra permanenti, anche in blocco.
+    # Esempi: aggiungi generazione +3 / rimuovi generazione +4.
+    if generation_delta is not None:
+        if generation_delta == "invalid":
+            await message.reply_text(f"Indica un numero da 1 a {MAX_GENERATION_CHANGE}. Esempio: aggiungi generazione +3")
+            return True
         if not _can_manage_generations(message):
             await message.reply_text("Questo comando è riservato a Sens e Anna."); return True
         target_message = message.reply_to_message
         target = target_message.from_user if target_message else None
         if not target or target.is_bot:
-            await message.reply_text("Rispondi a un messaggio della persona e usa 'aggiungi generazione' oppure 'rimuovi generazione'."); return True
+            await message.reply_text("Rispondi a un messaggio della persona. Esempi: 'aggiungi generazione +3' oppure 'rimuovi generazione +4'."); return True
         display = target.full_name or target.username or str(target.id)
         try:
-            delta = 1 if q == "aggiungi generazione" else -1
-            old, new = change_permanent_extra(target.id, delta, supabase_url, service_key)
+            old, new = change_permanent_extra(target.id, generation_delta, supabase_url, service_key)
             premium = is_premium_user(target.id, supabase_url, service_key)
             base = 8 if premium else 2
-            if delta < 0 and old == 0:
+            actual_delta = new - old
+            if generation_delta < 0 and old == 0:
                 await message.reply_text(f"{display} non ha generazioni extra da rimuovere.")
             else:
-                sign = "+1" if delta > 0 else "-1"
-                await message.reply_text(f"Generazione extra {sign} per {display}.\nExtra permanenti: {new}.\nNuova quota mensile: {base + new} generazioni.")
+                requested = abs(generation_delta)
+                if generation_delta < 0 and abs(actual_delta) < requested:
+                    detail = f"Rimosse {abs(actual_delta)} generazioni extra (non era possibile scendere sotto 0)."
+                else:
+                    detail = f"Generazioni extra {'aggiunte' if actual_delta > 0 else 'rimosse'}: {abs(actual_delta)}."
+                await message.reply_text(f"{detail}\nUtente: {display}.\nExtra permanenti: {new}.\nNuova quota mensile: {base + new} generazioni.")
         except Exception as exc:
             print("AI QUOTA BONUS ERROR:", repr(exc), flush=True); await message.reply_text("Errore durante l'aggiornamento delle generazioni extra.")
         return True
