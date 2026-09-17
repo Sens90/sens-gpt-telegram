@@ -84,9 +84,44 @@ def _page_enrichment(brawler_id):
     modes={"source":"brawltrack_public_page","items":_parse_modes(modes_raw),"maps":_parse_maps(maps_raw),"raw_text":modes_raw[:12000],"best_maps_raw_text":maps_raw[:12000]}
     return {"win_rate":pct("Win Rate"),"pick_rate":pct("Meta Usage"),"star_rate":pct("Star Rate"),"popular_builds":builds,"modes":modes,"page_url":url}
 
+def _catalog_rows(table,brawler_id=None):
+    params={"select":"*"}
+    if brawler_id is not None: params["brawler_id"]=f"eq.{brawler_id}"
+    r=requests.get(f"{SUPABASE_URL}/rest/v1/{table}",params=params,headers=_headers(),timeout=TIMEOUT);r.raise_for_status()
+    return r.json()
+
+def _resolve_builds(brawler_id,builds):
+    if not isinstance(builds,dict) or not isinstance(builds.get("items"),list): return builds
+    gadgets=_catalog_rows("gadgets_catalog",brawler_id)
+    stars=_catalog_rows("star_powers_catalog",brawler_id)
+    gears=_catalog_rows("gears_catalog")
+    candidates=[]
+    for kind,rows,idkey in (("gadget",gadgets,"gadget_id"),("star_power",stars,"star_power_id"),("gear",gears,"gear_id")):
+        for x in rows:
+            name=str(x.get("name_en") or "").upper().strip()
+            if name: candidates.append((name,kind,x.get(idkey),x.get("name_it") or x.get("name_en")))
+    candidates.sort(key=lambda x:len(x[0]),reverse=True)
+    resolved=[]
+    for item in builds["items"]:
+        remaining=str(item.get("items_raw") or "").upper().strip(); parts=[]
+        while remaining:
+            hit=None
+            for cand in candidates:
+                if remaining.startswith(cand[0]) and (len(remaining)==len(cand[0]) or remaining[len(cand[0])]==" "):
+                    hit=cand;break
+            if not hit: break
+            name,kind,obj_id,name_it=hit
+            parts.append({"type":kind,"id":obj_id,"name_en":name,"name_it":name_it})
+            remaining=remaining[len(name):].strip()
+        row=dict(item); row["components"]=parts; row["unmatched_raw"]=remaining or None
+        resolved.append(row)
+    out=dict(builds);out["items"]=resolved
+    return out
+
 def _build_row(brawler_id,row,enrich=None):
     stats=row.get("stats") if isinstance(row.get("stats"),dict) else {}; merged={**row,**stats}; enrich=enrich or {}; now=datetime.now(timezone.utc).isoformat()
     builds=enrich.get("popular_builds") or _first(merged,"popularBuilds","popular_builds","builds","loadouts") or []
+    builds=_resolve_builds(brawler_id,builds)
     modes=enrich.get("modes") or _first(merged,"modes","gameModes","game_modes","modeStats") or {}
     payload=dict(row)
     if enrich: payload["public_page_enrichment"]={k:v for k,v in enrich.items() if k!="page_url"}
