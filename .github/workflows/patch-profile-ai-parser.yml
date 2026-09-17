@@ -1,0 +1,39 @@
+name: Patch profile AI parser
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/patch-profile-ai-parser.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch parser
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app.py')
+          s=p.read_text()
+          old='''    profile_image_match = re.fullmatch(\n        r"(?:profilo ai|profilo grafico|immagine profilo|profile image)(?:\\s+(sorprendimi|brawl|cinematic|pixar|al\\s+cinema|epico|fantascienza|fantasy))?\\s*#?([0289PYLQGRJCUV]{3,15})(?:\\s+con\\s+([A-Za-z0-9À-ÿ ._\'’-]{2,30}))?",\n        question.strip(), re.I\n    )\n    if profile_image_match:\n        category_map = {\n            "sorprendimi": "random",\n            "brawl": "official",\n            "cinematic": "cinematic",\n            "pixar": "pixar",\n            "al cinema": "cinema",\n            "epico": "epic",\n            "fantascienza": "scifi",\n            "fantasy": "fantasy",\n        }\n        mode_key = re.sub(r"\\s+", " ", (profile_image_match.group(1) or "sorprendimi").strip().lower())\n        category = category_map.get(mode_key, "random")\n        requested_brawler = (profile_image_match.group(3) or "").strip() or None\n        telegram_user_id = message.from_user.id\n'''
+          new='''    profile_image_match = re.fullmatch(\n        r"(?:profilo ai|profilo grafico|immagine profilo|profile image)(?:\\s+(sorprendimi|brawl|cinematic|pixar|epico|fantascienza|fantasy))?\\s*#?([0289PYLQGRJCUV]{3,15})(?:\\s+con\\s+(.+?))?(?:\\s+ambientazione\\s+(.+))?",\n        question.strip(), re.I\n    )\n    if profile_image_match:\n        category_map = {\n            "sorprendimi": "random",\n            "brawl": "official",\n            "cinematic": "cinematic",\n            "pixar": "pixar",\n            "epico": "epic",\n            "fantascienza": "scifi",\n            "fantasy": "fantasy",\n        }\n        mode_key = re.sub(r"\\s+", " ", (profile_image_match.group(1) or "sorprendimi").strip().lower())\n        category = category_map.get(mode_key, "random")\n        requested_brawler = (profile_image_match.group(3) or "").strip() or None\n        custom_environment = (profile_image_match.group(4) or "").strip() or None\n        # Backward-compatible natural syntax: `profilo ai ... #TAG al cinema`\n        # means environment, never rendering style.\n        if requested_brawler and requested_brawler.casefold() == "al cinema" and not custom_environment:\n            custom_environment = "al cinema"\n            requested_brawler = None\n        player_environment = custom_environment\n        telegram_user_id = message.from_user.id\n'''
+          if old not in s:
+              raise SystemExit('target parser block not found')
+          s=s.replace(old,new,1)
+          old2='''            resolve_ai_brawler_reference, player, requested_brawler\n        )\n'''
+          new2='''            resolve_ai_brawler_reference, player, requested_brawler\n        )\n        if player_environment:\n            player["requested_environment"] = player_environment\n'''
+          if old2 not in s:
+              raise SystemExit('resolver insertion point not found')
+          s=s.replace(old2,new2,1)
+          p.write_text(s)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Treat al cinema as AI profile environment"
+          git push
