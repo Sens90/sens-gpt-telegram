@@ -1,0 +1,75 @@
+name: Apply Brawler map performance lookup
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-brawler-map-performance.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Route Brawler map questions to Brawler statistics pages
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app.py')
+          s=p.read_text()
+
+          old='''    if is_map_query:
+        search_query = (
+            f"Brawl Stars {query} {today} {context_hint} "
+            f"site:brawltrack.app/maps OR site:brawltrack.app/pro/maps "
+            f"BrawlTrack map preview Priority Picks win rate use rate Common Final Comps "
+            f"Ladder Scalata Ranked"
+        )
+'''
+          new='''    brawler_map_performance_query = is_map_query and any(term in query_lower for term in [
+        "win rate", "percentuale di vittoria", "percentuali di vittoria",
+        "mappe migliori", "migliori mappe", "mappa migliore", "mappe con",
+        "per ogni modalità", "per ogni modalita"
+    ])
+
+    if brawler_map_performance_query:
+        # A question such as "mappe migliori per Cosmo" must start from the
+        # Brawler statistics page. The old generic map search only returned
+        # map pages and could therefore miss the Brawler -> Best Maps table.
+        search_query = (
+            f"Brawl Stars {query} {today} {context_hint} "
+            f"site:brawltrack.app/brawlers OR site:brawlplanet.com/maps "
+            f"BrawlTrack Best Maps Best Game Modes win rate battles "
+            f"Brawl Planet trophy ladder Ranked win pick star rate"
+        )
+    elif is_map_query:
+        search_query = (
+            f"Brawl Stars {query} {today} {context_hint} "
+            f"site:brawltrack.app/maps OR site:brawltrack.app/pro/maps "
+            f"BrawlTrack map preview Priority Picks win rate use rate Common Final Comps "
+            f"Ladder Scalata Ranked"
+        )
+'''
+          if old not in s:
+              raise SystemExit('map search target not found')
+          s=s.replace(old,new,1)
+
+          anchor='''                "- Se l utente specifica mappa, modalità, Ladder o Classificata, rispondi direttamente nel contesto richiesto e non applicare il formato Top 5 generale quando servono dati contestuali.\\n"
+'''
+          rules='''                "- MAPPE DI UN BRAWLER: se l utente chiede le mappe migliori, le mappe con win rate più alto o le mappe migliori per ogni modalità di uno specifico Brawler, NON rispondere con un elenco generico di modalità e NON dichiarare i dati non disponibili se BrawlTrack contiene la sezione Best Maps. Leggi prima la pagina /brawlers/ del Brawler e usa Best Maps e Best Game Modes.\\n"
+                "- Per ogni risultato Brawler->mappa riporta almeno Modalità, Mappa e Win Rate; quando BrawlTrack fornisce Battles riporta anche il numero di partite. Ordina per win rate solo all interno di dati comparabili e segnala campioni molto piccoli invece di presentarli come più affidabili.\\n"
+                "- Se Brawl Planet fornisce dati Trophy ladder e Ranked, mantienili in sezioni separate: LADDER e CLASSIFICATA. Non mescolare mai percentuali dei due dataset. Se è disponibile un solo dataset, dichiaralo chiaramente senza inventare l altro.\\n"
+                "- Per richieste come 'dimmi anche le mappe migliori per ogni modalità', conserva il Brawler nominato nel messaggio precedente della conversazione e restituisci le mappe per quel Brawler, non una risposta generica sulle mappe attive.\\n"
+'''
+          if rules not in s:
+              if anchor not in s:
+                  raise SystemExit('meta prompt anchor not found')
+              s=s.replace(anchor,anchor+rules,1)
+
+          p.write_text(s)
+          PY
+          python -m py_compile app.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.py
+          git commit -m 'Use Brawler pages for best map win rates'
+          git push
