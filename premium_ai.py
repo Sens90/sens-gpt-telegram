@@ -59,25 +59,34 @@ def _can_manage_generations(message):return bool(message.from_user and int(messa
 
 
 def _generation_change(q):
-    match=re.fullmatch(r"(aggiungi|rimuovi)\s+generazion(?:e|i)(?:\s+([+-]?\d+))?",q)
+    """Richiede +N per aggiungere e -N per rimuovere. Esempi: aggiungi generazioni +3, rimuovi generazioni -3."""
+    match=re.fullmatch(r"(aggiungi|rimuovi)\s+generazion(?:e|i)\s+([+-]\d+)",q)
     if not match:return None
-    amount=abs(int(match.group(2) or "1"))
-    if amount<1 or amount>MAX_GENERATION_CHANGE:return "invalid"
-    return amount if match.group(1)=="aggiungi" else -amount
+    action, raw_amount=match.groups()
+    amount=int(raw_amount)
+    if action=="aggiungi" and amount<=0:return "invalid_sign"
+    if action=="rimuovi" and amount>=0:return "invalid_sign"
+    magnitude=abs(amount)
+    if magnitude<1 or magnitude>MAX_GENERATION_CHANGE:return "invalid"
+    return magnitude if action=="aggiungi" else -magnitude
 
 
 async def handle_premium_command(message,context,question,supabase_url,service_key):
     q=" ".join((question or "").casefold().split())
     fixed_commands={"mio id","id telegram","telegram id","rendimi premium","rimuovimi premium","rendi premium","rimuovi premium","lista premium","premium list"}
     generation_delta=_generation_change(q)
-    if q not in fixed_commands and generation_delta is None:return False
+    is_generation_command=bool(re.match(r"^(aggiungi|rimuovi)\s+generazion(?:e|i)(?:\s|$)",q))
+    if q not in fixed_commands and not is_generation_command:return False
     if q in {"mio id","id telegram","telegram id"}:
         user=message.from_user; await message.reply_text(f"Il tuo Telegram User ID è: {user.id}\nQuesto è l'ID Telegram numerico, non il tag di Brawl Stars."); return True
-    if generation_delta is not None:
-        if generation_delta=="invalid":await message.reply_text(f"Indica un numero da 1 a {MAX_GENERATION_CHANGE}. Esempio: aggiungi generazione +3"); return True
+    if is_generation_command:
+        if generation_delta=="invalid_sign":
+            await message.reply_text("Usa + per aggiungere e - per rimuovere. Esempi: 'aggiungi generazioni +3' oppure 'rimuovi generazioni -3'."); return True
+        if generation_delta=="invalid" or generation_delta is None:
+            await message.reply_text(f"Indica un numero da 1 a {MAX_GENERATION_CHANGE} con il segno corretto. Esempi: 'aggiungi generazione +1' oppure 'rimuovi generazione -1'."); return True
         if not _can_manage_generations(message):await message.reply_text("Questo comando è riservato a Sens e Anna."); return True
         target_message=message.reply_to_message; target=target_message.from_user if target_message else None
-        if not target or target.is_bot:await message.reply_text("Rispondi a un messaggio della persona. Esempi: 'aggiungi generazione +3' oppure 'rimuovi generazione +4'."); return True
+        if not target or target.is_bot:await message.reply_text("Rispondi a un messaggio della persona. Esempi: 'aggiungi generazioni +3' oppure 'rimuovi generazioni -3'."); return True
         display=target.full_name or target.username or str(target.id)
         try:
             old,new=change_monthly_extra(target.id,generation_delta,supabase_url,service_key); premium=is_premium_user(target.id,supabase_url,service_key); base=8 if premium else 2; actual_delta=new-old
