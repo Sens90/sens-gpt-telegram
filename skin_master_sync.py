@@ -21,7 +21,13 @@ def sync_verified_rows():
  if not url or not key: return {"ok":False,"reason":"supabase env missing","mapped":len(rows)}
  h={"apikey":key,"Authorization":"Bearer "+key,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"}
  # Insert only new stable game IDs. Existing hand-verified rows are intentionally preserved.
- existing=requests.get(url+"/rest/v1/skins_catalog?select=external_id",headers=h,timeout=30); existing.raise_for_status(); ids={x["external_id"] for x in existing.json()}
+ ids=set(); start=0; page=1000
+ while True:
+  ph=dict(h); ph["Range"]=f"{start}-{start+page-1}"
+  existing=requests.get(url+"/rest/v1/skins_catalog?select=external_id&order=id.asc",headers=ph,timeout=30); existing.raise_for_status(); batch=existing.json()
+  ids.update(x["external_id"] for x in batch)
+  if len(batch)<page: break
+  start += page
  new=[x for x in rows if x["external_id"] not in ids]
  for i in range(0,len(new),800):
   r=requests.post(url+"/rest/v1/skins_catalog",headers=h,json=new[i:i+800],timeout=60); r.raise_for_status()
