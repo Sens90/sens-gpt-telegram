@@ -10,28 +10,57 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Enforce BrawlTrack and Brawl Planet for meta
+      - name: Route Brawler map performance queries correctly
         run: |
           python - <<'PY'
           from pathlib import Path
-          p=Path('app.py')
-          s=p.read_text()
-          old='''            f"latest balance changes competitive "\n            f"gadget abilità stellare equipaggiamento overdrive nomi italiani "\n            f"Supercell italiano Brawlify Brawl Time Ninja Noff"\n'''
-          new='''            f"latest balance changes competitive "\n            f"gadget abilità stellare equipaggiamento overdrive nomi italiani "\n            f"site:brawltrack.app OR site:brawlplanet.com"\n'''
-          if old not in s:
-              raise SystemExit('meta search target not found')
-          s=s.replace(old,new,1)
+          p=Path('app.py'); s=p.read_text()
+          old='''    if is_map_query:
+        search_query = (
+            f"Brawl Stars {query} {today} {context_hint} "
+            f"site:brawltrack.app/maps OR site:brawltrack.app/pro/maps "
+            f"BrawlTrack map preview Priority Picks win rate use rate Common Final Comps "
+            f"Ladder Scalata Ranked"
+        )
+'''
+          new='''    brawler_map_performance_query = is_map_query and any(term in query_lower for term in [
+        "win rate", "percentuale di vittoria", "percentuali di vittoria",
+        "mappe migliori", "migliori mappe", "mappa migliore", "mappe con",
+        "per ogni modalità", "per ogni modalita"
+    ])
 
-          marker='''    response.raise_for_status()\n    data = response.json()\n\n    if is_map_query:\n'''
-          replacement='''    response.raise_for_status()\n    data = response.json()\n\n    if is_meta_query and not is_map_query:\n        # Meta is authoritative only when supported by BrawlTrack or Brawl Planet.\n        # Do not let Brawl Time Ninja/Brawlify/Noff statistics become a meta tier list.\n        allowed = []\n        for result in data.get("results", []):\n            url = (result.get("url") or "").casefold()\n            if "brawltrack.app" in url:\n                result["source_role"] = "primary_brawltrack"\n                allowed.append(result)\n            elif "brawlplanet.com" in url or "brawlplanet.nl" in url:\n                result["source_role"] = "fallback_brawlplanet"\n                allowed.append(result)\n        data["results"] = allowed\n        data["answer"] = None\n        data["meta_sources_verified"] = bool(allowed)\n\n    if is_map_query:\n'''
-          if marker not in s:
-              raise SystemExit('web result target not found')
-          s=s.replace(marker,replacement,1)
+    if brawler_map_performance_query:
+        search_query = (
+            f"Brawl Stars {query} {today} {context_hint} "
+            f"site:brawltrack.app/brawlers OR site:brawlplanet.com/maps "
+            f"BrawlTrack Best Maps Best Game Modes win rate battles "
+            f"Brawl Planet trophy ladder Ranked win pick star rate"
+        )
+    elif is_map_query:
+        search_query = (
+            f"Brawl Stars {query} {today} {context_hint} "
+            f"site:brawltrack.app/maps OR site:brawltrack.app/pro/maps "
+            f"BrawlTrack map preview Priority Picks win rate use rate Common Final Comps "
+            f"Ladder Scalata Ranked"
+        )
+'''
+          if old not in s: raise SystemExit('map search target not found')
+          s=s.replace(old,new,1)
+          anchor='''                "- Se l utente specifica mappa, modalità, Ladder o Classificata, rispondi direttamente nel contesto richiesto e non applicare il formato Top 5 generale quando servono dati contestuali.\\n"
+'''
+          rules='''                "- MAPPE DI UN BRAWLER: se l utente chiede le mappe migliori, le mappe con win rate più alto o le mappe migliori per ogni modalità di uno specifico Brawler, NON rispondere con un elenco generico di modalità e NON dichiarare i dati non disponibili se BrawlTrack contiene la sezione Best Maps. Leggi prima la pagina /brawlers/ del Brawler e usa Best Maps e Best Game Modes.\\n"
+                "- Per ogni risultato Brawler->mappa riporta almeno Modalità, Mappa e Win Rate; quando BrawlTrack fornisce Battles riporta anche il numero di partite. Segnala campioni molto piccoli.\\n"
+                "- Se Brawl Planet fornisce dati Trophy ladder e Ranked, mantienili in sezioni separate: LADDER e CLASSIFICATA. Non mescolare mai percentuali dei due dataset. Se è disponibile un solo dataset, dichiaralo chiaramente senza inventare l altro.\\n"
+                "- Per richieste come 'dimmi anche le mappe migliori per ogni modalità', conserva il Brawler nominato nel messaggio precedente della conversazione e restituisci le mappe per quel Brawler.\\n"
+'''
+          if rules not in s:
+              if anchor not in s: raise SystemExit('meta prompt anchor not found')
+              s=s.replace(anchor,anchor+rules,1)
           p.write_text(s)
           PY
           python -m py_compile app.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app.py
-          git commit -m 'Enforce BrawlTrack and Brawl Planet for meta'
+          git commit -m 'Use Brawler pages for best map win rates'
           git push
