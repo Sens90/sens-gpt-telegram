@@ -181,3 +181,19 @@ def _sync_brawltrack_meta_runtime():
             print("BRAWLTRACK META SYNC ERRORE:",repr(exc),flush=True)
         time.sleep(interval)
 threading.Thread(target=_sync_brawltrack_meta_runtime,daemon=True).start()
+
+# One-shot structured skin master inspection at startup.
+def _inspect_skin_master_later():
+    import time
+    time.sleep(35)
+    try:
+        from skin_master_sync import inspect_skin_master
+        info=inspect_skin_master()
+        print("SKIN MASTER INSPECT:",info,flush=True)
+    except Exception as exc:
+        print("SKIN MASTER INSPECT ERROR:",repr(exc),flush=True)
+
+try:
+    threading.Thread(target=_inspect_skin_master_later,daemon=True).start()
+except Exception as exc:
+    print("SKIN MASTER THREAD ERROR:",repr(exc),flush=True)
