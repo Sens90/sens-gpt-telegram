@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timezone
 
 import requests
+from PIL import Image, ImageDraw, ImageFont
 
 from ai_profile_experience import build_visual_prompt, profile_brawler_reference
 
@@ -98,9 +99,10 @@ def generate_scene(player,category="random",logo_path="assets/titani_logo.jpg"):
     b_mime,b_data=_download_reference(brawler_ref); l_mime,l_data=_local_reference(logo_path)
     character_lock=("CHARACTER LOCK ASSOLUTO: la PRIMA immagine allegata e la reference canonica e VINCOLANTE del Brawler. Riproduci lo STESSO personaggio, non una reinterpretazione. Prima di generare, osserva e conserva TUTTI gli elementi visibili nella reference: silhouette, proporzioni, testa, corpo, arti, costume, copricapo/elmetto/cappello, capelli, barba, guanti, scarpe, armi, strumenti, zaino, accessori, colori, simboli e tratti del volto. NESSUN elemento visibile nella reference puo essere rimosso, sostituito o ridisegnato. In particolare, se il Brawler indossa un ELMETTO o altro copricapo nella reference, deve indossare ESATTAMENTE quel copricapo anche nell'immagine finale, con forma e colori coerenti. Non inventare anatomia o tratti facciali assenti. Non trasformare il Brawler in umano, animale, cosplay o mascotte. La posa puo cambiare, il character design NO. ")
     if player.get("profile_skin"): character_lock+=f"SKIN LOCK: la reference mostra la skin '{player['profile_skin']}' di {player.get('profile_brawler')}. Mantieni esattamente questa skin; non tornare alla skin base e non mescolare elementi di altre skin. "
-    logo_lock=("LOGO LOCK ASSOLUTO: la SECONDA immagine allegata NON e una semplice ispirazione: e l'asset grafico ufficiale e VINCOLANTE dei TITANI ABUSIVI. Devi riprodurre QUELLO STESSO LOGO, mantenendo identita, geometria, composizione, proporzioni relative, scudo, simbolo/maschera centrale, elementi viola e oro, alloro/ornamenti e lettering TITANI ABUSIVI come visibili nella reference. NON creare un nuovo stemma. NON sostituire la maschera centrale con leone, tigre, gufo, teschio, corona, Brawler o altro simbolo. NON cambiare il disegno dello scudo. NON cambiare o reinventare la scritta. NON aggiungere elementi dentro il logo. Il logo puo essere adattato SOLTANTO per prospettiva, illuminazione, ombre, materiale e integrazione fisica nella scena; la sua IDENTITA VISIVA deve restare invariata. Prima di finalizzare l'immagine, confronta mentalmente il logo generato con la SECONDA reference: se stemma, maschera, alloro, colori o lettering non corrispondono, correggili prima dell'output. PRIORITA LOGO: FEDELTA ALLA SECONDA REFERENCE > INTEGRAZIONE NELLA SCENA > CREATIVITA. Mostra il logo ufficiale una sola volta, abbastanza grande e nitido da essere riconoscibile. ")
-    data_lock=("DATA LOCK ASSOLUTO: genera direttamente nell'immagine TUTTA la tipografia e TUTTE le statistiche seguenti, esattamente carattere per carattere. Non correggere, stimare, arrotondare, tradurre o inventare valori. Integra i dati fisicamente nell'ambientazione (display, insegne, pannelli, tabelloni, pareti, pavimento o oggetti coerenti con la scena), senza bande nere e senza overlay grafici separati. Ogni etichetta deve essere leggibile e associata al valore corretto. DATI VINCOLANTI:\n"+_profile_data_prompt(player)+"\n")
-    full_prompt=character_lock+logo_lock+data_lock+prompt
+    # Gemini must create only the scene. Exact logo and profile data are composited afterwards.
+    scene_lock=("SCENA PULITA: NON generare statistiche, nomi, tag, numeri, loghi, stemmi, watermark, insegne testuali o pannelli UI. "
+                "Lascia spazio visivo libero nella parte inferiore e in alto a destra per il compositing deterministico. ")
+    full_prompt=character_lock+scene_lock+prompt
     payload={"contents":[{"parts":[{"text":full_prompt},{"inline_data":{"mime_type":b_mime,"data":b_data}},{"inline_data":{"mime_type":l_mime,"data":l_data}}]}],"generationConfig":{"responseModalities":["TEXT","IMAGE"],"imageConfig":{"aspectRatio":"1:1","imageSize":"1K"}}}
     url=f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_IMAGE_MODEL}:generateContent?key={_gemini_key()}"; r=requests.post(url,json=payload,timeout=120)
     if r.status_code>=400: raise RuntimeError(f"Gemini image HTTP {r.status_code}: {r.text[:500]}")
@@ -113,4 +115,35 @@ def generate_scene(player,category="random",logo_path="assets/titani_logo.jpg"):
 
 
 def overlay_stats(image_bytes,player,logo_path="assets/titani_logo.jpg"):
-    return io.BytesIO(image_bytes),"profilo_ai.jpg"
+    image=Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+    w,h=image.size
+    draw=ImageDraw.Draw(image,"RGBA")
+    def font(size,bold=False):
+        paths=["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+        for p in paths:
+            try:return ImageFont.truetype(p,max(12,int(size)))
+            except Exception:pass
+        return ImageFont.load_default()
+    # Exact official logo: composite the original asset, never redraw it with AI.
+    if os.path.exists(logo_path):
+        logo=Image.open(logo_path).convert("RGBA")
+        target=max(96,int(w*.18)); logo.thumbnail((target,target),Image.Resampling.LANCZOS)
+        image.alpha_composite(logo,(w-logo.width-int(w*.035),int(h*.035)))
+    panel_h=int(h*.31); y0=h-panel_h
+    draw.rounded_rectangle((int(w*.035),y0,int(w*.965),int(h*.965)),radius=max(12,int(w*.025)),fill=(0,0,0,190))
+    title=f"{_value(player,'name')}   {_value(player,'tag')}"
+    draw.text((int(w*.065),y0+int(panel_h*.10)),title,font=font(w*.034,True),fill=(255,255,255,255))
+    club=_club_value(player)
+    draw.text((int(w*.065),y0+int(panel_h*.29)),f"CLUB  {club}",font=font(w*.022,True),fill=(255,255,255,255))
+    rows=[
+      (f"TROFEI  {_fmt(_value(player,'trophies'))}",f"PRESTIGIO  {_fmt(_value(player,'prestige'))}"),
+      (f"3v3  {_fmt(_value(player,'wins_3v3'))}",f"SOLO  {_fmt(_value(player,'wins_solo'))}   DUO  {_fmt(_value(player,'wins_duo'))}"),
+      (f"CLASSIFICATA  {_fmt(_value(player,'ranked_current'))}",f"RECORD  {_fmt(_value(player,'ranked_career_peak','ranked_peak'))}")
+    ]
+    yy=y0+int(panel_h*.46)
+    for left,right in rows:
+        draw.text((int(w*.065),yy),left,font=font(w*.020,True),fill=(255,255,255,255))
+        draw.text((int(w*.53),yy),right,font=font(w*.018,True),fill=(255,255,255,255))
+        yy+=int(panel_h*.17)
+    out=io.BytesIO(); image.convert("RGB").save(out,"JPEG",quality=94,optimize=True); out.seek(0)
+    return out,"profilo_ai.jpg"
