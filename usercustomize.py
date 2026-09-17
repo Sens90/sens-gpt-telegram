@@ -51,33 +51,16 @@ def _search_brawltrack_meta():
         return None
     response = requests.post(
         "https://api.tavily.com/search",
-        json={
-            "api_key": key,
-            "query": "Brawl Stars current meta BrawlTrack brawlers win rate usage star rate site:brawltrack.app/brawlers",
-            "search_depth": "advanced",
-            "max_results": 12,
-            "include_raw_content": True,
-            "include_answer": False,
-            "include_domains": ["brawltrack.app"],
-        },
-        timeout=20,
-    )
+        json={"api_key": key,"query": "Brawl Stars current meta BrawlTrack brawlers win rate usage star rate site:brawltrack.app/brawlers","search_depth": "advanced","max_results": 12,"include_raw_content": True,"include_answer": False,"include_domains": ["brawltrack.app"]},timeout=20)
     response.raise_for_status()
     data = response.json()
     urls = [r.get("url") for r in data.get("results", []) if r.get("url") and "/brawlers/" in r.get("url", "")][:12]
     if urls:
         try:
-            ext = requests.post(
-                "https://api.tavily.com/extract",
-                json={"api_key": key, "urls": urls, "extract_depth": "advanced"},
-                timeout=30,
-            )
-            ext.raise_for_status()
-            extracted = ext.json().get("results", [])
-            if extracted:
-                data["results"] = extracted + data.get("results", [])
-        except Exception as exc:
-            print("META BRAWLTRACK extract fallback:", repr(exc), flush=True)
+            ext = requests.post("https://api.tavily.com/extract",json={"api_key": key, "urls": urls, "extract_depth": "advanced"},timeout=30)
+            ext.raise_for_status(); extracted = ext.json().get("results", [])
+            if extracted: data["results"] = extracted + data.get("results", [])
+        except Exception as exc: print("META BRAWLTRACK extract fallback:", repr(exc), flush=True)
     return data
 
 
@@ -86,170 +69,93 @@ def _install_command_guard():
         import community_features
         from meta_current import render_current_meta
     except Exception as exc:
-        print("META GUARD import failure:", repr(exc), flush=True)
-        return
+        print("META GUARD import failure:", repr(exc), flush=True); return
     original = community_features.CommunityFeatures.handle_command
-    if getattr(original, "_sens_direct_meta", False):
-        return
-
+    if getattr(original, "_sens_direct_meta", False): return
     async def guarded(self, message, context, question):
         if _is_direct_meta(question):
             try:
                 await context.bot.send_chat_action(chat_id=message.chat_id, action="typing")
-                data = _search_brawltrack_meta()
-                report = render_current_meta(data or {}, "both")
+                data = _search_brawltrack_meta(); report = render_current_meta(data or {}, "both")
                 if report:
-                    print("META ATTUALE: risposta deterministica BrawlTrack", flush=True)
-                    await message.reply_text(report)
+                    print("META ATTUALE: risposta deterministica BrawlTrack", flush=True); await message.reply_text(report)
                 else:
-                    print("META ATTUALE: dati BrawlTrack insufficienti", flush=True)
-                    await message.reply_text(
-                        "META ATTUALE\n\nBrawlTrack non mi ha restituito abbastanza statistiche verificabili in questo momento. "
-                        "Non genero una tier list generica o percentuali non verificabili. Riprova tra poco."
-                    )
+                    print("META ATTUALE: dati BrawlTrack insufficienti", flush=True); await message.reply_text("META ATTUALE\n\nBrawlTrack non mi ha restituito abbastanza statistiche verificabili in questo momento. Non genero una tier list generica o percentuali non verificabili. Riprova tra poco.")
                 return True
             except Exception as exc:
-                print("META ATTUALE guard failure:", repr(exc), flush=True)
-                await message.reply_text(
-                    "META ATTUALE\n\nNon riesco a verificare i dati BrawlTrack in questo momento. "
-                    "Per evitare dati inventati non genero una tier list generica."
-                )
-                return True
+                print("META ATTUALE guard failure:", repr(exc), flush=True); await message.reply_text("META ATTUALE\n\nNon riesco a verificare i dati BrawlTrack in questo momento. Per evitare dati inventati non genero una tier list generica."); return True
         return await original(self, message, context, question)
-
-    guarded._sens_direct_meta = True
-    community_features.CommunityFeatures.handle_command = guarded
+    guarded._sens_direct_meta = True; community_features.CommunityFeatures.handle_command = guarded
 
 
 def _install_live_club_guard():
-    """Make Brawlify club lookup resolve the current club tag and name."""
-    try:
-        import player_tracking
-    except Exception as exc:
-        print("PROFILE CLUB GUARD import failure:", repr(exc), flush=True)
-        return
-
+    try: import player_tracking
+    except Exception as exc: print("PROFILE CLUB GUARD import failure:", repr(exc), flush=True); return
     def live_club(player_tag, timeout=15):
         tag = str(player_tag or "").upper().replace("#", "").strip()
-        if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
-            return None, None
+        if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag): return None, None
         try:
-            url = f"https://brawlify.com/it/player/{tag}?refresh={int(time.time())}"
-            response = requests.get(
-                url,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)",
-                    "Cache-Control": "no-cache",
-                    "Pragma": "no-cache",
-                    "Accept-Language": "it-IT,it;q=0.9,en;q=0.8",
-                },
-                timeout=timeout,
-            )
-            if response.status_code != 200:
-                return None, None
-            page = html.unescape(response.text)
-            href = re.search(
-                r'href=["\']/(?:it/)?club/(?:%23|#)?([0289PYLQGRJCUV]{3,15})(?:[^"\']*)["\']',
-                page, re.I,
-            )
-            if not href:
-                return None, None
-            club_tag = "#" + href.group(1).upper()
-            anchor = re.search(
-                r'<a[^>]+href=["\']/(?:it/)?club/(?:%23|#)?' + re.escape(href.group(1)) + r'[^"\']*["\'][^>]*>(.*?)</a>',
-                page, re.I | re.S,
-            )
+            url=f"https://brawlify.com/it/player/{tag}?refresh={int(time.time())}"
+            response=requests.get(url,headers={"User-Agent":"Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)","Cache-Control":"no-cache","Pragma":"no-cache","Accept-Language":"it-IT,it;q=0.9,en;q=0.8"},timeout=timeout)
+            if response.status_code != 200: return None,None
+            page=html.unescape(response.text); href=re.search(r'href=["\']/(?:it/)?club/(?:%23|#)?([0289PYLQGRJCUV]{3,15})(?:[^"\']*)["\']',page,re.I)
+            if not href:return None,None
+            club_tag="#"+href.group(1).upper(); anchor=re.search(r'<a[^>]+href=["\']/(?:it/)?club/(?:%23|#)?'+re.escape(href.group(1))+r'[^"\']*["\'][^>]*>(.*?)</a>',page,re.I|re.S)
             if anchor:
-                name = re.sub(r"<[^>]+>", " ", anchor.group(1))
-                name = re.sub(r"\s+", " ", html.unescape(name)).strip()
-                if name and name.casefold() not in {"club", "visualizza club", "view club"}:
-                    return name, club_tag
-            club_response = requests.get(
-                f"https://brawlify.com/it/club/{href.group(1)}?refresh={int(time.time())}",
-                headers={"User-Agent": "Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)", "Cache-Control": "no-cache"},
-                timeout=timeout,
-            )
-            if club_response.status_code == 200:
-                club_page = html.unescape(club_response.text)
-                title = re.search(r"<title>\s*(.*?)\s*(?:#|—|-).*?</title>", club_page, re.I | re.S)
-                if title:
-                    name = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", title.group(1))).strip()
-                    if name:
-                        return name, club_tag
-                heading = re.search(r"<h1[^>]*>(.*?)</h1>", club_page, re.I | re.S)
-                if heading:
-                    name = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", heading.group(1))).strip()
-                    if name:
-                        return name, club_tag
-            return None, club_tag
-        except Exception as exc:
-            print("PROFILE CLUB LIVE failure:", repr(exc), flush=True)
-            return None, None
-
-    player_tracking.get_live_club = live_club
-    print("PROFILE CLUB LIVE GUARD INSTALLATA", flush=True)
+                name=re.sub(r"<[^>]+>"," ",anchor.group(1)); name=re.sub(r"\s+"," ",html.unescape(name)).strip()
+                if name and name.casefold() not in {"club","visualizza club","view club"}: return name,club_tag
+            return None,club_tag
+        except Exception as exc: print("PROFILE CLUB LIVE failure:",repr(exc),flush=True); return None,None
+    player_tracking.get_live_club=live_club; print("PROFILE CLUB LIVE GUARD INSTALLATA",flush=True)
 
 
-def _rome_trophy_changes(history, current_trophies):
-    """Use Europe/Rome for Oggi and first real snapshot if tracking began later."""
-    now_utc = datetime.now(timezone.utc)
-    now_rome = now_utc.astimezone(ROME)
-    start_rome = now_rome.replace(hour=0, minute=0, second=0, microsecond=0)
-    start_today = start_rome.astimezone(timezone.utc)
-
-    parsed = []
+def _rome_trophy_changes(history,current_trophies):
+    now_utc=datetime.now(timezone.utc); now_rome=now_utc.astimezone(ROME); start_today=now_rome.replace(hour=0,minute=0,second=0,microsecond=0).astimezone(timezone.utc); parsed=[]
     for row in history or []:
         try:
-            dt = datetime.fromisoformat(str(row["recorded_at"]).replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            parsed.append((dt.astimezone(timezone.utc), int(row["trophies"])))
-        except Exception:
-            continue
-    parsed.sort(key=lambda item: item[0])
-
+            dt=datetime.fromisoformat(str(row["recorded_at"]).replace("Z","+00:00")); dt=dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc); parsed.append((dt.astimezone(timezone.utc),int(row["trophies"])))
+        except Exception: continue
+    parsed.sort(key=lambda x:x[0])
     def at_or_before(target):
-        value = None
-        for dt, trophies in parsed:
-            if dt <= target:
-                value = trophies
-            else:
-                break
+        value=None
+        for dt,trophies in parsed:
+            if dt<=target:value=trophies
+            else:break
         return value
-
-    today_value = at_or_before(start_today)
-    if today_value is None:
-        for dt, trophies in parsed:
-            if start_today <= dt <= now_utc:
-                today_value = trophies
-                break
-
-    changes = {
-        "today": current_trophies - today_value if today_value is not None else None,
-    }
-    for days, key in ((7, "7d"), (15, "15d"), (30, "30d"), (90, "90d")):
-        old = at_or_before(now_utc - timedelta(days=days))
-        changes[key] = current_trophies - old if old is not None else None
+    today=at_or_before(start_today)
+    if today is None:
+        for dt,trophies in parsed:
+            if start_today<=dt<=now_utc:today=trophies;break
+    changes={"today":current_trophies-today if today is not None else None}
+    for days,key in ((7,"7d"),(15,"15d"),(30,"30d"),(90,"90d")):
+        old=at_or_before(now_utc-timedelta(days=days)); changes[key]=current_trophies-old if old is not None else None
     return changes
 
 
 def _patch_main_profile_runtime():
-    """Patch the exact globals used by app.py, even on slow Render cold starts."""
     for _ in range(2400):
-        main = sys.modules.get("__main__")
-        if main and hasattr(main, "calculate_trophy_changes") and hasattr(main, "community"):
-            main.calculate_trophy_changes = _rome_trophy_changes
-            try:
-                main.community.change_calculator = _rome_trophy_changes
-            except Exception:
-                pass
-            print("PROFILE TROPHY ROME GUARD INSTALLATA", flush=True)
-            return
+        main=sys.modules.get("__main__")
+        if main and hasattr(main,"calculate_trophy_changes") and hasattr(main,"community"):
+            main.calculate_trophy_changes=_rome_trophy_changes
+            try: main.community.change_calculator=_rome_trophy_changes
+            except Exception: pass
+            print("PROFILE TROPHY ROME GUARD INSTALLATA",flush=True); return
         time.sleep(0.25)
-    print("PROFILE TROPHY ROME GUARD NON INSTALLATA", flush=True)
+    print("PROFILE TROPHY ROME GUARD NON INSTALLATA",flush=True)
 
+
+def _sync_official_catalog_startup():
+    """Populate/update the official Brawler catalog after every service start."""
+    try:
+        time.sleep(5)
+        from brawler_catalog_sync import sync_official_brawlers
+        count=sync_official_brawlers(timeout=30)
+        print("CATALOGO SUPERCELL STARTUP OK:",count,flush=True)
+    except Exception as exc:
+        print("CATALOGO SUPERCELL STARTUP ERRORE:",repr(exc),flush=True)
 
 _install_gemini_guard()
 _install_command_guard()
 _install_live_club_guard()
-threading.Thread(target=_patch_main_profile_runtime, daemon=True).start()
+threading.Thread(target=_patch_main_profile_runtime,daemon=True).start()
+threading.Thread(target=_sync_official_catalog_startup,daemon=True).start()
