@@ -54,8 +54,9 @@ def sync_official_brawlers(timeout=30):
             "brawler_id": int(brawler_id),
             "name_en": str(name),
             "source": "supercell_official",
+            "source_payload": item,
             "source_updated_at": now,
-            "raw_data": item,
+            "updated_at": now,
         })
 
     if rows:
@@ -68,14 +69,17 @@ def sync_official_brawlers(timeout=30):
         r.raise_for_status()
 
     state = {
-        "content_type": "brawlers",
+        "dataset": "brawlers",
         "source": "supercell_official",
-        "last_synced_at": now,
-        "records_synced": len(rows),
-        "status": "ok",
+        "last_success_at": now,
+        "last_attempt_at": now,
+        "last_status": "ok",
+        "records_seen": len(rows),
+        "details": {"via": "brawl-proxy", "official": True},
+        "updated_at": now,
     }
     r = requests.post(
-        f"{supabase_url}/rest/v1/content_sync_state?on_conflict=content_type,source",
+        f"{supabase_url}/rest/v1/content_sync_state?on_conflict=dataset,source",
         headers=_headers(),
         json=state,
         timeout=timeout,
