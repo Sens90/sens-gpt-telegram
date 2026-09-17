@@ -79,11 +79,18 @@ def generate_scene(player,category="random",logo_path="assets/titani_logo.jpg"):
     prompt,scene=build_visual_prompt(player,category); brawler_ref=profile_brawler_reference(player)
     if not brawler_ref: raise RuntimeError("Foto profilo Brawler non disponibile: generazione annullata per non inventare il personaggio.")
     b_mime,b_data=_download_reference(brawler_ref); l_mime,l_data=_local_reference(logo_path)
-    character_lock=(
-        "CHARACTER LOCK OBBLIGATORIO SULLA PRIMA IMMAGINE. Non reinterpretare il soggetto. Mantieni contorno, proporzioni, occhi, bocca/becco/muso, orecchie/corna/capelli, arti, mani/zampe, costume e accessori della reference. "
-        "NON trasformare il Brawler in animale zoologicamente realistico, persona reale, cosplay, mascotte o personaggio ispirato. Deve essere lo STESSO modello del Brawler costruito con materiali fisici reali. "
-        "Applica fotorealismo SOLO a superfici, materiali, luce, ombre, profondita e particelle. Non aggiungere anatomia assente. Fedelta reference > fotorealismo > creativita. "
-    ) if category=="cinematic" else "La PRIMA immagine allegata e la reference visiva obbligatoria del Brawler: mantieni il personaggio fedele. "
+    strict_lock=(
+        "CHARACTER LOCK ASSOLUTO SULLA PRIMA IMMAGINE. La reference e il modello canonico: copia esattamente silhouette, proporzioni, testa, corpo, arti, costume, accessori, palette e OGNI elemento del volto. "
+        "DIVIETO ASSOLUTO di inventare anatomia o tratti facciali. Se nella reference NON sono visibili sclere bianche, pupille, iridi, sopracciglia, naso, bocca, denti, baffi o altre parti del volto, NON aggiungerle. Se il volto e una zona nera/maschera con sole forme luminose degli occhi, deve rimanere esattamente cosi: nessun occhio umano o animale dietro la maschera. "
+        "Non trasformare il soggetto in topo, uccello, animale reale, essere umano, cosplay, mascotte o personaggio ispirato. Non rendere il volto piu espressivo modificando il design. La posa puo cambiare, il design no. "
+        "Lo stile richiesto modifica ESCLUSIVAMENTE rendering, materiali, texture, illuminazione, profondita, ombre e qualita cinematografica. CHARACTER DESIGN INVARIATO. Fedelta reference > stile > creativita. "
+    )
+    if category=="cinematic":
+        character_lock=strict_lock+"Per Cinematic applica fotorealismo soltanto ai materiali e alla fotografia, mai all'anatomia. "
+    elif category=="pixar":
+        character_lock=strict_lock+"Per Pixar usa hyper detailed 3D cinematic animation, high fidelity render, ma NON applicare convenzioni facciali Pixar: niente occhi grandi, pupille, sopracciglia, bocca o naso se non esistono nella reference. Deve sembrare lo STESSO Brawler originale renderizzato in un film 3D, non una sua reinterpretazione. "
+    else:
+        character_lock="La PRIMA immagine allegata e la reference visiva obbligatoria del Brawler: mantieni il personaggio fedele e non aggiungere tratti anatomici assenti. "
     full_prompt=(prompt+" "+character_lock+
         "La SECONDA immagine allegata e il LOGO ORIGINALE TITANI ABUSIVI: deve comparire riconoscibile e fedele, INTEGRATO FISICAMENTE nella scena, non come watermark o badge. Mantieni forma, simbolo, scritte e identita del logo; non sostituirlo con un logo inventato. Deve essere completamente dentro l'inquadratura. "
         "IMPORTANTE: NON scrivere nell'immagine nome giocatore, tag, club, trofei, livello, numero Brawler, Prestigio, vittorie, Classificata, record o altri valori statistici. Il bot applichera questi dati esatti dopo la generazione. Non duplicare ne inventare statistiche. "
