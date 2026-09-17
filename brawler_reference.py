@@ -13,7 +13,7 @@ BRAWLIFY_BRAWLER_URL = "https://brawlify.com/player/{tag}/brawlers/{brawler_id}"
 BRAWLVALUE_SKINS_URL = "https://brawlvalue.com/skins/{brawler_slug}"
 _brawlers_cache = None
 _icons_cache = None
-BRAWLER_ALIASES_IT = {"bombardino":"Berry","corvo":"Crow","dinamike":"Dynamike","dinamite":"Dynamike","elprimo":"El Primo","franco":"Frank","grommo":"Grom","leone":"Leon","mortisio":"Mortis","signorp":"Mr. P","misterp":"Mr. P","otto bit":"8-Bit","ottobit":"8-Bit","otto-bit":"8-Bit","spina":"Spike"}
+BRAWLER_ALIASES_IT = {"bombardino":"Berry","corvo":"Crow","dinamike":"Dynamike","dinamite":"Dynamike","elprimo":"El Primo","franco":"Frank","grommo":"Grom","leone":"Leon","mortisio":"Mortis","ringhio":"Ruffs","colonnello ringhio":"Ruffs","colonnelloringhio":"Ruffs","signorp":"Mr. P","misterp":"Mr. P","otto bit":"8-Bit","ottobit":"8-Bit","otto-bit":"8-Bit","spina":"Spike"}
 
 
 def _norm(value):
@@ -103,7 +103,6 @@ def _italian_skin_reference(brawler,skin_name,timeout=15):
     requested=_norm(skin_name)
     brawler_norm=_norm(brawler.get("name"))
     entries=[]
-    # BrawlValue exposes the official Italian display name in image alt/title text.
     for m in re.finditer(r'''(?i)(?:alt|title)=["']([^"']+?)(?:\s*-\s*[^"']*Skin)?["']''',text):
         label=m.group(1).strip()
         label_norm=_norm(label)
@@ -117,21 +116,18 @@ def _italian_skin_reference(brawler,skin_name,timeout=15):
     if requested in {"casuale","random"}:random.shuffle(entries)
     for label,url in entries:
         if _is_skin_image(url):
-            # Keep the exact Italian catalog name, removing only the brawler prefix for profile_skin.
             clean=re.sub(rf"(?i)^\s*{re.escape(str(brawler.get('name') or ''))}\s+","",label).strip()
             return url,clean or label
     return None,None
 
 
 def _skin_reference(player,brawler,skin_name,timeout=15):
-    """Resolve a skin independently of ownership; Italian catalog first, player wardrobe only as fallback."""
     skin_url,skin_label=_italian_skin_reference(brawler,skin_name,timeout=timeout)
     if skin_url:return skin_url,skin_label
-
     tag=str(player.get("tag") or "").upper().replace("#","").strip()
     if not tag or not brawler or not brawler.get("id"): return None,None
     page_url=BRAWLIFY_BRAWLER_URL.format(tag=tag,brawler_id=brawler["id"])
-    r=requests.get(page_url,headers={"User-Agent":"Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)"},timeout=timeout)
+    r=requests.get(page_url,headers={"User-Agent":"Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)","Accept-Language":"it-IT,it;q=0.9"},timeout=timeout)
     if r.status_code!=200:return None,None
     text=r.text
     requested=_norm(skin_name)
@@ -176,9 +172,11 @@ def resolve_ai_brawler_reference(player,requested_brawler=None,timeout=15):
             if not brawler:return False,f"Brawler '{requested}' non trovato. Usa il nome italiano o quello ufficiale del Brawler."
             if skin_name:
                 skin_url,resolved_name=_skin_reference(player,brawler,skin_name,timeout=timeout)
-                if not skin_url:return False,f"Skin '{skin_name}' di {brawler.get('name')} non trovata con una reference verificabile. Nessuna generazione è stata consumata."
-                player["profile_brawler"]=brawler.get("name"); player["profile_brawler_id"]=brawler.get("id"); player["profile_brawler_image_url"]=skin_url; player["profile_skin"]=resolved_name or skin_name; return True,None
-            return (_apply_brawler(player,brawler),None)
+                if not skin_url:return False,f"Skin '{skin_name}' di {requested} non trovata con una reference verificabile. Nessuna generazione è stata consumata."
+                player["profile_brawler"]=requested; player["profile_brawler_id"]=brawler.get("id"); player["profile_brawler_image_url"]=skin_url; player["profile_skin"]=resolved_name or skin_name; return True,None
+            ok=_apply_brawler(player,brawler)
+            if ok: player["profile_brawler"]=requested
+            return ok,None
         icon_id=player.get("icon_id")
         if icon_id is None:
             icon_id=_icon_id_from_brawlzone(player.get("tag"),timeout=timeout)
