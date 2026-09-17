@@ -187,9 +187,11 @@ def _inspect_skin_master_later():
     import time
     time.sleep(35)
     try:
-        from skin_master_sync import sync_verified_rows
+        from skin_master_sync import sync_verified_rows, inspect_unmapped_relations
         info=sync_verified_rows()
         print("SKIN MASTER SYNC:",info,flush=True)
+        unresolved=inspect_unmapped_relations()
+        print("SKIN UNMAPPED RELATIONS:",unresolved,flush=True)
     except Exception as exc:
         print("SKIN MASTER INSPECT ERROR:",repr(exc),flush=True)
 
