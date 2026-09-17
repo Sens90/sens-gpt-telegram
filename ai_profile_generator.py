@@ -132,7 +132,12 @@ def generate_scene(player,category="random",logo_path="assets/titani_logo.jpg"):
         "Devono essere tutti chiaramente leggibili e presenti UNA SOLA VOLTA. Dai priorita assoluta alla correttezza di lettere e cifre rispetto alle decorazioni. "
     )
     logo_lock=(
-        "La SECONDA immagine allegata e il LOGO ORIGINALE TITANI ABUSIVI: integralo fisicamente nella scena, riconoscibile e fedele. Non sostituirlo con un logo inventato e non ridisegnarne l'identita. "
+        "LOGO LOCK ASSOLUTO: la SECONDA immagine allegata NON e una semplice ispirazione: e l'asset grafico ufficiale e VINCOLANTE dei TITANI ABUSIVI. "
+        "Devi riprodurre QUELLO STESSO LOGO, mantenendo identita, geometria, composizione, proporzioni relative, scudo, simbolo/maschera centrale, elementi viola e oro, alloro/ornamenti e lettering TITANI ABUSIVI come visibili nella reference. "
+        "NON creare un nuovo stemma. NON sostituire la maschera centrale con leone, tigre, gufo, teschio, corona, Brawler o altro simbolo. NON cambiare il disegno dello scudo. NON cambiare o reinventare la scritta. NON aggiungere elementi dentro il logo. "
+        "Il logo puo essere adattato SOLTANTO per prospettiva, illuminazione, ombre, materiale e integrazione fisica nella scena; la sua IDENTITA VISIVA deve restare invariata. "
+        "Prima di finalizzare l'immagine, confronta mentalmente il logo generato con la SECONDA reference: se stemma, maschera, alloro, colori o lettering non corrispondono, correggili prima dell'output. "
+        "PRIORITA LOGO: FEDELTA ALLA SECONDA REFERENCE > INTEGRAZIONE NELLA SCENA > CREATIVITA. Mostra il logo ufficiale una sola volta, abbastanza grande e nitido da essere riconoscibile. "
     )
     full_prompt=prompt+" "+character_lock+logo_lock+data_lock
     payload={"contents":[{"role":"user","parts":[{"text":full_prompt},{"inline_data":{"mime_type":b_mime,"data":b_data}},{"inline_data":{"mime_type":l_mime,"data":l_data}}]}],"generationConfig":{"responseModalities":["TEXT","IMAGE"],"imageConfig":{"imageSize":"1K"}}}
