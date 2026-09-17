@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable
+from typing import Any, Dict
 
 import requests
 
@@ -66,19 +66,22 @@ def _build_row(brawler_id: int, row: Dict[str, Any]) -> Dict[str, Any]:
     merged = {**row, **stats}
     builds = _first(merged, "popularBuilds", "popular_builds", "builds", "loadouts") or []
     modes = _first(merged, "modes", "gameModes", "game_modes", "modeStats") or {}
+    now = datetime.now(timezone.utc).isoformat()
     return {
         "brawler_id": brawler_id,
         "brawler_name": _first(row, "name", "brawlerName", "brawler_name"),
         "win_rate": _num(merged, "winRate", "win_rate", "winrate"),
-        "pick_rate": _num(merged, "pickRate", "pick_rate", "usageRate", "usage_rate"),
-        "star_rate": _num(merged, "starRate", "star_rate", "starPlayerRate", "star_player_rate"),
+        # BrawlTrack calls this metric Meta Usage on its brawler pages. Keep the
+        # existing pick_rate DB column for compatibility with the bot schema.
+        "pick_rate": _num(merged, "pickRate", "pick_rate", "usageRate", "usage_rate", "metaUsage", "meta_usage", "usage"),
+        "star_rate": _num(merged, "starRate", "star_rate", "starPlayerRate", "star_player_rate", "mvpRate", "mvp_rate"),
         "rank_label": _first(merged, "rank", "tier", "rankLabel", "rank_label"),
         "popular_builds": builds if isinstance(builds, (list, dict)) else [],
         "modes": modes if isinstance(modes, (list, dict)) else {},
         "source_url": f"https://brawltrack.app/brawlers/{brawler_id}",
         "source_payload": row,
-        "source_updated_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "source_updated_at": now,
+        "updated_at": now,
     }
 
 
