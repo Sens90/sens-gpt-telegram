@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, timezone
 
 import requests
@@ -36,11 +37,52 @@ def _proxy_brawlers(timeout=30):
     return data.get("items") or data.get("list") or []
 
 
+def install_club_ranking_router():
+    """Intercepta le classifiche club semplici prima che finiscano alla AI generativa."""
+    import community_features
+
+    current = community_features.CommunityFeatures.handle_command
+    if getattr(current, "_sens_club_ranking_router", False):
+        return
+
+    aliases = {
+        "titani": "TITANI ABUSIVI",
+        "titani abusivi": "TITANI ABUSIVI",
+        "tamarri": "TAMARRI ABUSIVI",
+        "tamarri abusivi": "TAMARRI ABUSIVI",
+        "tornadi": "TORNADI ABUSIVI",
+        "tornadi abusivi": "TORNADI ABUSIVI",
+        "talenti": "TALENTI ABUSIVI",
+        "talenti abusivi": "TALENTI ABUSIVI",
+    }
+
+    async def routed(self, message, context, question):
+        q = re.sub(r"^[!/]+", "", str(question or "").strip()).strip().strip("\"'“”‘’ ").strip()
+        match = re.fullmatch(
+            r"classific(?:a|he)\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)",
+            q,
+            re.I,
+        )
+        if match:
+            club_name = aliases[match.group(1).casefold()]
+            await message.reply_text(self.stat_ranking_text(message.chat_id, "trofei", club_name))
+            print("CLASSIFICA CLUB DIRETTA:", club_name, flush=True)
+            return True
+        return await current(self, message, context, question)
+
+    routed._sens_club_ranking_router = True
+    community_features.CommunityFeatures.handle_command = routed
+    print("CLASSIFICA CLUB ROUTER INSTALLATO", flush=True)
+
+
 def sync_official_brawlers(timeout=30):
     """Sincronizza nel catalogo solo i dati restituiti dall'API ufficiale Supercell."""
     supabase_url = (os.environ.get("SUPABASE_URL") or "").rstrip("/")
     if not supabase_url:
         raise RuntimeError("SUPABASE_URL non configurata")
+
+    # Il router e indipendente dalla riuscita della sincronizzazione catalogo.
+    install_club_ranking_router()
 
     items = _proxy_brawlers(timeout=timeout)
     now = datetime.now(timezone.utc).isoformat()
