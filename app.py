@@ -2406,7 +2406,12 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         progress = await message.reply_text("Sto creando il tuo Profilo AI TITANI ABUSIVI…")
         try:
             scene_bytes, scene = await asyncio.to_thread(generate_scene, player, category)
-            card = await asyncio.to_thread(overlay_stats, scene_bytes, player)
+            card, card_filename = await asyncio.to_thread(overlay_stats, scene_bytes, player)
+            # Pass the file object itself to Telegram. Passing the complete
+            # (BytesIO, filename) tuple makes the HTTP layer try to serialize
+            # BytesIO as JSON and the upload fails.
+            card.name = card_filename
+            card.seek(0)
             await context.bot.send_photo(
                 chat_id=message.chat_id,
                 photo=card,
