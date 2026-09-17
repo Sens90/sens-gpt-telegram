@@ -3385,6 +3385,46 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
+async def transcribe_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Transcribe Telegram voice/audio and route it through the same Sens GPT brain."""
+    message = update.effective_message
+    if not message or not message.from_user:
+        return
+    media = message.voice or message.audio
+    if not media:
+        return
+    try:
+        await context.bot.send_chat_action(chat_id=message.chat_id, action="typing")
+        tg_file = await context.bot.get_file(media.file_id)
+        audio = await tg_file.download_as_bytearray()
+        mime = getattr(media, "mime_type", None) or "audio/ogg"
+        # Gemini accepts inline audio and returns only the transcript here.
+        prompt = (
+            "Trascrivi fedelmente questo messaggio audio in italiano. "
+            "Se contiene nomi o termini di Brawl Stars, mantienili corretti. "
+            "Restituisci esclusivamente la trascrizione, senza commenti."
+        )
+        result = await asyncio.to_thread(
+            client.models.generate_content,
+            model=os.environ.get("VOICE_STT_MODEL", "gemini-3.5-flash-lite"),
+            contents=[prompt, {"inline_data": {"mime_type": mime, "data": bytes(audio)}}]
+        )
+        transcript = (result.text or "").strip()
+        if not transcript:
+            await message.reply_text("I nostri Sistemi Abusivi non sono riusciti a capire questo audio. Riprova con un vocale più chiaro.")
+            return
+        # Reuse the normal answer pipeline without showing the internal transcript.
+        original_text = message.text
+        try:
+            message.text = transcript
+            await answer(update, context)
+        finally:
+            message.text = original_text
+    except Exception as exc:
+        print("VOICE STT ERRORE:", repr(exc), flush=True)
+        await message.reply_text("I nostri Sistemi Abusivi non riescono a elaborare il vocale in questo momento. Riprova tra poco.")
+
+
 async def generazioni_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.from_user:
