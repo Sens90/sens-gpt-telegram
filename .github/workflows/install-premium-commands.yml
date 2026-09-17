@@ -17,23 +17,49 @@ jobs:
           from pathlib import Path
           p=Path('app.py')
           s=p.read_text()
+
+          old_import='from telegram.ext import Application, MessageHandler, ContextTypes, filters\n'
+          new_import='from telegram.ext import Application, MessageHandler, CommandHandler, ContextTypes, filters\n'
+          if old_import in s:
+              s=s.replace(old_import,new_import,1)
+          elif 'CommandHandler' not in s:
+              raise SystemExit('telegram.ext import anchor not found')
+
           imp='from premium_ai import handle_premium_command\n'
           anchor='from live_maps import collect_report, render_report, report_csv\n'
           if imp not in s:
               s=s.replace(anchor, anchor+imp)
+
           hook='''    if await handle_premium_command(\n        message, context, question, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY\n    ):\n        return\n\n'''
           anchor2='    if await community.continue_registration(message, context):\n'
           if hook not in s:
               if anchor2 not in s:
                   raise SystemExit('answer hook anchor not found')
               s=s.replace(anchor2, hook+anchor2, 1)
+
+          slash_handler='''\n\nasync def generazioni_command(update: Update, context: ContextTypes.DEFAULT_TYPE):\n    message = update.effective_message\n    if not message or not message.from_user:\n        return\n    await handle_premium_command(\n        message, context, "generazioni", SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY\n    )\n'''
+          main_anchor='\ndef main():\n'
+          if 'async def generazioni_command(' not in s:
+              if main_anchor not in s:
+                  raise SystemExit('main anchor not found')
+              s=s.replace(main_anchor, slash_handler+main_anchor,1)
+
+          registration='''    application.add_handler(\n        CommandHandler("generazioni", generazioni_command)\n    )\n\n'''
+          message_handler='''    application.add_handler(\n        MessageHandler(\n            filters.TEXT & ~filters.COMMAND,\n            answer\n        )\n    )\n'''
+          if 'CommandHandler("generazioni", generazioni_command)' not in s:
+              if message_handler not in s:
+                  raise SystemExit('message handler anchor not found')
+              s=s.replace(message_handler,registration+message_handler,1)
+
           p.write_text(s)
           PY
+      - name: Validate Python
+        run: python -m py_compile app.py premium_ai.py
       - name: Commit patch
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app.py
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m 'Enable Premium AI admin commands'
+          git commit -m 'Enable /generazioni Telegram command'
           git push
