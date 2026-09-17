@@ -149,7 +149,8 @@ async def _patched_handle(self,message,context,question):
             await context.bot.send_chat_action(chat_id=message.chat_id,action="typing"); report=render_current_meta(_search_brawltrack_meta(),"both"); await message.reply_text(("I nostri Sistemi Abusivi hanno analizzato il meta attuale.\n\n"+report) if report else "I nostri Sistemi Abusivi non hanno trovato abbastanza dati verificabili in questo momento. Riprova tra poco.")
         except Exception as e: print("META DIRECT ERRORE:",repr(e),flush=True); await message.reply_text("I nostri Sistemi Abusivi non riescono a completare l’analisi del meta in questo momento. Riprova tra poco.")
         return True
-    handled=await _original_handle(self,message,context,question)\n    return handled
+    handled=await _original_handle(self,message,context,question)
+    return handled
 
 community_features.CommunityFeatures.__init__=_patched_init
 community_features.CommunityFeatures.handle_command=_patched_handle
