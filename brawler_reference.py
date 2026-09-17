@@ -70,8 +70,8 @@ def _extract_image_urls(fragment,base_url):
     urls=[]
     decoded=html.unescape(fragment).replace("\\u002F","/").replace("\\/","/")
     patterns=(
-        r'(?:src|data-src|imageUrl|image_url)["\\']?\s*[:=]\s*["\\']([^"\\']+)',
-        r'(https?://[^"\\'<>\s]+\.(?:png|webp|jpg|jpeg)(?:\?[^"\\'<>\s]*)?)',
+        r'''(?:src|data-src|imageUrl|image_url)["']?\s*[:=]\s*["']([^"']+)''',
+        r'''(https?://[^"'<>\s]+\.(?:png|webp|jpg|jpeg)(?:\?[^"'<>\s]*)?)''',
     )
     for pattern in patterns:
         for raw in re.findall(pattern,decoded,re.I):
@@ -97,14 +97,10 @@ def _skin_reference(player,brawler,skin_name,timeout=15):
     if r.status_code!=200:return None,None
     text=r.text
 
-    # Wardrobe data is embedded in the page. Collect skin-name occurrences and
-    # inspect their local HTML/JSON neighbourhood for the associated asset.
     requested=_norm(skin_name)
     candidates=[]
     name_candidates=[]
-    # JSON/HTML labels around wardrobe entries. Keep a broad matcher because
-    # Brawlify may change presentation while preserving the embedded data.
-    for m in re.finditer(r'(?i)(?:skinName|name|title|alt)["\\']?\s*[:=]\s*["\\']([^"\\']{2,80})',text):
+    for m in re.finditer(r'''(?i)(?:skinName|name|title|alt)["']?\s*[:=]\s*["']([^"']{2,80})''',text):
         label=html.unescape(m.group(1)).strip()
         label_norm=_norm(label)
         if not label_norm:continue
@@ -114,7 +110,6 @@ def _skin_reference(player,brawler,skin_name,timeout=15):
         elif requested in label_norm or label_norm in requested:
             name_candidates.append((label,m.start()))
 
-    # Fallback: literal requested skin may appear as visible text rather than a JSON field.
     if not name_candidates and requested not in {"casuale","random"}:
         for m in re.finditer(re.escape(str(skin_name)),text,re.I):
             name_candidates.append((str(skin_name),m.start()))
@@ -126,7 +121,6 @@ def _skin_reference(player,brawler,skin_name,timeout=15):
         fragment=text[max(0,pos-2200):min(len(text),pos+2200)]
         for url in _extract_image_urls(fragment,page_url):
             lower=url.casefold()
-            # Reject obvious non-skin assets before making a network request.
             if any(part in lower for part in ("profile-icons","star-powers","gadgets","gears","maps/","ranked/","club-badges")):continue
             score=0
             if requested not in {"casuale","random"} and requested in _norm(url):score+=4
@@ -149,7 +143,6 @@ def resolve_ai_brawler_reference(player,requested_brawler=None,timeout=15):
             if env_match:
                 requested=env_match.group(1).strip(); player["ai_custom_environment"]=env_match.group(2).strip()[:120]
 
-            # New syntax: `con BRAWLER skin NOME_SKIN` / `skin casuale`.
             skin_match=re.match(r"^(.+?)\s+skin\s+(.+)$",requested,re.I)
             skin_name=None
             if skin_match:
@@ -178,10 +171,7 @@ def resolve_ai_brawler_reference(player,requested_brawler=None,timeout=15):
         if icon:
             player["profile_icon_url"]=icon.get("imageUrl2") or icon.get("imageUrl")
             brawler=_brawler_by_id(icon.get("brawler"),brawlers)
-            if brawler and _apply_brawler(player,brawler):return True,None
-            if player.get("profile_icon_url"):return True,None
-        existing=player.get("icon_url") or player.get("profile_icon_url")
-        if isinstance(existing,str) and existing.startswith(("http://","https://")):return True,None
-        return False,"Non riesco a recuperare la foto profilo/Brawler di questo giocatore. Prova con 'profilo ai #TAG con NOME_BRAWLER'."
+            if _apply_brawler(player,brawler):return True,None
+        return False,"Non riesco a collegare la tua icona profilo a un Brawler. Usa: profilo ai cinematic #TAG con NOME_BRAWLER"
     except Exception as exc:
-        print("AI BRAWLER REFERENCE:",repr(exc),flush=True); return False,"Riferimento Brawler/skin temporaneamente non disponibile."
+        return False,f"Reference Brawler non disponibile ({type(exc).__name__}). Riprova tra poco."
