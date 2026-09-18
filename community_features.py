@@ -277,11 +277,11 @@ class CommunityFeatures:
         picks=stats.get("priority_picks") or stats.get("picks") or []
         avoid=stats.get("avoid") or stats.get("avoid_these") or []
         try:
-            catalog=self._get("brawlers_catalog",{"select":"name,name_it"})
+            catalog=self._get("brawlers_catalog",{"select":"name_en,name_it"})
         except Exception as exc:
             LOG.warning("DRAFT brawler localization unavailable: %s", type(exc).__name__)
             catalog=[]
-        it_by_en={str(x.get("name") or "").casefold():str(x.get("name_it") or x.get("name") or "") for x in catalog or []}
+        it_by_en={str(x.get("name_en") or "").casefold():str(x.get("name_it") or x.get("name_en") or "") for x in catalog or []}
         def local_brawler(value):
             return it_by_en.get(str(value or "").casefold(),str(value or "").title())
         pick_names=[]
@@ -315,11 +315,11 @@ class CommunityFeatures:
         selected=[str(x).strip().casefold() for x in (draft_state.get("my_picks") or []) if x]
         if not selected or not comps:
             return None
-        catalog=self._get("brawlers_catalog",{"select":"name,name_it"})
+        catalog=self._get("brawlers_catalog",{"select":"name_en,name_it"})
         aliases={}
         labels={}
         for row in catalog or []:
-            en=str(row.get("name") or "").strip()
+            en=str(row.get("name_en") or "").strip()
             it=str(row.get("name_it") or en).strip()
             if en:
                 aliases[en.casefold()]=en.casefold()
@@ -343,16 +343,16 @@ class CommunityFeatures:
     def brawler_counter_text(self, brawler_name, mode=None, map_name=None):
         """Return verified counter data stored server-side; never invent matchups."""
         try:
-            catalog = self._get("brawlers_catalog", {"select": "id,name,name_it"})
+            catalog = self._get("brawlers_catalog", {"select": "brawler_id,name_en,name_it"})
             wanted = str(brawler_name or "").strip().casefold()
             target = next((b for b in catalog if wanted in {
-                str(b.get("name") or "").casefold(), str(b.get("name_it") or "").casefold()
+                str(b.get("name_en") or "").casefold(), str(b.get("name_it") or "").casefold()
             }), None)
             if not target:
                 return None
             params = {
                 "select": "counter_brawler_id,mode,map_name,score,sample_size,source,source_updated_at",
-                "brawler_id": f"eq.{target['id']}",
+                "brawler_id": f"eq.{target['brawler_id']}",
                 "order": "score.desc.nullslast",
                 "limit": "10",
             }
@@ -363,11 +363,11 @@ class CommunityFeatures:
             rows = self._get("brawler_counters", params)
             if not rows:
                 return (
-                    f"Non ho ancora counter verificati per {target.get('name_it') or target.get('name')}. "
+                    f"Non ho ancora counter verificati per {target.get('name_it') or target.get('name_en')}. "
                     "Non invento matchup: il dato verrà mostrato quando sarà disponibile nella cache counter."
                 )
             names = {int(b["id"]): (b.get("name_it") or b.get("name")) for b in catalog if b.get("id") is not None}
-            title = f"COUNTER DI {(target.get('name_it') or target.get('name')).upper()}"
+            title = f"COUNTER DI {(target.get('name_it') or target.get('name_en')).upper()}"
             if map_name: title += f" - {map_name}"
             elif mode: title += f" - {mode}"
             lines = [title, ""]
@@ -1741,14 +1741,14 @@ class CommunityFeatures:
         if draft_state and draft_state.get("draft_format") in ("ban_all_pick","turn_pick") and len(draft_state.get("bans") or []) < 6:
             try:
                 from difflib import SequenceMatcher
-                catalog_rows=self._get("brawlers_catalog",{"select":"name,name_it"}) or []
+                catalog_rows=self._get("brawlers_catalog",{"select":"name_en,name_it"}) or []
             except Exception as exc:
                 LOG.warning("DRAFT ban catalog unavailable: %s", type(exc).__name__)
                 catalog_rows=[]
             aliases={}
             canonical=[]
             for row in catalog_rows:
-                en=str(row.get("name") or "").strip()
+                en=str(row.get("name_en") or "").strip()
                 it=str(row.get("name_it") or en).strip()
                 if not en:
                     continue
