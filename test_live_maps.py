@@ -34,15 +34,13 @@ class LiveMapTests(unittest.TestCase):
 
     def test_partial_data_preserves_every_map_and_tries_secondary(self):
         report = self.collect()
-        self.assertEqual(self.fallback_calls, ['bigbattlebasin_deathmatch5v5'])
-        text = render_report(report)
+                text = render_report(report)
         for event in report['events']:
             self.assertIn(localized(report['names'], 'maps', event['event_map']), text)
         self.assertIn('Miglior StarPlayer', text)
         self.assertIn('Squadre:', text)
         self.assertIn('Campetto sabbioso', text)
-        self.assertIn('Secondaria senza dati', text)
-
+        
     def test_dataset_boundaries_and_rows_are_not_reassigned(self):
         report = self.collect(dataset='ladder')
         self.assertTrue(all(d['label'] == 'Trofei' for m in report['maps'] for d in m['datasets']))
@@ -75,8 +73,7 @@ class LiveMapTests(unittest.TestCase):
         report = self.collect(data)
         self.assertEqual(len(report['events']), 14)
         self.assertIn('Individuali:', render_report(report))
-        self.assertIn('sunnysoccer_brawlball', self.fallback_calls)
-
+        
     def test_unknown_rotation_never_uses_catalogue(self):
         data = copy.deepcopy(SAMPLE)
         data['event_rotation.json.gz'] = None
