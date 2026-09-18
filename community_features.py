@@ -1205,6 +1205,25 @@ class CommunityFeatures:
                 return True
 
         draft_state = context.user_data.get("ranked_draft") or {}
+        if draft_state and re.fullmatch(r"(?:stato|riepilogo|mostra)\\s+(?:draft|classificata)|draft\\s+(?:stato|riepilogo)", q, re.I):
+            lines=[f"DRAFT — {draft_state.get('map_it') or draft_state.get('map') or 'mappa'}"]
+            if draft_state.get("mode_it"): lines.append("Modalità: "+str(draft_state["mode_it"]))
+            if draft_state.get("rank"):
+                rank_line="Ranked: "+str(draft_state["rank"])
+                if draft_state.get("elo") is not None: rank_line+=f" — ELO {draft_state['elo']}"
+                lines.append(rank_line)
+            lines.append("Miei pick: "+(", ".join(draft_state.get("my_picks") or []) or "nessuno"))
+            lines.append("Pick avversari: "+(", ".join(draft_state.get("enemy_picks") or []) or "nessuno"))
+            lines.append("Ban: "+(", ".join(draft_state.get("bans") or []) or "nessuno"))
+            comp_advice=self.draft_comp_advice_text(draft_state)
+            if comp_advice: lines.append(comp_advice)
+            await message.reply_text("\\n".join(lines))
+            return True
+        if draft_state and re.fullmatch(r"(?:reset|azzera|annulla|chiudi)\\s+(?:draft|classificata)|(?:draft|classificata)\\s+(?:reset|azzera|annulla|chiudi)", q, re.I):
+            context.user_data.pop("ranked_draft",None)
+            context.user_data.pop("ranked_draft_elo",None)
+            await message.reply_text("Draft chiusa. Puoi iniziarne una nuova con: Ranked <nome mappa>.")
+            return True
         # Stateful Draft accepts natural follow-ups without forcing one exact phrase.
         # Keep parsing conservative: only explicit pick/ban wording mutates the state.
         draft_actions = re.findall(
