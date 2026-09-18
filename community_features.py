@@ -1225,9 +1225,9 @@ class CommunityFeatures:
         return "\n".join(lines)
 
     async def handle_command(self, message, context, question):
-        skin_q = re.fullmatch(r"(?:quante\\s+)?skin(?:\\s+(?:ho|possiedo))?(?:\\s+(?:di|del|della)\\s+(.+?))?", question.strip(), re.I)
-        missing_q = re.fullmatch(r"(?:quali\\s+)?skin\\s+(?:di|del|della)\\s+(.+?)\\s+(?:mi\\s+)?mancano", question.strip(), re.I)
-        rarity_q = re.fullmatch(r"(?:quante\\s+)?skin\\s+(rare|super rare|epiche|mitiche|leggendarie|ipercharge|collector)(?:\\s+(?:ho|possiedo))?", question.strip(), re.I)
+        skin_q = re.fullmatch(r"(?:quante\s+)?skin(?:\s+(?:ho|possiedo))?(?:\s+(?:di|del|della)\s+(.+?))?", question.strip(), re.I)
+        missing_q = re.fullmatch(r"(?:quali\s+)?skin\s+(?:di|del|della)\s+(.+?)\s+(?:mi\s+)?mancano", question.strip(), re.I)
+        rarity_q = re.fullmatch(r"(?:quante\s+)?skin\s+(rare|super rare|epiche|mitiche|leggendarie|ipercharge|collector)(?:\s+(?:ho|possiedo))?", question.strip(), re.I)
         if missing_q or skin_q or rarity_q:
             registered = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
             if rarity_q:
