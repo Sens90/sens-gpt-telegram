@@ -37,7 +37,7 @@ def sync_verified_rows():
 
 def inspect_unmapped_relations():
  skins=_get("/game/csv_logic/skins"); chars=_get("/game/csv_logic/characters"); confs=_get("/game/csv_logic/skin_confs")
- char_by_internal={x.get("Name"):x for x in chars.values() if x.get("id") and x.get("Name")}
+ char_by_internal={x.get("Name"):x for x in chars.values() if x.get("id") and x.get("Name") and x.get("ItemName")}
  conf_by_name={x.get("Name"):x for x in confs.values() if x.get("Name")}
  fields=set()
  out=[]
