@@ -198,9 +198,9 @@ def collect_report(dataset="both",now=None,fetch=safe_get,secondary=None):
     data={key:value if isinstance(value,dict) else {} for key,value in data.items()};maps=[]
     for event in events:
         key=event["event_map_id"];normal=(data.get(f"normal-results/{event['event_mode']}.json.gz") or {}).get(key,{});ranked=(data.get("pl-results.json.gz") or {}).get(key,{})
-        normal=normal if isinstance(normal,dict) else {};ranked=ranked if isinstance(ranked,dict) else {};competitive=brawltrack_pro_map_stats(event.get("event_map"));map_image=brawltrack_pro_map_image(event.get("event_map"));entry={"event":event,"datasets":[],"secondary":None,"map_name_it":localized(names,"maps",event.get("event_map")),"mode_name_it":localized(names,"modes",MODES.get(event.get("event_mode"),event.get("event_mode"))),"canonical_map_id":competitive.get("map_id") if competitive else None,"map_image":map_image,"brawltrack_pro_url":brawltrack_pro_map_url(event.get("event_map")),"competitive":competitive}
-        for label,raw in (("Ladder",normal),("Classificata",ranked)):
-            if (dataset=="ladder" and label!="Ladder") or (dataset=="ranked" and label!="Classificata"):continue
+        normal=normal if isinstance(normal,dict) else {};ranked=ranked if isinstance(ranked,dict) else {};competitive=brawltrack_pro_map_stats(event.get("event_map"));map_image=brawltrack_pro_map_image(event.get("event_map"));canonical_id=competitive.get("map_id") if competitive else None;identity_verified=bool(canonical_id and map_image and map_image.get("verified") and map_image.get("map_id")==canonical_id);entry={"event":event,"datasets":[],"secondary":None,"map_name_it":localized(names,"maps",event.get("event_map")),"mode_name_it":localized(names,"modes",MODES.get(event.get("event_mode"),event.get("event_mode"))),"canonical_map_id":canonical_id,"map_identity_verified":identity_verified,"rotation_source":rotation_source,"map_image":map_image,"brawltrack_pro_url":brawltrack_pro_map_url(event.get("event_map")),"competitive":competitive}
+        for label,raw in (("Trofei",normal),("Classificata",ranked)):
+            if (dataset=="ladder" and label!="Trofei") or (dataset=="ranked" and label!="Classificata"):continue
             sections={k:valid_rows(raw.get(k)) for k in SECTIONS};entry["datasets"].append({"label":label,"raw":raw,"sections":sections})
         maps.append(entry)
     return {"now":now,"events":events,"names":names,"maps":maps,"rotation_missing":False,"rotation_source":rotation_source}
