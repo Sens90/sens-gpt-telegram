@@ -33,7 +33,9 @@ from premium_ai import handle_premium_command
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-TAVILY_API_KEY = os.environ["TAVILY_API_KEY"]
+TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")
+# Disabled: Sens GPT now uses dedicated Supercell/BrawlTrack data paths and must not consume Tavily credits.
+TAVILY_ENABLED = False
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 ROME = ZoneInfo("Europe/Rome")
@@ -260,6 +262,8 @@ def home():
 
 
 def needs_web_search(question):
+    if not TAVILY_ENABLED or not TAVILY_API_KEY:
+        return False
     keywords = [
         "oggi", "ieri", "domani", "attuale", "attualmente",
         "adesso", "ora", "ultimo", "ultimi", "ultima",
@@ -779,6 +783,8 @@ def brawlplanet_structured_stats(results, max_rows=10):
 
 
 def web_search(query):
+    if not TAVILY_ENABLED or not TAVILY_API_KEY:
+        return {"results": [], "images": [], "answer": None}
     query_lower = query.lower()
     today = datetime.now(timezone.utc).date().isoformat()
     is_meta_query = is_current_meta_query(query)
@@ -1024,6 +1030,8 @@ def extract_brawl_ball_map(search_data):
 
 
 def get_verified_map_comp(map_name):
+    if not TAVILY_ENABLED or not TAVILY_API_KEY:
+        return []
     try:
         response = requests.post(
             "https://api.tavily.com/search",
@@ -1165,6 +1173,8 @@ def get_verified_map_comp(map_name):
     return []
 
 def search_map_comp(map_name):
+    if not TAVILY_ENABLED or not TAVILY_API_KEY:
+        return {"results": []}
     response = requests.post(
         "https://api.tavily.com/search",
         json={
@@ -1298,6 +1308,8 @@ def get_noff_map_image(map_name):
 
 
 def image_search(query):
+    if not TAVILY_ENABLED or not TAVILY_API_KEY:
+        return {"images": [], "results": []}
     search_query = (
         f"Brawl Stars {query} "
         f"site:liquipedia.net/brawlstars "
@@ -2501,6 +2513,8 @@ async def deliver_live_map_report(message, context, report, rendered):
 
 def secondary_live_map_stats(event):
     """Try secondary sources for one verified event, keeping table cells intact."""
+    if not TAVILY_ENABLED or not TAVILY_API_KEY:
+        return None
     map_name = event["event_map"]
     try:
         response = requests.post(
