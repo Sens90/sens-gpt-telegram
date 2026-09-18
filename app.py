@@ -155,7 +155,7 @@ def fish_tts(text):
     }
     r = requests.post(
         "https://api.fish.audio/v1/tts",
-        content=ormsgpack.packb(payload),
+        data=ormsgpack.packb(payload),
         headers={
             "Authorization": "Bearer " + FISH_AUDIO_API_KEY,
             "Content-Type": "application/msgpack",
