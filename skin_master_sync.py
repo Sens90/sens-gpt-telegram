@@ -34,7 +34,6 @@ def sync_verified_rows():
  rows,unmapped=build_verified_rows(); url=os.getenv("SUPABASE_URL"); key=os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
  if not url or not key: return {"ok":False,"reason":"supabase env missing","mapped":len(rows)}
  h={"apikey":key,"Authorization":"Bearer "+key,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"}
- # Insert only new stable game IDs. Existing hand-verified rows are intentionally preserved.
  ids=set(); start=0; page=1000
  while True:
   ph=dict(h); ph["Range"]=f"{start}-{start+page-1}"
@@ -43,7 +42,6 @@ def sync_verified_rows():
   if len(batch)<page: break
   start += page
  new=[x for x in rows if x["external_id"] not in ids]
- # Upsert all structured rows so authoritative EN/IT localization stays current.
  for i in range(0,len(rows),800):
   r=requests.post(url+"/rest/v1/skins_catalog?on_conflict=source,external_id",headers=h,json=rows[i:i+800],timeout=60); r.raise_for_status()
  return {"ok":True,"mapped":len(rows),"unmapped":len(unmapped),"existing_preserved":len(rows)-len(new),"inserted":len(new),"localized_upserted":len(rows)}
@@ -52,8 +50,7 @@ def inspect_unmapped_relations():
  skins=_get("/game/csv_logic/skins"); chars=_get("/game/csv_logic/characters"); confs=_get("/game/csv_logic/skin_confs")
  char_by_internal={x.get("Name"):x for x in chars.values() if x.get("id") and x.get("Name") and x.get("ItemName")}
  conf_by_name={x.get("Name"):x for x in confs.values() if x.get("Name")}
- fields=set()
- out=[]
+ fields=set(); out=[]
  for s in skins.values():
   if s.get("Disabled") or not s.get("TID"): continue
   cf=conf_by_name.get(s.get("Conf") or s.get("Name"))
@@ -62,4 +59,4 @@ def inspect_unmapped_relations():
   out.append({"skin_id":s.get("id"),"skin":s.get("Name"),"conf":s.get("Conf"),"skin_fields":{k:v for k,v in s.items() if v not in (None,"",0,False,[])}, "conf_fields":{k:v for k,v in (cf or {}).items() if v not in (None,"",0,False,[])}})
  return {"count":len(out),"candidate_fields":sorted(fields),"rows":[{"skin_id":r["skin_id"],"skin":r["skin"],"conf":r["conf"],"character":r["conf_fields"].get("Character"),"progression_base":r["skin_fields"].get("ProgressionSkinBase"),"tid":r["skin_fields"].get("TID")} for r in out]}
 
-if __name__=="__main__": print(inspect_unmapped_relations())
+if __name__=="__main__": print(json.dumps(sync_verified_rows(),ensure_ascii=False))
