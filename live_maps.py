@@ -35,7 +35,7 @@ def get_official_rotation(ttl=60):
     if cached and time.monotonic()-cached[0]<ttl:return cached[1]
     proxy_url=(os.environ.get("BRAWL_OFFICIAL_PROXY_URL") or "").strip()
     proxy_key=(os.environ.get("BRAWL_OFFICIAL_PROXY_KEY") or "").strip()
-    token=(os.environ.get("BRAWL_STARS_API_TOKEN") or os.environ.get("BRAWL_API_TOKEN") or "").strip()
+    token=(os.environ.get("BRAWL_STARS_API_TOKEN") or os.environ.get("BRAWL_API_TOKEN") or "").strip()\n    LOG.info("LIVE_MAPS official rotation attempt proxy_url=%s proxy_key=%s token=%s",bool(proxy_url),bool(proxy_key),bool(token))
     try:
         if proxy_url and proxy_key:
             response=requests.get(proxy_url,params={"action":"events"},headers={"X-Sens-Key":proxy_key,"Accept":"application/json","User-Agent":"SensGPT/1.0"},timeout=15)
