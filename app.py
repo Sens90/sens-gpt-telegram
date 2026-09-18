@@ -3976,16 +3976,30 @@ async def transcribe_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not transcript:
             await message.reply_text("I nostri Sistemi Abusivi non sono riusciti a capire questo audio. Riprova con un vocale più chiaro.")
             return
-        # Reuse the normal answer pipeline without showing the internal transcript.
-        original_text = message.text
+        # Telegram Message.text is read-only. Route the transcript through a
+        # lightweight proxy that preserves the original Telegram message metadata.
+        class _VoiceTextMessage:
+            def __init__(self, original, text):
+                self._original = original
+                self.text = text
+            def __getattr__(self, name):
+                return getattr(self._original, name)
+
+        class _VoiceTextUpdate:
+            def __init__(self, original, routed_message):
+                self._original = original
+                self.effective_message = routed_message
+            def __getattr__(self, name):
+                return getattr(self._original, name)
+
+        routed_message = _VoiceTextMessage(message, transcript)
+        routed_update = _VoiceTextUpdate(update, routed_message)
         try:
-            message.text = transcript
             context.user_data["_voice_input"] = True
-            await answer(update, context)
+            await answer(routed_update, context)
         finally:
             context.user_data.pop("_voice_input", None)
             context.user_data.pop("_request_voice_mode", None)
-            message.text = original_text
     except Exception as exc:
         print("VOICE STT ERRORE:", repr(exc), flush=True)
         await message.reply_text("I nostri Sistemi Abusivi non riescono a elaborare il vocale in questo momento. Riprova tra poco.")
