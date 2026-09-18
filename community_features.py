@@ -542,7 +542,12 @@ class CommunityFeatures:
             if not brawler_name:
                 if rarity or category:
                     label = category or rarity.title()
-                    return "\n".join([f"SKIN ACCOUNT — {label}", f"Possedute: {len(owned)}/{len(rows)}", f"Mancanti: {len(missing)}"])
+                    lines = [f"SKIN ACCOUNT — {label}", f"Possedute: {len(owned)}/{len(rows)}", f"Mancanti: {len(missing)}", ""]
+                    lines.append("NOMI POSSEDUTI")
+                    lines.append(", ".join(name(r) for r in owned) if owned else "Nessuna.")
+                    lines += ["", "NOMI MANCANTI"]
+                    lines.append(", ".join(name(r) for r in missing) if missing else "Nessuna: le possiedi tutte.")
+                    return "\n".join(lines)
                 breakdown = {}
                 for row in rows:
                     key = self._skin_category_label(row)
@@ -553,7 +558,7 @@ class CommunityFeatures:
                 lines = [f"SKIN ACCOUNT\nTotale: {len(owned)}/{len(rows)}", ""]
                 for key in sorted(breakdown):
                     have,total = breakdown[key]
-                    lines.append(f"{key}: {have}/{total} — mancanti {total-have}")
+                    lines.append(f"{key}: {have}/{total}")
                 return "\n".join(lines)
             title = brawler_title or str(rows[0].get("brawler_name") or brawler_name).upper()
             if mode == "count":
