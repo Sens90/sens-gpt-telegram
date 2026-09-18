@@ -1,5 +1,6 @@
 import os, requests, collections, json
 BASE="https://api.brawlapi.com"; UA={"User-Agent":"SensGPT-TitaniAbusivi/1.0"}
+SKIN_CDN="https://cdn.bsinfox.com/brawlers/skins"
 def _get(p):
  r=requests.get(BASE+p,headers=UA,timeout=30); r.raise_for_status(); return r.json()
 def build_verified_rows():
@@ -28,6 +29,28 @@ def build_verified_rows():
   name_it=loc.get("IT") if isinstance(loc,dict) else None
   out.append({"external_id":str(s["id"]),"brawler_id":ch["id"],"brawler_name":str(ch["ItemName"]).upper(),"name_en":(loc_en.get("EN") if isinstance(loc_en,dict) else None) or s["Name"],"name_it":name_it,"rarity":s.get("Rarity"),"price_gems":s.get("PriceGems"),"source":"brawlapi_game_csv","source_url":BASE+"/game/csv_logic/skins","source_payload":{"tid":s.get("TID"),"conf":s.get("Conf"),"character":char_key},"verification_status":"structured_verified","name_it_source":"brawlapi_game_localization_it","name_it_source_url":BASE+"/game/localization/it"})
  return out,unmapped
+def _verified_skin_image(external_id):
+ eid=str(external_id)
+ url=f"{SKIN_CDN}/{eid}.webp"
+ try:
+  r=requests.get(url,headers=UA,timeout=15,stream=True)
+  ok=r.status_code==200 and str(r.headers.get("Content-Type") or "").lower().startswith("image/")
+  r.close()
+  return url if ok else None
+ except requests.RequestException:
+  return None
+
+def sync_skin_images(url,key,external_ids):
+ h={"apikey":key,"Authorization":"Bearer "+key,"Content-Type":"application/json","Prefer":"return=minimal"}
+ verified=0; missing=[]
+ for eid in sorted(set(str(x) for x in external_ids if x)):
+  image_url=_verified_skin_image(eid)
+  if not image_url:
+   missing.append(eid); continue
+  payload={"image_url":image_url,"image_source":"BSInfo CDN","image_source_url":f"https://github.com/lot-xq/BSInfo-CDN/blob/main/brawlers/skins/{eid}.png","image_verified":True}
+  r=requests.patch(url+f"/rest/v1/skins_catalog?external_id=eq.{eid}",headers=h,json=payload,timeout=30); r.raise_for_status(); verified += 1
+ return {"verified":verified,"missing":missing}
+
 def inspect_skin_master():
  rows,unmapped=build_verified_rows(); return {"mapped":len(rows),"unmapped":len(unmapped),"sample":rows[:5]}
 def sync_verified_rows():
@@ -44,7 +67,8 @@ def sync_verified_rows():
  new=[x for x in rows if x["external_id"] not in ids]
  for i in range(0,len(rows),800):
   r=requests.post(url+"/rest/v1/skins_catalog?on_conflict=source,external_id",headers=h,json=rows[i:i+800],timeout=60); r.raise_for_status()
- return {"ok":True,"mapped":len(rows),"unmapped":len(unmapped),"existing_preserved":len(rows)-len(new),"inserted":len(new),"localized_upserted":len(rows)}
+ image_sync=sync_skin_images(url,key,[x["external_id"] for x in rows])
+ return {"ok":True,"mapped":len(rows),"unmapped":len(unmapped),"existing_preserved":len(rows)-len(new),"inserted":len(new),"localized_upserted":len(rows),"images_verified":image_sync["verified"],"images_missing":image_sync["missing"]}
 
 def inspect_unmapped_relations():
  skins=_get("/game/csv_logic/skins"); chars=_get("/game/csv_logic/characters"); confs=_get("/game/csv_logic/skin_confs")
