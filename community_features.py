@@ -524,11 +524,20 @@ class CommunityFeatures:
             owned = [r for r in rows if r["_owned"]]
             missing = [r for r in rows if not r["_owned"]]
             name = lambda r: str(r.get("name_it") or r.get("name_en") or "")
+            brawler_title = None
+            if brawler_name:
+                canonical = str(rows[0].get("brawler_name") or brawler_name)
+                brawler_rows = self._get("brawlers_catalog", {
+                    "select": "name,name_it",
+                    "name": f"eq.{canonical}",
+                    "limit": "1",
+                })
+                brawler_title = str((brawler_rows[0].get("name_it") if brawler_rows else None) or canonical).upper()
             if mode == "owned":
-                title = str(rows[0].get("brawler_name") or brawler_name).upper() if brawler_name else (category or rarity or "SKIN").upper()
+                title = brawler_title if brawler_name else (category or rarity or "SKIN").upper()
                 return f"{title} — SKIN POSSEDUTE ({len(owned)}/{len(rows)})\n" + (", ".join(name(r) for r in owned) if owned else "Nessuna.")
             if mode == "missing":
-                title = str(rows[0].get("brawler_name") or brawler_name).upper() if brawler_name else (category or rarity or "SKIN").upper()
+                title = brawler_title if brawler_name else (category or rarity or "SKIN").upper()
                 return f"{title} — SKIN MANCANTI ({len(missing)}/{len(rows)})\n" + (", ".join(name(r) for r in missing) if missing else "Nessuna: le possiedi tutte.")
             if not brawler_name:
                 if rarity or category:
@@ -546,7 +555,7 @@ class CommunityFeatures:
                     have,total = breakdown[key]
                     lines.append(f"{key}: {have}/{total} — mancanti {total-have}")
                 return "\n".join(lines)
-            title = str(rows[0].get("brawler_name") or brawler_name).upper()
+            title = brawler_title or str(rows[0].get("brawler_name") or brawler_name).upper()
             if mode == "count":
                 return f"{title} — SKIN ACCOUNT\nPossedute: {len(owned)}/{len(rows)}\nMancanti: {len(missing)}"
             lines = [f"{title} — SKIN ACCOUNT", f"Totale: {len(owned)}/{len(rows)}"]
