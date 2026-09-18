@@ -304,7 +304,6 @@ class CommunityFeatures:
         if avoid_names:lines.append("Ban/evita: "+", ".join(avoid_names))
         if pick_names:
             lines.append("Pick competitivi BrawlTrack: "+", ".join(pick_names))
-            lines.append("Fonte pick: BrawlTrack Pro — mappa specifica; non indica una fascia Mito II separata.")
         if not avoid_names and not pick_names:
             lines.append("La mappa è riconosciuta, ma non ho ancora pick/ban verificati da mostrare.")
         return "\n".join(lines)
