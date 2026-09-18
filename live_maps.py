@@ -133,7 +133,7 @@ def render_report(report,limit=5):
     if report["rotation_missing"]:return "Non riesco a verificare gli orari della rotazione attiva."
     names=report["names"];lines=[f"Mappe attive — {report['now'].astimezone(ROME):%d/%m/%Y %H:%M} (Italia)"]
     for entry in report["maps"]:
-        event=entry["event"];raw_mode=next((d["raw"].get("modeFormatted") for d in entry["datasets"] if d["raw"].get("modeFormatted")),MODES.get(event["event_mode"],event["event_mode"]));mode=localized(names,"modes",raw_mode);map_name=localized(names,"maps",event["event_map"]);end=event_time(event["end_time"]).astimezone(ROME);lines += ["",f"{mode} — {map_name}",f"Attiva fino alle {end:%H:%M}"]
+        event=entry["event"];raw_mode=next((d["raw"].get("modeFormatted") for d in entry["datasets"] if d["raw"].get("modeFormatted")),MODES.get(event["event_mode"],event["event_mode"]));mode=localized(names,"modes",raw_mode);map_name=localized(names,"maps",event["event_map"]);event["map_name_it"]=map_name;event["mode_name_it"]=mode;end=event_time(event["end_time"]).astimezone(ROME);lines += ["",f"{mode} — {map_name}",f"Attiva fino alle {end:%H:%M}"]
         for data in entry["datasets"]:
             if not any(data["sections"].values()):continue
             lines.append(data["label"])
