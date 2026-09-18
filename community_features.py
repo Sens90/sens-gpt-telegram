@@ -1474,7 +1474,7 @@ class CommunityFeatures:
             await message.reply_text(FAQ_TEXT)
             return True
 
-        draft_start = re.fullmatch(r"(?:draft\\s+ranked|ranked\\s+draft|classificata\\s+draft|draft\\s+classificata)", q, re.I)
+        draft_start = re.fullmatch(r"(?:draft\s+ranked|ranked\s+draft|classificata\s+draft|draft\s+classificata)", q, re.I)
         if draft_start:
             context.user_data.pop("ranked_draft", None)
             context.user_data.pop("ranked_draft_elo", None)
@@ -1505,7 +1505,7 @@ class CommunityFeatures:
                 "leggendario i":"Leggendario I","leggendario ii":"Leggendario II","leggendario iii":"Leggendario III",
                 "maestro":"Maestro",
             }
-            raw_rank = re.sub(r"\\s+", " ", q.casefold()).strip()
+            raw_rank = re.sub(r"\s+", " ", q.casefold()).strip()
             me = context.user_data.get("_registered_user") or {}
             if raw_rank in ("usa il mio ranked","mio ranked","ranked attuale","usa ranked attuale"):
                 rank_name = me.get("ranked_current")
