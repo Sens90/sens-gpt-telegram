@@ -64,6 +64,28 @@ def brawltrack_pro_map_url(map_name):
     clean=str(map_name or "").strip()
     return f"https://brawltrack.app/pro/maps/{quote(clean, safe='')}" if clean else None
 
+def brawltrack_pro_map_stats(map_name,ttl=300):
+    """Parse BrawlTrack pro map priority picks and final comps without mixing them with Ladder/Ranked."""
+    url=brawltrack_pro_map_url(map_name)
+    if not url:return None
+    cache_key="btpro:"+url;cached=_CACHE.get(cache_key)
+    if cached and time.monotonic()-cached[0]<ttl:return cached[1]
+    try:
+        from bs4 import BeautifulSoup
+        response=requests.get(url,headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"text/html"},timeout=15);response.raise_for_status()
+        text=BeautifulSoup(response.text,"html.parser").get_text(" ",strip=True)
+        mid=re.search(r"MAP ID:\s*(\d+)",text,re.I)
+        picks_block=text.split("PRIORITY PICKS",1)[1].split("TEAMS ON MAP",1)[0] if "PRIORITY PICKS" in text and "TEAMS ON MAP" in text else ""
+        pick_pat=re.compile(r"(?:^|\s)(\d+)\s+([A-Z][A-Z0-9 .'-]*?)\s+[A-S]\s+[A-Z]+(?:\s+[A-Z]+)?[•\s]+(\d+(?:\.\d+)?)%\s+USE\s+WIN RATE\s+(\d+(?:\.\d+)?)%",re.I)
+        picks=[{"rank":int(m.group(1)),"brawler":re.sub(r"\s+"," ",m.group(2)).strip(),"use_rate":float(m.group(3)),"win_rate":float(m.group(4))} for m in pick_pat.finditer(picks_block)]
+        comps_block=text.split("COMMON FINAL COMPS",1)[1].split("PRO MATCHUP MATRIX",1)[0] if "COMMON FINAL COMPS" in text and "PRO MATCHUP MATRIX" in text else ""
+        comp_pat=re.compile(r"(?:Image:\s*)?([A-Z][A-Z0-9 .'-]+\s+\+\s+[A-Z][A-Z0-9 .'-]+\s+\+\s+[A-Z][A-Z0-9 .'-]+)\s+(\d+)\s+sets?\s+(\d+(?:\.\d+)?)%\s+WR",re.I)
+        comps=[{"team":[x.strip() for x in m.group(1).split("+")],"sets":int(m.group(2)),"win_rate":float(m.group(3))} for m in comp_pat.finditer(comps_block)]
+        result={"source":"BrawlTrack Pro","source_url":url,"map_id":int(mid.group(1)) if mid else None,"priority_picks":picks,"final_comps":comps}
+        _CACHE[cache_key]=(time.monotonic(),result);return result
+    except Exception as error:
+        LOG.warning("LIVE_MAPS BrawlTrack pro unavailable map=%s error=%s",map_name,type(error).__name__);return None
+
 def event_time(value):
     try:return datetime.strptime(value,"%Y%m%dT%H%M%S.%fZ").replace(tzinfo=timezone.utc)
     except (TypeError,ValueError):return None
@@ -128,7 +150,7 @@ def collect_report(dataset="both",now=None,fetch=safe_get,secondary=None):
     data={key:value if isinstance(value,dict) else {} for key,value in data.items()};maps=[]
     for event in events:
         key=event["event_map_id"];normal=(data.get(f"normal-results/{event['event_mode']}.json.gz") or {}).get(key,{});ranked=(data.get("pl-results.json.gz") or {}).get(key,{})
-        normal=normal if isinstance(normal,dict) else {};ranked=ranked if isinstance(ranked,dict) else {};entry={"event":event,"datasets":[],"secondary":None,"brawltrack_pro_url":brawltrack_pro_map_url(event.get("event_map"))}
+        normal=normal if isinstance(normal,dict) else {};ranked=ranked if isinstance(ranked,dict) else {};entry={"event":event,"datasets":[],"secondary":None,"brawltrack_pro_url":brawltrack_pro_map_url(event.get("event_map")),"competitive":brawltrack_pro_map_stats(event.get("event_map"))}
         for label,raw in (("Ladder",normal),("Classificata",ranked)):
             if (dataset=="ladder" and label!="Ladder") or (dataset=="ranked" and label!="Classificata"):continue
             sections={k:valid_rows(raw.get(k)) for k in SECTIONS};entry["datasets"].append({"label":label,"raw":raw,"sections":sections})
