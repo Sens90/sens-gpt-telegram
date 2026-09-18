@@ -27,7 +27,7 @@ from ai_profile_experience import build_visual_prompt, choose_scene
 from ai_profile_generator import generate_scene, overlay_stats, quota_status, consume_quota
 from brawler_reference import resolve_ai_brawler_reference
 from player_tracking import extract_brawlzone_ranked, get_brawltrack_player
-from live_maps import collect_report, render_report, report_csv
+from live_maps import collect_report, render_report, report_csv, brawltrack_pro_map_stats
 from premium_ai import handle_premium_command
 
 
@@ -1536,7 +1536,23 @@ def get_brawltrack_meta_context(question):
                 clean.append({"rank":item.get("rank"),"use_rate":item.get("use_rate"),"components":[{"type":c.get("type"),"name_it":c.get("name_it")} for c in (item.get("components") or []) if c.get("name_it")]})
             hyper=builds.get("hypercharge") if isinstance(builds.get("hypercharge"),dict) else None
             modes=row.get("modes") if isinstance(row.get("modes"),dict) else {}
-            payload.append({"brawler":row.get("brawler_name"),"win_rate":row.get("win_rate"),"meta_usage":row.get("pick_rate"),"star_rate":row.get("star_rate"),"rank":row.get("rank_label"),"popular_builds":clean,"overdrive":({"name_it":hyper.get("name_it")} if hyper and hyper.get("name_it") else None),"best_game_modes":modes.get("items") or [],"best_maps":modes.get("maps") or [],"updated_at":row.get("source_updated_at")})
+            best_modes=modes.get("items") or []; best_maps=modes.get("maps") or []
+            best_mode=best_modes[0] if best_modes else None
+            best_map=None
+            if best_mode:
+                same=[m for m in best_maps if str(m.get("mode") or "").casefold()==str(best_mode.get("mode") or "").casefold()]
+                if same: best_map=max(same,key=lambda m:(float(m.get("win_rate") or 0),int(m.get("battles") or 0)))
+            if best_map is None and best_maps: best_map=max(best_maps,key=lambda m:(float(m.get("win_rate") or 0),int(m.get("battles") or 0)))
+            best_comp=None
+            if best_map and row.get("brawler_name"):
+                try:
+                    pro=brawltrack_pro_map_stats(best_map.get("map")) or {}; target=str(row.get("brawler_name") or "").strip().casefold()
+                    matching=[c for c in (pro.get("final_comps") or []) if any(str(x).strip().casefold()==target for x in (c.get("team") or []))]
+                    if matching:
+                        chosen=max(matching,key=lambda c:(int(c.get("sets") or 0),float(c.get("win_rate") or 0)))
+                        best_comp={"team":chosen.get("team"),"map":best_map.get("map"),"mode":best_map.get("mode")}
+                except Exception as comp_error: print("BRAWLTRACK BRAWLER COMP ERROR:",repr(comp_error),flush=True)
+            payload.append({"brawler":row.get("brawler_name"),"win_rate":row.get("win_rate"),"meta_usage":row.get("pick_rate"),"star_rate":row.get("star_rate"),"rank":row.get("rank_label"),"popular_builds":clean,"overdrive":({"name_it":hyper.get("name_it")} if hyper and hyper.get("name_it") else None),"best_game_modes":best_modes,"best_maps":best_maps,"recommended_mode_map":{"mode":best_mode.get("mode"),"map":best_map.get("map")} if best_mode and best_map else None,"best_verified_comp":best_comp,"updated_at":row.get("source_updated_at")})
         return "DATI BRAWLTRACK STRUTTURATI E LOCALIZZATI (PRIORITARI):\n"+json.dumps(payload,ensure_ascii=False,separators=(",",":"))
     except Exception as e:
         print("BRAWLTRACK META CONTEXT ERROR:",repr(e),flush=True); return ""
@@ -2853,11 +2869,11 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "- RISPOSTA BUILD/CONFIGURAZIONE BRAWLER: sii compatto. Non spiegare gli effetti di gadget, abilità stellari, equipaggiamenti o overdrive salvo richiesta esplicita dell utente.\n"
                 "- Per ogni configurazione usa i componenti name_it dei DATI BRAWLTRACK STRUTTURATI E LOCALIZZATI e mostra il relativo Use Rate quando disponibile.\n"
                 "- Non chiamare una configurazione migliore se BrawlTrack la indica soltanto come più usata: scrivi Configurazione più usata e la sua percentuale.\n"
-                "- Dopo la configurazione più usata indica SEMPRE le modalità migliori e le mappe migliori presenti nei dati BrawlTrack dello stesso Brawler, con tasso di vittoria e numero di partite quando disponibili.\n"
+                "- Dopo la configurazione mostra una sola Modalità migliore e subito sotto la migliore mappa disponibile per quella modalità usando recommended_mode_map. Non mostrare percentuali.\n"
                 "- Se esistono più configurazioni popolari, associa ciascuna a modalità/mappe solo quando la fonte fornisce realmente quel collegamento. Se BrawlTrack non collega direttamente una build a una singola mappa o modalità, non inventare il collegamento: mostra Configurazioni più usate e, separatamente, Modalità migliori e Mappe migliori.\n"
-                "- Per le mappe mostra anche la modalità associata dalla fonte. Non proporre una mappa senza indicarne la modalità.\n"                "- Non nominare mai all utente BrawlTrack, Supabase, API, database, CDN o altre fonti/sistemi tecnici interni. I dati possono essere presentati come dati trovati o verificati dai nostri sistemi abusivi.\n"
+                "- In Mappe migliori mostra la relativa modalità ma nessuna percentuale o numero di partite.\n"\n                "- Se best_verified_comp è presente, mostra Miglior composizione per la mappa e modalità consigliate. Deve includere il Brawler richiesto. Se è nullo, non inventare una composizione.\n"                "- Non nominare mai all utente BrawlTrack, Supabase, API, database, CDN o altre fonti/sistemi tecnici interni. I dati possono essere presentati come dati trovati o verificati dai nostri sistemi abusivi.\n"
                 "- Se nei DATI BRAWLTRACK STRUTTURATI E LOCALIZZATI il campo overdrive contiene name_it, includi SEMPRE Overdrive: <name_it> nella configurazione.\n"
-                "- Nelle Mappe migliori mostra SEMPRE, quando disponibili, modalità, tasso di vittoria e numero di partite/battles. Il numero di partite serve a contestualizzare la percentuale.\n"
+
                 "- Per modalità e mappe usa esclusivamente la localizzazione italiana ufficiale disponibile nel sistema; non inventare traduzioni. Se non esiste una localizzazione verificata, conserva il nome sorgente.\n"
                 "- La Tier List generale di Brawl Planet serve per il meta complessivo e NON deve sostituire i dataset specifici Ladder o Classificata quando l utente specifica uno di quei contesti.\n"
                 "- Se la Tier List generale e i dati specifici di una modalità/mappa differiscono, per la risposta contestuale prevalgono i dati specifici della modalità/mappa.\n"
