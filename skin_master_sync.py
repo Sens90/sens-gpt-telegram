@@ -3,7 +3,7 @@ BASE="https://api.brawlapi.com"; UA={"User-Agent":"SensGPT-TitaniAbusivi/1.0"}
 def _get(p):
  r=requests.get(BASE+p,headers=UA,timeout=30); r.raise_for_status(); return r.json()
 def build_verified_rows():
- skins=_get("/game/csv_logic/skins"); chars=_get("/game/csv_logic/characters"); confs=_get("/game/csv_logic/skin_confs"); it=_get("/game/localization/it")
+ skins=_get("/game/csv_logic/skins"); chars=_get("/game/csv_logic/characters"); confs=_get("/game/csv_logic/skin_confs"); it=_get("/game/localization/it"); en=_get("/game/localization/en")
  cosmetics=[x for x in skins.values() if not x.get("Disabled") and x.get("TID")]
  char_by_internal={x.get("Name"):x for x in chars.values() if x.get("id") and x.get("Name") and x.get("ItemName")}
  conf_by_name={x.get("Name"):x for x in confs.values() if x.get("Name")}
@@ -23,10 +23,10 @@ def build_verified_rows():
     base_key=str((base_cf or {}).get("Character") or "").split(";")[0].strip()
     base_ch=char_by_internal.get(base_key)
     if base_ch: ch=base_ch; char_key=base_key
-  loc=it.get(s.get("TID")) or {}
+  loc=it.get(s.get("TID")) or {}; loc_en=en.get(s.get("TID")) or {}
   if not ch: unmapped.append(s.get("id")); continue
   name_it=loc.get("IT") if isinstance(loc,dict) else None
-  out.append({"external_id":str(s["id"]),"brawler_id":ch["id"],"brawler_name":str(ch["ItemName"]).upper(),"name_en":s["Name"],"name_it":name_it,"rarity":s.get("Rarity"),"price_gems":s.get("PriceGems"),"source":"brawlapi_game_csv","source_url":BASE+"/game/csv_logic/skins","source_payload":{"tid":s.get("TID"),"conf":s.get("Conf"),"character":char_key},"verification_status":"structured_verified","image_verified":False,"name_it_source":"brawlapi_game_localization_it","name_it_source_url":BASE+"/game/localization/it"})
+  out.append({"external_id":str(s["id"]),"brawler_id":ch["id"],"brawler_name":str(ch["ItemName"]).upper(),"name_en":(loc_en.get("EN") if isinstance(loc_en,dict) else None) or s["Name"],"name_it":name_it,"rarity":s.get("Rarity"),"price_gems":s.get("PriceGems"),"source":"brawlapi_game_csv","source_url":BASE+"/game/csv_logic/skins","source_payload":{"tid":s.get("TID"),"conf":s.get("Conf"),"character":char_key},"verification_status":"structured_verified","name_it_source":"brawlapi_game_localization_it","name_it_source_url":BASE+"/game/localization/it"})
  return out,unmapped
 def inspect_skin_master():
  rows,unmapped=build_verified_rows(); return {"mapped":len(rows),"unmapped":len(unmapped),"sample":rows[:5]}
@@ -43,9 +43,10 @@ def sync_verified_rows():
   if len(batch)<page: break
   start += page
  new=[x for x in rows if x["external_id"] not in ids]
- for i in range(0,len(new),800):
-  r=requests.post(url+"/rest/v1/skins_catalog",headers=h,json=new[i:i+800],timeout=60); r.raise_for_status()
- return {"ok":True,"mapped":len(rows),"unmapped":len(unmapped),"existing_preserved":len(rows)-len(new),"inserted":len(new)}
+ # Upsert all structured rows so authoritative EN/IT localization stays current.
+ for i in range(0,len(rows),800):
+  r=requests.post(url+"/rest/v1/skins_catalog?on_conflict=source,external_id",headers=h,json=rows[i:i+800],timeout=60); r.raise_for_status()
+ return {"ok":True,"mapped":len(rows),"unmapped":len(unmapped),"existing_preserved":len(rows)-len(new),"inserted":len(new),"localized_upserted":len(rows)}
 
 def inspect_unmapped_relations():
  skins=_get("/game/csv_logic/skins"); chars=_get("/game/csv_logic/characters"); confs=_get("/game/csv_logic/skin_confs")
