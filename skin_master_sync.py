@@ -5,10 +5,14 @@ def _get(p):
  r=requests.get(BASE+p,headers=UA,timeout=30); r.raise_for_status(); return r.json()
 def build_verified_rows():
  skins=_get("/game/csv_logic/skins"); chars=_get("/game/csv_logic/characters"); confs=_get("/game/csv_logic/skin_confs"); texts=_get("/game/localization/texts"); it=_get("/game/localization/it")
- # MegaBoss skin configurations are gameplay/internal variants, not player-selectable cosmetics.
- # Keep real Buddy/Buffie cosmetics: they are legitimate catalog entries even when their CDN
- # render has not been published yet.
- cosmetics=[x for x in skins.values() if not x.get("Disabled") and x.get("TID")]
+ # Exclude gameplay-only MegaBoss variants and Ghost Buddy/Buffie cosmetics:
+ # they are not player-selectable Brawler skins and must not enter Skin Account sync.
+ excluded_ids={29001831,29001832,29001833,29001834,29001835,29001836}
+ cosmetics=[x for x in skins.values()
+            if not x.get("Disabled")
+            and x.get("TID")
+            and not str(x.get("Conf") or x.get("Name") or "").startswith("MegaBoss")
+            and int(x.get("id") or 0) not in excluded_ids]
  char_by_internal={x.get("Name"):x for x in chars.values() if x.get("id") and x.get("Name") and x.get("ItemName")}
  conf_by_name={x.get("Name"):x for x in confs.values() if x.get("Name")}
  out=[]; unmapped=[]
