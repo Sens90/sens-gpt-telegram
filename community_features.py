@@ -1484,7 +1484,15 @@ class CommunityFeatures:
 
         setup = context.user_data.get("ranked_draft_setup") or {}
         if setup.get("stage") == "map":
-            identity = self._draft_identity(q)
+            combined = re.fullmatch(r"(.+?)\s+(bronzo|argento|oro|diamante|mito|leggendario)\s+(i{1,3}|[1-3])$", q, re.I)
+            pending_rank = None
+            map_query = q
+            if combined:
+                map_query = combined.group(1).strip()
+                level = combined.group(3).upper()
+                level = {"1":"I","2":"II","3":"III"}.get(level, level)
+                pending_rank = f"{combined.group(2).title()} {level}"
+            identity = self._draft_identity(map_query)
             if not identity:
                 await message.reply_text("Mappa non riconosciuta. Inserisci una mappa Ranked valida.")
                 return True
@@ -1492,9 +1500,13 @@ class CommunityFeatures:
             context.user_data["ranked_draft_setup"] = setup
             me = context.user_data.get("_registered_user") or {}
             current = me.get("ranked_current")
-            current_text = str(current) if current not in (None, "Non classificato", "Unranked") else "non disponibile"
-            await message.reply_text(f"Mappa: {identity.get('map_it') or identity.get('map_en')}.\nRanked attuale: {current_text}.\nScrivi 'usa il mio ranked' oppure indica il Ranked da simulare, per esempio 'Mito I' o 'Mito 2'.")
-            return True
+            if pending_rank:
+                q = pending_rank
+            elif current not in (None, "Non classificato", "Unranked"):
+                q = str(current)
+            else:
+                await message.reply_text(f"Mappa: {identity.get('map_it') or identity.get('map_en')}.\nRanked attuale non disponibile. Indica il Ranked da simulare, per esempio 'Mito I' o 'Mito 2'.")
+                return True
         if setup.get("stage") == "rank":
             rank_aliases_setup = {
                 "bronzo i":"Bronzo I","bronzo ii":"Bronzo II","bronzo iii":"Bronzo III",
