@@ -160,6 +160,9 @@ class CommunityFeatures:
         from live_maps import safe_get, localized, brawltrack_pro_map_stats
         names=safe_get("i18n/names.it.json.gz") or {}
         rotation=safe_get("event_rotation.json.gz") or []
+        # The analyzer Ranked dataset is the complete map catalog; rotation only
+        # contains maps active now and must never limit Draft map recognition.
+        ranked_catalog=safe_get("pl-results.json.gz") or {}
         mode_aliases={
             "gem grab":"Gem Grab","arraffagemme":"Gem Grab",
             "brawl ball":"Brawl Ball","footbrawl":"Brawl Ball",
@@ -169,19 +172,36 @@ class CommunityFeatures:
             "knockout":"Knockout","k.o.":"Knockout","ko":"Knockout",
             "wipeout":"Wipeout","annientamento":"Wipeout",
         }
+        # First retain exact mode information from the current rotation when present.
+        candidates=[]
         for event in rotation if isinstance(rotation,list) else []:
             en=str(event.get("event_map") or event.get("map") or "").strip()
-            if not en:continue
+            if en:candidates.append((en,str(event.get("event_mode") or event.get("mode") or ""),event.get("event_map_id")))
+        # Then add every map in the complete Ranked dataset. Its key is the canonical
+        # analyzer map id; resolve the English name from i18n instead of guessing.
+        map_names=names.get("maps",{}) if isinstance(names,dict) else {}
+        it_to_en={str(v).casefold():str(k) for k,v in map_names.items() if v}
+        for key in ranked_catalog.keys() if isinstance(ranked_catalog,dict) else []:
+            key_text=str(key)
+            # Analyzer ids normally match normalized English names. Prefer exact
+            # i18n reverse matches and otherwise compare normalized localized keys.
+            en=None
+            for candidate_en in map_names.keys():
+                norm=re.sub(r"[^a-z0-9]+","_",str(candidate_en).casefold()).strip("_")
+                if norm==key_text.casefold():
+                    en=str(candidate_en);break
+            if en and not any(x[0].casefold()==en.casefold() for x in candidates):
+                candidates.append((en,"",key_text))
+        for en,raw_event_mode,canonical_key in candidates:
             it=localized(names,"maps",en)
             if wanted not in {en.casefold(),str(it).casefold()}:continue
-            raw_event_mode=str(event.get("event_mode") or event.get("mode") or "")
             en_mode=mode_aliases.get(raw_event_mode.casefold(), raw_event_mode)
-            it_mode=localized(names,"modes",en_mode)
-            accepted={raw_event_mode.casefold(),str(en_mode).casefold(),str(it_mode).casefold()}
-            accepted.update(k for k,v in mode_aliases.items() if v.casefold()==str(en_mode).casefold())
-            if wanted_mode and wanted_mode not in accepted:return None
+            it_mode=localized(names,"modes",en_mode) if en_mode else ""
+            accepted={raw_event_mode.casefold(),str(en_mode).casefold(),str(it_mode).casefold()}-{""}
+            accepted.update(k for k,v in mode_aliases.items() if en_mode and v.casefold()==str(en_mode).casefold())
+            if wanted_mode and accepted and wanted_mode not in accepted:return None
             stats=brawltrack_pro_map_stats(en) or {}
-            return {"map_en":en,"map_it":it,"map_id":stats.get("map_id"),"mode_en":en_mode,"mode_it":it_mode}
+            return {"map_en":en,"map_it":it,"map_id":stats.get("map_id"),"mode_en":en_mode or None,"mode_it":it_mode or None,"catalog_key":canonical_key}
         return None
 
     def draft_map_advice_text(self, map_name, rank_name=None, mode=None):
