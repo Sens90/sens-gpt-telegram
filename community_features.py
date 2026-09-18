@@ -330,6 +330,90 @@ class CommunityFeatures:
             print("ERRORE RICONOSCIMENTO UTENTE:",repr(exc),flush=True)
             return None
 
+    @staticmethod
+    def _skin_key(value):
+        return re.sub(r"[^A-Z0-9]+", "", str(value or "").upper())
+
+    def _bsinfo_owned_skin_names(self, player_tag):
+        """Read BSInfo ownership only; our Supabase catalog remains canonical."""
+        tag = str(player_tag or "").strip().lstrip("#").upper()
+        if not tag:
+            return set()
+        response = requests.get(
+            f"https://bsinfox.com/player/{tag}/skins/",
+            params={"lang": "en", "PageSpeed": "noscript", "tag": tag},
+            headers={"User-Agent": "Mozilla/5.0 SensGPT/1.0"},
+            timeout=20,
+        )
+        response.raise_for_status()
+        html = response.text
+        # BSInfo server-side pages expose cards as Image: NAME -> Own -> heading NAME.
+        owned_block = re.split(r"Missing Skins\s*\d*", html, maxsplit=1, flags=re.I)[0]
+        names = set()
+        for name in re.findall(r"(?:Image:\s*|###\s*)([A-Z0-9][A-Z0-9 .:'&!+\-]+)", owned_block, re.I):
+            clean = re.sub(r"\s+", " ", name).strip()
+            if clean and clean.casefold() not in {"owned skins", "skin collection"}:
+                names.add(self._skin_key(clean))
+        return names
+
+    def skin_account_text(self, registered_user, brawler_name=None, rarity=None):
+        if not registered_user or not registered_user.get("player_tag"):
+            return "Devi prima registrare il tuo tag Brawl Stars."
+        try:
+            catalog = self._get("skins_catalog", {
+                "select": "external_id,name_en,name_it,rarity,brawler_name",
+                "verification_status": "eq.structured_verified",
+                "order": "brawler_name.asc,name_en.asc",
+            })
+            if not catalog:
+                return "Il catalogo skin non è disponibile in questo momento."
+            owned_keys = self._bsinfo_owned_skin_names(registered_user["player_tag"])
+            # Never count the default Brawler appearance: it is absent from our canonical skin catalog.
+            rows = list(catalog)
+            if brawler_name:
+                wanted = self._skin_key(brawler_name)
+                matches = [r for r in rows if self._skin_key(r.get("brawler_name")) == wanted]
+                if not matches:
+                    return f"Non trovo il Brawler {brawler_name} nel catalogo skin."
+                rows = matches
+            if rarity:
+                wanted_rarity = self._skin_key(rarity)
+                rows = [r for r in rows if self._skin_key(r.get("rarity")) == wanted_rarity]
+            for row in rows:
+                row["_owned"] = self._skin_key(row.get("name_en")) in owned_keys
+            owned = [r for r in rows if r["_owned"]]
+            if not brawler_name:
+                if rarity:
+                    return f"SKIN ACCOUNT\n{rarity.title()}: {len(owned)}/{len(rows)}"
+                breakdown = {}
+                for row in rows:
+                    key = row.get("rarity") or "Senza rarità"
+                    data = breakdown.setdefault(key, [0, 0])
+                    data[1] += 1
+                    if row["_owned"]: data[0] += 1
+                lines = [f"SKIN ACCOUNT\nTotale: {len(owned)}/{len(rows)}", ""]
+                for key in sorted(breakdown):
+                    have,total = breakdown[key]
+                    lines.append(f"{key}: {have}/{total}")
+                return "\n".join(lines)
+            title = str(rows[0].get("brawler_name") or brawler_name).upper()
+            lines = [f"{title} — SKIN ACCOUNT", f"Totale: {len(owned)}/{len(rows)}"]
+            groups = {}
+            for row in rows:
+                groups.setdefault(row.get("rarity") or "Senza rarità", []).append(row)
+            for key, group in sorted(groups.items()):
+                have = [r for r in group if r["_owned"]]
+                missing = [r for r in group if not r["_owned"]]
+                lines += ["", f"{key}: {len(have)}/{len(group)}"]
+                if have:
+                    lines.append("Possedute: " + ", ".join(str(r.get("name_it") or r.get("name_en")) for r in have))
+                if missing:
+                    lines.append("Mancanti: " + ", ".join(str(r.get("name_it") or r.get("name_en")) for r in missing))
+            return "\n".join(lines)
+        except Exception as exc:
+            print("ERRORE SKIN ACCOUNT:", repr(exc), flush=True)
+            return "Non riesco a leggere la tua Skin Collection in questo momento."
+
     def is_registered_private_user(self, telegram_user_id):
         """Private bot access is reserved to active registered community members."""
         return self.get_registered_user(telegram_user_id) is not None
@@ -1141,6 +1225,20 @@ class CommunityFeatures:
         return "\n".join(lines)
 
     async def handle_command(self, message, context, question):
+        skin_q = re.fullmatch(r"(?:quante\\s+)?skin(?:\\s+(?:ho|possiedo))?(?:\\s+(?:di|del|della)\\s+(.+?))?", question.strip(), re.I)
+        missing_q = re.fullmatch(r"(?:quali\\s+)?skin\\s+(?:di|del|della)\\s+(.+?)\\s+(?:mi\\s+)?mancano", question.strip(), re.I)
+        rarity_q = re.fullmatch(r"(?:quante\\s+)?skin\\s+(rare|super rare|epiche|mitiche|leggendarie|ipercharge|collector)(?:\\s+(?:ho|possiedo))?", question.strip(), re.I)
+        if missing_q or skin_q or rarity_q:
+            registered = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
+            if rarity_q:
+                rarity_map={"rare":"RARE","super rare":"SUPER RARE","epiche":"EPIC","mitiche":"MYTHIC","leggendarie":"LEGENDARY","ipercharge":"HYPERCHARGE","collector":"COLLECTOR"}
+                answer=self.skin_account_text(registered, rarity=rarity_map[rarity_q.group(1).lower()])
+            else:
+                target=(missing_q.group(1) if missing_q else skin_q.group(1)) if (missing_q or skin_q) else None
+                answer=self.skin_account_text(registered, brawler_name=target)
+            await message.reply_text(answer)
+            return True
+
         q = (question or "").strip()
         q = re.sub(r"^[!/]+", "", q).strip()
         q = q.strip("\"\'“”‘’ ").strip()
