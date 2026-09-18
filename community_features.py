@@ -1,5 +1,6 @@
 import os
 import re
+import logging
 import io
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -7,6 +8,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 ROME = ZoneInfo("Europe/Rome")
+LOG = logging.getLogger(__name__)
 
 FAQ_TEXT = (
     "TITANI ABUSIVI - INFO RAPIDE\n\n"
