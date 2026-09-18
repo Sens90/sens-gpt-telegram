@@ -1170,18 +1170,34 @@ class CommunityFeatures:
                 return True
 
         draft_state = context.user_data.get("ranked_draft") or {}
-        draft_pick = re.fullmatch(r"(?:mio\s+pick|pick\s+mio)\s+(.+?)(?:\s*,?\s*(?:pick\s+)?avversari[oa]\s+(.+))?", q, re.I)
-        if draft_pick and draft_state:
-            mine=draft_pick.group(1).strip();enemy=(draft_pick.group(2) or "").strip()
-            draft_state.setdefault("my_picks",[]).append(mine)
-            if enemy:draft_state.setdefault("enemy_picks",[]).append(enemy)
+        # Stateful Draft accepts natural follow-ups without forcing one exact phrase.
+        # Keep parsing conservative: only explicit pick/ban wording mutates the state.
+        draft_actions = re.findall(
+            r"(?:(mio|io)\\s+(?:pick|prendo)|(?:mio\\s+pick|pick\\s+mio))\\s+([^,;]+?)(?=\\s+(?:pick\\s+)?avversari[oa]\\b|\\s+avversari[oa]\\s+(?:pick|prende)\\b|$)"
+            r"|(?:(?:pick\\s+)?avversari[oa]\\s+(?:pick|prende)?|avversari[oa]\\s+(?:pick|prende))\\s+([^,;]+?)(?=\\s+(?:mio|io)\\s+(?:pick|prendo)\\b|$)"
+            r"|(?:ban|banna|bannato)\\s+([^,;]+)",
+            q, re.I,
+        )
+        if draft_actions and draft_state:
+            mine=[]; enemy=[]; bans=[]
+            for action in draft_actions:
+                if action[1]: mine.append(action[1].strip())
+                if action[2]: enemy.append(action[2].strip())
+                if action[3]: bans.append(action[3].strip())
+            draft_state.setdefault("my_picks",[]).extend(x for x in mine if x)
+            draft_state.setdefault("enemy_picks",[]).extend(x for x in enemy if x)
+            draft_state.setdefault("bans",[]).extend(x for x in bans if x)
             context.user_data["ranked_draft"]=draft_state
             if enemy:
-                response=self.brawler_counter_text(enemy, map_name=draft_state.get("map"))
-                if not response: response=self.brawler_counter_text(enemy)
+                response=self.brawler_counter_text(enemy[-1], map_name=draft_state.get("map"))
+                if not response: response=self.brawler_counter_text(enemy[-1])
                 if response:
                     await message.reply_text(response);return True
-            await message.reply_text("Draft aggiornato. Inserisci il prossimo pick avversario.")
+            summary=[]
+            if mine: summary.append("Miei pick: "+", ".join(draft_state["my_picks"]))
+            if enemy: summary.append("Pick avversari: "+", ".join(draft_state["enemy_picks"]))
+            if bans: summary.append("Ban: "+", ".join(draft_state["bans"]))
+            await message.reply_text("Draft aggiornato. "+(" | ".join(summary) if summary else "Inserisci il prossimo pick."))
             return True
 
         counter_match = re.fullmatch(r"(?:counter(?:\s+di)?|chi\s+countera)\s+(.+)", q, re.I)
