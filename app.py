@@ -2455,7 +2455,7 @@ async def telegram_report_send(operation, label):
     return False
 
 
-async def deliver_live_map_report(message, report, rendered):
+async def deliver_live_map_report(message, context, report, rendered):
     timeouts = dict(read_timeout=30, write_timeout=60, connect_timeout=20, pool_timeout=20)
     missing = []
     if report["maps"]:
@@ -2475,8 +2475,8 @@ async def deliver_live_map_report(message, report, rendered):
     for number, chunk in enumerate(chunks, 1):
         part = f"Parte {number}/{len(chunks)}"
         sent = await telegram_report_send(
-            lambda text=part + "\n\n" + chunk: message.reply_text(
-                text, disable_web_page_preview=True, **timeouts
+            lambda text=part + "\n\n" + chunk: send_mode_aware_text(
+                message, context, text, disable_web_page_preview=True
             ), part,
         )
         if not sent:
@@ -2553,7 +2553,6 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if message:
         context.user_data["_request_voice_mode"] = request_voice_mode(message.text)
-    message = update.effective_message
 
     if not message or not message.text:
         return
@@ -2580,6 +2579,12 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     question = message.text
+    question = re.sub(
+        r"\\s+rispondi\\s+(?:a\\s+voce|(?:a\\s+)?testo|testo\\s*(?:\\+|e)?\\s*voce|voce\\s*(?:\\+|e)\\s*testo)\\s*$",
+        "",
+        question,
+        flags=re.I,
+    ).strip()
 
     if mentioned:
         question = question.replace(
@@ -2624,7 +2629,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             fig.tight_layout();image=io.BytesIO();fig.savefig(image,format="png",dpi=150);plt.close(fig);image.seek(0);image.name="meta_brawler.png"
             await context.bot.send_photo(chat_id=message.chat_id,photo=image,caption=f"Meta di {row.get('brawler')}: dati aggiornati.")
         except Exception as exc:
-            print("ERRORE GRAFICO META:",repr(exc),flush=True);await message.reply_text("Non riesco a creare il grafico meta per questo Brawler.")
+            print("ERRORE GRAFICO META:",repr(exc),flush=True);await send_mode_aware_text(message, context, "Non riesco a creare il grafico meta per questo Brawler.")
         return
 
     detail_chart_match=re.fullmatch(r"(?:grafico|andamento)\\s+(?:di\\s+)?(.+?)\\s+(mappe|modalità|modalita|build)",question.strip(),re.I)
@@ -2660,7 +2665,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             fig.tight_layout();image=io.BytesIO();fig.savefig(image,format="png",dpi=150);plt.close(fig);image.seek(0);image.name="dettaglio_meta_brawler.png"
             await context.bot.send_photo(chat_id=message.chat_id,photo=image,caption=f"{kind.capitalize()} di {row.get('brawler')}: dati aggiornati.")
         except Exception as exc:
-            print("ERRORE GRAFICO META DETTAGLIO:",repr(exc),flush=True);await message.reply_text("Non ci sono dati sufficienti per creare questo grafico.")
+            print("ERRORE GRAFICO META DETTAGLIO:",repr(exc),flush=True);await send_mode_aware_text(message, context, "Non ci sono dati sufficienti per creare questo grafico.")
         return
 
     natural_chart_match = re.fullmatch(
@@ -2677,17 +2682,17 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if any(re.sub(r"[^a-z0-9]+","",str(x).casefold())==normalized for x in aliases if x):
                 member=candidate;break
         if not member or not member.get("player_tag"):
-            await message.reply_text("Non trovo un giocatore registrato con questo nome.")
+            await send_mode_aware_text(message, context, "Non trovo un giocatore registrato con questo nome.")
             return
         player=get_brawlzone_player(member["player_tag"])
         if not player:
-            await message.reply_text("Giocatore non trovato.")
+            await send_mode_aware_text(message, context, "Giocatore non trovato.")
             return
         save_trophy_snapshot(player["tag"],player["name"],player["trophies"])
         history=get_trophy_history(player["tag"],days=max(days,90))
         chart=create_trophy_chart(player["tag"],player["name"],history,days=days)
         if not chart:
-            await message.reply_text(f"Non ci sono ancora abbastanza dati per creare il grafico degli ultimi {days} giorni.")
+            await send_mode_aware_text(message, context, f"Non ci sono ancora abbastanza dati per creare il grafico degli ultimi {days} giorni.")
             return
         await context.bot.send_photo(chat_id=message.chat_id,photo=chart,caption=f"Andamento trofei di {player['name']}\\nPeriodo: ultimi {days} giorni\\nTrofei attuali: {format_number_it(player['trophies'])}")
         return
@@ -2777,7 +2782,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 histories.append(history); included+=1
         chart=create_aggregate_trophy_chart(club_name or "COMMUNITY ABUSIVI",histories,days)
         if not chart:
-            await message.reply_text(f"Non ci sono ancora abbastanza dati per il grafico degli ultimi {days} giorni.")
+            await send_mode_aware_text(message, context, f"Non ci sono ancora abbastanza dati per il grafico degli ultimi {days} giorni.")
             return
         await context.bot.send_photo(chat_id=message.chat_id,photo=chart,caption=f"Andamento trofei - {club_name or 'COMMUNITY ABUSIVI'}\nPeriodo: ultimi {days} giorni\nGiocatori inclusi: {included}")
         return
@@ -2816,7 +2821,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             quota = await asyncio.to_thread(quota_status, telegram_user_id)
         except Exception as error:
             print("AI PROFILE QUOTA CHECK:", repr(error), flush=True)
-            await message.reply_text("Il controllo della quota AI non è disponibile. Riprova tra poco.")
+            await send_mode_aware_text(message, context, "Il controllo della quota AI non è disponibile. Riprova tra poco.")
             return
 
         if not quota["unlimited"] and quota["used"] >= quota["limit"]:
@@ -2831,7 +2836,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not player:
             player = await asyncio.to_thread(get_brawlzone_player, tag)
         if not player:
-            await message.reply_text("Non riesco a trovare questo giocatore.")
+            await send_mode_aware_text(message, context, "Non riesco a trovare questo giocatore.")
             return
 
         if str(player.get("tag") or "").upper().replace("#", "") == "2VQYLG0RU8":
@@ -2854,7 +2859,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if player_environment:
             player["requested_environment"] = player_environment
         if not reference_ok:
-            await message.reply_text(reference_error or "Riferimento Brawler non disponibile.")
+            await send_mode_aware_text(message, context, reference_error or "Riferimento Brawler non disponibile.")
             return
 
         await context.bot.send_chat_action(chat_id=message.chat_id, action="upload_photo")
@@ -2984,7 +2989,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"- 90 giorni: {format_trophy_change(changes.get('90d'))}"
         )
 
-        await context.bot.send_message(chat_id=message.chat_id, text=text)
+        await send_mode_aware_text(message, context, text)
         return
 
     ranked_match = re.fullmatch(
@@ -3001,7 +3006,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_tag = (ranked_match or ranked_history_match).group(1).upper()
         player = get_brawlzone_player(player_tag)
         if not player:
-            await message.reply_text("Non riesco a trovare questo giocatore.")
+            await send_mode_aware_text(message, context, "Non riesco a trovare questo giocatore.")
             return
         save_player_tracking(player)
         lines = [
@@ -3031,7 +3036,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
             else:
                 lines.append("Lo storico inizierà dal primo aggiornamento automatico.")
-        await message.reply_text("\n".join(lines))
+        await send_mode_aware_text(message, context, "\n".join(lines))
         return
 
     original_message = ""
@@ -3079,10 +3084,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print("LIVE_MAPS report:", len(report["events"]), "maps; chars:", len(rendered), flush=True)
         except Exception as error:
             print("LIVE_MAPS report failure:", type(error).__name__, str(error), flush=True)
-            await message.reply_text("Il caricamento delle statistiche ha incontrato un errore. Non ho ancora una rotazione verificata da mostrarti.")
+            await send_mode_aware_text(message, context, "Il caricamento delle statistiche ha incontrato un errore. Non ho ancora una rotazione verificata da mostrarti.")
             return
         # No AI rewriting, translation pass, or all-or-nothing prose validator.
-        await deliver_live_map_report(message, report, rendered)
+        await deliver_live_map_report(message, context, report, rendered)
         return
 
     web_context = ""
