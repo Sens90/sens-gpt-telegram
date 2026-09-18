@@ -1,6 +1,6 @@
 import os, requests, json
 BASE="https://api.brawlapi.com"; UA={"User-Agent":"SensGPT-TitaniAbusivi/1.0"}
-SKIN_CDN="https://cdn.bsinfox.com/brawlers/skins"\nEXCLUDED_SKIN_IDS={29001831,29001832,29001833,29001834,29001835,29001836}\ndef _is_player_skin(s):\n return bool(not s.get("Disabled") and s.get("TID") and not str(s.get("Conf") or s.get("Name") or "").startswith("MegaBoss") and int(s.get("id") or 0) not in EXCLUDED_SKIN_IDS)
+SKIN_CDN="https://cdn.bsinfox.com/brawlers/skins"\nEXCLUDED_SKIN_IDS={29001831,29001832,29001833,29001834,29001835,29001836}\n\ndef _is_player_skin(s):\n return bool(\n  not s.get("Disabled")\n  and s.get("TID")\n  and not str(s.get("Conf") or s.get("Name") or "").startswith("MegaBoss")\n  and int(s.get("id") or 0) not in EXCLUDED_SKIN_IDS\n )
 def _get(p):
  r=requests.get(BASE+p,headers=UA,timeout=30); r.raise_for_status(); return r.json()
 def build_verified_rows():
@@ -94,7 +94,7 @@ def inspect_unmapped_relations():
  conf_by_name={x.get("Name"):x for x in confs.values() if x.get("Name")}
  fields=set(); out=[]
  for s in skins.values():
-  if _is_player_skin(s):\n   cf=conf_by_name.get(s.get("Conf") or s.get("Name"))\n   if cf and char_by_internal.get(str(cf.get("Character") or "").split(";")[0].strip()): continue\n   if cf: fields.update(cf.keys())\n   out.append({"skin_id":s.get("id"),"skin":s.get("Name"),"conf":s.get("Conf"),"skin_fields":{k:v for k,v in s.items() if v not in (None,"",0,False,[])}, "conf_fields":{k:v for k,v in (cf or {}).items() if v not in (None,"",0,False,[])}})\n   continue\n  # Keep excluded/internal rows visible only as a compact diagnostic category.\n  continue\n  
+  if s.get("Disabled") or not s.get("TID"): continue
   cf=conf_by_name.get(s.get("Conf") or s.get("Name"))
   if cf and char_by_internal.get(str(cf.get("Character") or "").split(";")[0].strip()): continue
   if cf: fields.update(cf.keys())
