@@ -2633,7 +2633,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     is_voice_input = bool(context.user_data.pop("_voice_input", False))
-    if not mentioned and not is_reply and not is_voice_input:
+    is_private_chat = getattr(message.chat, "type", None) == "private"
+    # Active registered members may talk to Sens GPT normally in private chat.
+    # Groups keep the existing mention/reply requirement.
+    if not is_private_chat and not mentioned and not is_reply and not is_voice_input:
         return
 
     question = message.text
@@ -3971,6 +3974,27 @@ async def transcribe_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text("I nostri Sistemi Abusivi non riescono a elaborare il vocale in questo momento. Riprova tra poco.")
 
 
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.effective_message
+    if not message or not message.from_user:
+        return
+    if getattr(message.chat, "type", None) == "private":
+        if not community.is_registered_private_user(message.from_user.id):
+            await message.reply_text(
+                "La chat privata di Sens GPT è riservata ai membri registrati della community. "
+                "Registrati prima nel gruppo TITANI ABUSIVI collegando il tuo tag Brawl Stars."
+            )
+            return
+        await message.reply_text(
+            "Ciao! Il tuo account è registrato e attivo. Puoi scrivermi normalmente qui in privato, "
+            "senza menzionare @SensGPT_TitaniAbusiviBot."
+        )
+        return
+    await message.reply_text(
+        "Sens GPT è attivo nel gruppo. Per le richieste normali usa la menzione oppure rispondi a un mio messaggio."
+    )
+
+
 async def generazioni_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.from_user:
@@ -3992,6 +4016,9 @@ def main():
             name="community_jobs"
         )
 
+    application.add_handler(
+        CommandHandler("start", start_command)
+    )
     application.add_handler(
         CommandHandler("generazioni", generazioni_command)
     )
