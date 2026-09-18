@@ -14,7 +14,7 @@ import os
 import requests
 import re
 import threading
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit, quote
 
 from flask import Flask
 from google import genai
@@ -39,6 +39,199 @@ SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 ROME = ZoneInfo("Europe/Rome")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
+
+FISH_AUDIO_API_KEY = os.environ.get("FISH_AUDIO_API_KEY")
+VOICE_REFERENCE_BUCKET = "sens-private-voice"
+VOICE_REFERENCE_OBJECT = "Voce 003.m4a"
+VOICE_REFERENCE_TRANSCRIPT = (
+    "Ciao a tutti, sono Sens, presidente dei TITANI ABUSIVI. Benvenuti nella nostra community. "
+    "Qui si gioca, si scherza e soprattutto si pusha insieme. Sens GPT è pronto ad aiutarvi con "
+    "Brawler, mappe, classificata, statistiche e strategie. Se avete bisogno di qualcosa, chiedete pure. "
+    "E ricordate: TITANI ABUSIVI, la fiducia viene prima di tutto. Ora basta parlare, entriamo su "
+    "Brawl Stars e andiamo a prenderci un po' di trofei!"
+)
+_voice_reference_cache = None
+
+
+def _supabase_headers():
+    return {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY or "",
+        "Authorization": "Bearer " + (SUPABASE_SERVICE_ROLE_KEY or ""),
+        "Content-Type": "application/json",
+    }
+
+
+def get_voice_mode(chat_id, telegram_user_id):
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return "text"
+    try:
+        r = requests.get(
+            SUPABASE_URL + "/rest/v1/voice_preferences",
+            headers=_supabase_headers(),
+            params={
+                "select": "mode",
+                "chat_id": "eq." + str(chat_id),
+                "telegram_user_id": "eq." + str(telegram_user_id),
+                "limit": "1",
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json()
+        return rows[0].get("mode", "text") if rows else "text"
+    except Exception as exc:
+        print("VOICE MODE GET ERROR:", repr(exc), flush=True)
+        return "text"
+
+
+def set_voice_mode(chat_id, telegram_user_id, mode):
+    if mode not in {"text", "voice", "both"}:
+        raise ValueError("invalid voice mode")
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        raise RuntimeError("Supabase unavailable")
+    headers = _supabase_headers()
+    headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
+    r = requests.post(
+        SUPABASE_URL + "/rest/v1/voice_preferences",
+        headers=headers,
+        params={"on_conflict": "chat_id,telegram_user_id"},
+        json={
+            "chat_id": int(chat_id),
+            "telegram_user_id": int(telegram_user_id),
+            "mode": mode,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        },
+        timeout=10,
+    )
+    r.raise_for_status()
+
+
+def get_private_voice_reference():
+    global _voice_reference_cache
+    if _voice_reference_cache:
+        return _voice_reference_cache
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        raise RuntimeError("Supabase voice storage unavailable")
+    path = quote(VOICE_REFERENCE_OBJECT, safe="")
+    r = requests.get(
+        SUPABASE_URL + "/storage/v1/object/authenticated/" + VOICE_REFERENCE_BUCKET + "/" + path,
+        headers={
+            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+            "Authorization": "Bearer " + SUPABASE_SERVICE_ROLE_KEY,
+        },
+        timeout=20,
+    )
+    r.raise_for_status()
+    if not r.content:
+        raise RuntimeError("empty voice reference")
+    _voice_reference_cache = bytes(r.content)
+    return _voice_reference_cache
+
+
+def fish_tts(text):
+    """Generate Telegram-ready Opus with zero-shot reference; free Fish model only."""
+    if not FISH_AUDIO_API_KEY:
+        raise RuntimeError("FISH_AUDIO_API_KEY missing")
+    import ormsgpack
+    reference_audio = get_private_voice_reference()
+    payload = {
+        "text": str(text)[:4000],
+        "references": [{
+            "audio": reference_audio,
+            "text": VOICE_REFERENCE_TRANSCRIPT,
+        }],
+        "prosody": {
+            "speed": 0.95,
+            "volume": 0,
+            "normalize_loudness": True,
+        },
+        "temperature": 0.7,
+        "top_p": 0.7,
+        "format": "opus",
+        "sample_rate": 48000,
+        "opus_bitrate": 32000,
+        "latency": "balanced",
+        "normalize": True,
+    }
+    r = requests.post(
+        "https://api.fish.audio/v1/tts",
+        content=ormsgpack.packb(payload),
+        headers={
+            "Authorization": "Bearer " + FISH_AUDIO_API_KEY,
+            "Content-Type": "application/msgpack",
+            "model": "s2.1-pro-free",
+        },
+        timeout=90,
+    )
+    r.raise_for_status()
+    if not r.content:
+        raise RuntimeError("Fish Audio returned empty audio")
+    return bytes(r.content)
+
+
+async def send_voice_reply(context, chat_id, text):
+    try:
+        audio = await asyncio.to_thread(fish_tts, text)
+        stream = io.BytesIO(audio)
+        stream.name = "sens_gpt.opus"
+        await context.bot.send_voice(chat_id=chat_id, voice=stream)
+        return True
+    except Exception as exc:
+        print("VOICE TTS ERROR:", repr(exc), flush=True)
+        return False
+
+
+async def send_mode_aware_text(message, context, text, disable_web_page_preview=True):
+    mode = await asyncio.to_thread(
+        get_voice_mode, message.chat_id, message.from_user.id
+    )
+    if mode in ("text", "both"):
+        await context.bot.send_message(
+            chat_id=message.chat_id,
+            text=text,
+            disable_web_page_preview=disable_web_page_preview,
+        )
+    if mode in ("voice", "both"):
+        ok = await send_voice_reply(context, message.chat_id, text)
+        if not ok and mode == "voice":
+            await context.bot.send_message(
+                chat_id=message.chat_id,
+                text="La risposta vocale non è disponibile in questo momento. Riprova tra poco.",
+            )
+
+
+async def voice_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.effective_message
+    if not message or not message.from_user:
+        return
+    raw = " ".join(context.args or []).strip().casefold()
+    aliases = {
+        "testo": "text", "text": "text",
+        "voce": "voice", "vocale": "voice", "voice": "voice",
+        "entrambi": "both", "testo+voce": "both", "testo voce": "both", "both": "both",
+    }
+    if not raw:
+        current = await asyncio.to_thread(
+            get_voice_mode, message.chat_id, message.from_user.id
+        )
+        label = {"text": "solo testo", "voice": "solo voce", "both": "testo + voce"}[current]
+        await message.reply_text(
+            "Modalità risposta attuale: " + label +
+            ".\nUsa /voce testo, /voce voce oppure /voce entrambi."
+        )
+        return
+    mode = aliases.get(raw)
+    if not mode:
+        await message.reply_text("Usa /voce testo, /voce voce oppure /voce entrambi.")
+        return
+    try:
+        await asyncio.to_thread(set_voice_mode, message.chat_id, message.from_user.id, mode)
+        label = {"text": "solo testo", "voice": "solo voce", "both": "testo + voce"}[mode]
+        await message.reply_text("Modalità risposta impostata su: " + label + ".")
+    except Exception as exc:
+        print("VOICE MODE SET ERROR:", repr(exc), flush=True)
+        await message.reply_text("Non riesco a salvare la modalità voce in questo momento.")
+
 
 app = Flask(__name__)
 
@@ -2366,7 +2559,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         and message.reply_to_message.from_user.id == context.bot.id
     )
 
-    if not mentioned and not is_reply:
+    is_voice_input = bool(context.user_data.pop("_voice_input", False))
+    if not mentioned and not is_reply and not is_voice_input:
         return
 
     question = message.text
@@ -3531,9 +3725,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         final_text = final_text.replace("*", "").strip()
 
         for chunk in telegram_text_chunks(final_text):
-            await context.bot.send_message(
-                chat_id=message.chat_id,
-                text=chunk,
+            await send_mode_aware_text(
+                message,
+                context,
+                chunk,
                 disable_web_page_preview=True
             )
 
@@ -3679,8 +3874,10 @@ async def transcribe_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         original_text = message.text
         try:
             message.text = transcript
+            context.user_data["_voice_input"] = True
             await answer(update, context)
         finally:
+            context.user_data.pop("_voice_input", None)
             message.text = original_text
     except Exception as exc:
         print("VOICE STT ERRORE:", repr(exc), flush=True)
@@ -3710,6 +3907,9 @@ def main():
 
     application.add_handler(
         CommandHandler("generazioni", generazioni_command)
+    )
+    application.add_handler(
+        CommandHandler("voce", voice_mode_command)
     )
 
     application.add_handler(
