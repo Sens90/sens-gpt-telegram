@@ -181,20 +181,42 @@ class CommunityFeatures:
         for event in rotation if isinstance(rotation,list) else []:
             en=str(event.get("event_map") or event.get("map") or "").strip()
             if en:candidates.append((en,str(event.get("event_mode") or event.get("mode") or ""),event.get("event_map_id")))
-        # Then add every map in the complete Ranked dataset. Its key is the canonical
-        # analyzer map id; resolve the English name from i18n instead of guessing.
+        # Draft must search only the current seasonal Ranked pool, not the
+        # complete historical analyzer catalog. BrawlZone publishes the current
+        # pool and is used only as the pool filter; BrawlTrack remains primary
+        # for picks/comps/statistics.
         map_names=names.get("maps",{}) if isinstance(names,dict) else {}
-        # i18n keys are stored in the source's canonical casing. Resolve both
-        # English and Italian names case-insensitively; localized() alone can
-        # otherwise return the English name when the key casing differs.
+        ranked_pool=set()
+        try:
+            from bs4 import BeautifulSoup
+            response=requests.get(
+                "https://brawlzone.net/ranked",
+                headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept-Language":"en-US,en;q=0.9"},
+                timeout=10,
+            )
+            response.raise_for_status()
+            pool_text=BeautifulSoup(response.text,"html.parser").get_text(" ",strip=True).casefold()
+            # Match only known localized catalog names against the published page.
+            # Longer names first avoids accidental substring matches.
+            for candidate_en in sorted(map_names.keys(),key=lambda x:len(str(x)),reverse=True):
+                label=str(candidate_en).strip()
+                if label and re.search(r"(?<![a-z0-9])"+re.escape(label.casefold())+r"(?![a-z0-9])",pool_text):
+                    ranked_pool.add(label.casefold())
+        except Exception as exc:
+            LOG.warning("DRAFT current Ranked pool unavailable: %s",type(exc).__name__)
+        if not ranked_pool:
+            # Safe fallback: do not break Draft if the seasonal source is temporarily
+            # unavailable. The complete analyzer catalog is used only in this case.
+            ranked_pool={str(k).casefold() for k in map_names.keys()}
+        # Resolve only maps present in the current seasonal Ranked pool.
         map_it_by_en={str(k).casefold():str(v) for k,v in map_names.items() if v}
         it_to_en={str(v).casefold():str(k) for k,v in map_names.items() if v}
         for key in ranked_catalog.keys() if isinstance(ranked_catalog,dict) else []:
             key_text=str(key)
-            # Analyzer ids normally match normalized English names. Prefer exact
-            # i18n reverse matches and otherwise compare normalized localized keys.
             en=None
             for candidate_en in map_names.keys():
+                if str(candidate_en).casefold() not in ranked_pool:
+                    continue
                 norm=re.sub(r"[^a-z0-9]+","_",str(candidate_en).casefold()).strip("_")
                 if norm==key_text.casefold():
                     en=str(candidate_en);break
