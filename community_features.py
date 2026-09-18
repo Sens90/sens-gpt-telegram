@@ -1435,7 +1435,7 @@ class CommunityFeatures:
         missing_brawler_q = re.fullmatch(r"(?:quali\\s+)?skin\\s+(?:di|del|della)\\s+(.+?)\\s+(?:mi\\s+)?mancano", q_skin, re.I) or re.fullmatch(r"(?:quali\\s+)?skin\\s+(?:mi\\s+)?mancano\\s+(?:di|del|della)\\s+(.+)", q_skin, re.I)
         owned_brawler_q = re.fullmatch(r"(?:quali\\s+)?skin\\s+(?:di|del|della)\\s+(.+?)\\s+(?:ho|possiedo)", q_skin, re.I)
         account_brawler_q = re.fullmatch(r"(?:fammi\\s+)?skin\\s+account\\s+(?:di\\s+)?(.+)", q_skin, re.I)
-        skin_brawler_count_q = re.fullmatch(r"quante\\s+skin\\s+(?:ho\\s+)?(?:di|del|della)\\s+(.+)", q_skin, re.I) or re.fullmatch(r"quante\\s+skin\\s+ha\\s+(.+)", q_skin, re.I)
+        skin_brawler_count_q = re.fullmatch(r"quante\s+skin\s+(?:ho\s+)?(?:di|del|della)\s+(.+)", q_skin, re.I) or re.fullmatch(r"quante\s+skin\s+ha\s+(.+)", q_skin, re.I)
         skin_all_q = re.fullmatch(r"(?:quante\\s+)?skin(?:\\s+(?:ho|possiedo))?", q_skin, re.I)
 
         answer = None
