@@ -1188,28 +1188,15 @@ async def send_relevant_images(context, chat_id, question, images):
 
 
 
-BRAWLER_NAMES_IT = {
-    "Amber": "Ambra",
-    "Rico": "Stecca",
-    "Crow": "Corvo",
-    "Gene": "Eugenio",
-    "Barley": "Bombardino",
-    "Poco": "Pocho",
-    "Darryl": "Barryl",
-    "Sprout": "Semino",
-    "Surge": "Energetik",
-    "Gale": "Gelindo",
-    "Max": "Maxine",
-    "Nani": "Iris",
-    "Ruffs": "Ringhio",
-    "Colonel Ruffs": "Ringhio"
-}
-
-
 def brawler_name_it(name):
-    return BRAWLER_NAMES_IT.get(name, name)
-
-
+    """Translate a canonical Brawler name through the verified Italian catalogue."""
+    raw=str(name or "").strip()
+    if not raw:return name
+    try:
+        names=(safe_get("i18n/names.it.json.gz") or {}).get("brawlers",{})
+        return names.get(raw.upper(),raw)
+    except Exception:
+        return raw
 MODE_NAMES_IT = {
     "Brawl Ball": "Footbrawl",
     "Hot Zone": "Dominio",
@@ -1602,9 +1589,7 @@ def get_brawltrack_meta_context(question):
             # Rotation comes from Supercell; performance comes from the active-map dataset.
             active_best=None
             try:
-                print("ACTIVE BRAWLER MAP: collect_report ladder START module="+str(getattr(collect_report,"__module__",None))+" file="+str(getattr(__import__(getattr(collect_report,"__module__","live_maps")),"__file__",None)),flush=True)
                 report=collect_report("ladder")
-                print("ACTIVE BRAWLER MAP: rotation_source="+str(report.get("rotation_source")),flush=True)
                 candidates=[]
                 for entry in (report.get("maps") or []):
                     for data in (entry.get("datasets") or []):
