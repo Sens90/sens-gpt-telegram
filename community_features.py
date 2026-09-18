@@ -1611,7 +1611,8 @@ class CommunityFeatures:
         if draft_state and re.fullmatch(r"(?:reset|azzera|annulla|chiudi)\\s+(?:draft|classificata)|(?:draft|classificata)\\s+(?:reset|azzera|annulla|chiudi)", q, re.I):
             context.user_data.pop("ranked_draft",None)
             context.user_data.pop("ranked_draft_elo",None)
-            context.user_data.pop("ranked_draft_setup",None)\n            await message.reply_text("Draft chiusa. Puoi iniziarne una nuova con: Draft Ranked.")
+            context.user_data.pop("ranked_draft_setup",None)
+            await message.reply_text("Draft chiusa. Puoi iniziarne una nuova con: Draft Ranked.")
             return True
         first_pick_q = re.fullmatch(r"(?:primo\\s+pick|first\\s+pick)\\s+(nostro|mio|squadra|avversario|avversaria|nemico)", q, re.I)
         if draft_state and first_pick_q:
