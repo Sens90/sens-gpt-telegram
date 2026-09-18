@@ -357,6 +357,28 @@ class CommunityFeatures:
                     except (TypeError,ValueError): pass
         return owned
 
+    @staticmethod
+    def _skin_category_label(row):
+        """Italian display category without inventing a rarity missing from game data."""
+        rarity = str(row.get("rarity") or "").upper()
+        labels = {
+            "RARE": "Rare", "SUPER_RARE": "Super rare", "EPIC": "Epiche",
+            "MYTHIC": "Mitiche", "LEGENDARY": "Leggendarie",
+            "HYPERCHARGE": "Ipercarica", "COLLECTORS": "Collezione",
+            "RANKED_PASS": "Pass classificata",
+        }
+        if rarity:
+            return labels.get(rarity, rarity.replace("_", " ").title())
+        tid = str((row.get("source_payload") or {}).get("tid") or "").upper()
+        conf = str((row.get("source_payload") or {}).get("conf") or "").upper()
+        if "TRUE_GOLD" in tid or conf.endswith("GOLD") or conf.endswith("_GOLD"):
+            return "Oro 24 carati"
+        if "TRUE_SILVER" in tid or conf.endswith("SILVER") or conf.endswith("_SILVER"):
+            return "Argento"
+        if "PROPASS_PROGRESSION" in tid:
+            return "Progressione Pass Pro"
+        return "Speciali"
+
     def skin_account_text(self, registered_user, brawler_name=None, rarity=None):
         if not registered_user or not registered_user.get("player_tag"):
             return "Devi prima registrare il tuo tag Brawl Stars."
@@ -367,7 +389,7 @@ class CommunityFeatures:
             offset = 0
             while True:
                 page = self._get("skins_catalog", {
-                    "select": "external_id,name_en,name_it,rarity,brawler_name",
+                    "select": "external_id,name_en,name_it,rarity,brawler_name,source_payload",
                     "verification_status": "eq.structured_verified",
                     # Ghost Buffies are cosmetic Buddy items, not Brawler skins. Keep them in
                     # the master catalogue but exclude them semantically from Skin Account.
@@ -402,7 +424,7 @@ class CommunityFeatures:
                     return f"SKIN ACCOUNT\n{rarity.title()}: {len(owned)}/{len(rows)}"
                 breakdown = {}
                 for row in rows:
-                    key = row.get("rarity") or "Senza rarità"
+                    key = self._skin_category_label(row)
                     data = breakdown.setdefault(key, [0, 0])
                     data[1] += 1
                     if row["_owned"]: data[0] += 1
@@ -415,7 +437,7 @@ class CommunityFeatures:
             lines = [f"{title} — SKIN ACCOUNT", f"Totale: {len(owned)}/{len(rows)}"]
             groups = {}
             for row in rows:
-                groups.setdefault(row.get("rarity") or "Senza rarità", []).append(row)
+                groups.setdefault(self._skin_category_label(row), []).append(row)
             for key, group in sorted(groups.items()):
                 have = [r for r in group if r["_owned"]]
                 missing = [r for r in group if not r["_owned"]]
