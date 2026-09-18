@@ -129,21 +129,22 @@ def overlay_stats(image_bytes,player,logo_path="assets/titani_logo.jpg"):
         logo=Image.open(logo_path).convert("RGBA")
         target=max(96,int(w*.18)); logo.thumbnail((target,target),Image.Resampling.LANCZOS)
         image.alpha_composite(logo,(w-logo.width-int(w*.035),int(h*.035)))
-    panel_h=int(h*.31); y0=h-panel_h
+    panel_h=int(h*.36); y0=h-panel_h
     draw.rounded_rectangle((int(w*.035),y0,int(w*.965),int(h*.965)),radius=max(12,int(w*.025)),fill=(0,0,0,190))
     title=f"{_value(player,'name')}   {_value(player,'tag')}"
     draw.text((int(w*.065),y0+int(panel_h*.10)),title,font=font(w*.034,True),fill=(255,255,255,255))
     club=_club_value(player)
     draw.text((int(w*.065),y0+int(panel_h*.29)),f"CLUB  {club}",font=font(w*.022,True),fill=(255,255,255,255))
     rows=[
-      (f"TROFEI  {_fmt(_value(player,'trophies'))}",f"PRESTIGIO  {_fmt(_value(player,'prestige'))}"),
-      (f"3v3  {_fmt(_value(player,'wins_3v3'))}",f"SOLO  {_fmt(_value(player,'wins_solo'))}   DUO  {_fmt(_value(player,'wins_duo'))}"),
-      (f"CLASSIFICATA  {_fmt(_value(player,'ranked_current'))}",f"RECORD  {_fmt(_value(player,'ranked_career_peak','ranked_peak'))}")
+      (f"TROFEI  {_fmt(_value(player,'trophies'))}",f"BRAWLER  {_fmt(_value(player,'brawlers'))}   LIVELLO  {_fmt(_value(player,'level'))}"),
+      (f"PRESTIGIO  {_fmt(_value(player,'prestige'))}",f"3v3  {_fmt(_value(player,'wins_3v3'))}"),
+      (f"SOLO  {_fmt(_value(player,'wins_solo'))}   DUO  {_fmt(_value(player,'wins_duo'))}",f"CLASSIFICATA  {_fmt(_value(player,'ranked_current'))}"),
+      (f"RECORD STAGIONE  {_fmt(_value(player,'ranked_season_peak'))}",f"RECORD CARRIERA  {_fmt(_value(player,'ranked_career_peak','ranked_peak'))}")
     ]
     yy=y0+int(panel_h*.46)
     for left,right in rows:
         draw.text((int(w*.065),yy),left,font=font(w*.020,True),fill=(255,255,255,255))
         draw.text((int(w*.53),yy),right,font=font(w*.018,True),fill=(255,255,255,255))
-        yy+=int(panel_h*.17)
+        yy+=int(panel_h*.135)
     out=io.BytesIO(); image.convert("RGB").save(out,"JPEG",quality=94,optimize=True); out.seek(0)
     return out,"profilo_ai.jpg"
