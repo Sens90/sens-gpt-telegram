@@ -369,6 +369,9 @@ class CommunityFeatures:
                 page = self._get("skins_catalog", {
                     "select": "external_id,name_en,name_it,rarity,brawler_name",
                     "verification_status": "eq.structured_verified",
+                    # Ghost Buffies are cosmetic Buddy items, not Brawler skins. Keep them in
+                    # the master catalogue but exclude them semantically from Skin Account.
+                    "external_id": "not.in.(29001831,29001832,29001833,29001834,29001835,29001836)",
                     "order": "brawler_name.asc,name_en.asc",
                     "limit": str(page_size),
                     "offset": str(offset),
