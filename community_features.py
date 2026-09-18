@@ -457,24 +457,15 @@ class CommunityFeatures:
                 continue
             history = self.ranked_history_rows(tag, days)
             baseline = self._ranked_state_at_or_before(history, target)
-            # When the requested period crosses the monthly reset, the first
-            # valid snapshot of the new season is the baseline. Never compare
-            # against the previous season.
-            if requested_target < season_start:
-                baseline = None
+            # If there is no snapshot at/before the boundary, use the first
+            # valid snapshot after it. This is essential on the first tracking
+            # day of a new Ranked season (and for newly registered players).
+            if baseline is None:
+                lower_bound = season_start if requested_target < season_start else target
                 for row in history:
                     try:
                         dt = datetime.fromisoformat(str(row["recorded_at"]).replace("Z", "+00:00"))
-                        if dt >= season_start:
-                            baseline = {"elo": int(row["ranked_current_elo"]), "rank": row.get("ranked_current")}
-                            break
-                    except Exception:
-                        continue
-            if days == 0 and baseline is None:
-                for row in history:
-                    try:
-                        dt = datetime.fromisoformat(str(row["recorded_at"]).replace("Z", "+00:00"))
-                        if dt >= start_today:
+                        if dt >= lower_bound:
                             baseline = {
                                 "elo": int(row["ranked_current_elo"]),
                                 "rank": row.get("ranked_current"),
