@@ -4055,7 +4055,9 @@ def _startup_structured_meta_smoke():
     except Exception as exc:
         print("STRUCTURED META SMOKE ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
 
-_startup_structured_meta_smoke()
+# Do not block Render port binding on external startup smoke checks.
+# Structured meta is verified separately after the webhook is live.
+# _startup_structured_meta_smoke()
 
 def _startup_brawler_it_sync():
     """Populate only missing Italian Brawler names from the verified localization catalogue."""
