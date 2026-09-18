@@ -237,6 +237,41 @@ class CommunityFeatures:
             lines.append("La mappa è riconosciuta, ma non ho ancora pick/ban verificati da mostrare.")
         return "\n".join(lines)
 
+    def draft_comp_advice_text(self, draft_state):
+        """Recommend only teammates evidenced by BrawlTrack common final comps."""
+        if not draft_state or not draft_state.get("map"):
+            return None
+        from live_maps import brawltrack_pro_map_stats
+        stats=brawltrack_pro_map_stats(draft_state["map"]) or {}
+        comps=stats.get("final_comps") or []
+        selected=[str(x).strip().casefold() for x in (draft_state.get("my_picks") or []) if x]
+        if not selected or not comps:
+            return None
+        catalog=self._get("brawlers_catalog",{"select":"name,name_it"})
+        aliases={}
+        labels={}
+        for row in catalog or []:
+            en=str(row.get("name") or "").strip()
+            it=str(row.get("name_it") or en).strip()
+            if en:
+                aliases[en.casefold()]=en.casefold()
+                labels[en.casefold()]=it
+            if it:
+                aliases[it.casefold()]=en.casefold()
+        chosen={aliases.get(x,x) for x in selected}
+        matches=[]
+        for comp in comps if isinstance(comps,list) else []:
+            team=[str(x).strip().casefold() for x in (comp.get("team") or []) if x] if isinstance(comp,dict) else []
+            if chosen and chosen.issubset(set(team)):
+                remaining=[labels.get(x,str(x).title()) for x in team if x not in chosen]
+                if remaining:
+                    matches.append((float(comp.get("win_rate") or 0),int(comp.get("sets") or 0),remaining))
+        if not matches:
+            return None
+        matches.sort(key=lambda x:(x[1],x[0]),reverse=True)
+        wr,sets,remaining=matches[0]
+        return "Comp BrawlTrack compatibile: "+", ".join(remaining)+f" — {sets} set, {wr:g}% WR"
+
     def brawler_counter_text(self, brawler_name, mode=None, map_name=None):
         """Return verified counter data stored server-side; never invent matchups."""
         try:
@@ -1197,7 +1232,10 @@ class CommunityFeatures:
             if mine: summary.append("Miei pick: "+", ".join(draft_state["my_picks"]))
             if enemy: summary.append("Pick avversari: "+", ".join(draft_state["enemy_picks"]))
             if bans: summary.append("Ban: "+", ".join(draft_state["bans"]))
-            await message.reply_text("Draft aggiornato. "+(" | ".join(summary) if summary else "Inserisci il prossimo pick."))
+            comp_advice=self.draft_comp_advice_text(draft_state)
+            body="Draft aggiornato. "+(" | ".join(summary) if summary else "Inserisci il prossimo pick.")
+            if comp_advice: body+="\n"+comp_advice
+            await message.reply_text(body)
             return True
 
         counter_match = re.fullmatch(r"(?:counter(?:\s+di)?|chi\s+countera)\s+(.+)", q, re.I)
