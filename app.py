@@ -183,14 +183,12 @@ async def send_voice_reply(context, chat_id, text):
 
 def request_voice_mode(text):
     """Output mode is explicit per request. Default: text."""
-    raw = re.sub(r"\\s+", " ", (text or "").strip().casefold())
-    # Exact natural commands requested by the community.
-    # "rispondi testo voce" is the combined mode; accept +/e variants too.
-    if re.search(r"\\brispondi\\s+(?:testo\\s*(?:\\+|e)?\\s*voce|voce\\s*(?:\\+|e)\\s*testo)\\s*$", raw):
+    raw = re.sub(r"\s+", " ", (text or "").strip().casefold())
+    if re.search(r"\brispondi\s+(?:testo\s*(?:\+|e)?\s*voce|voce\s*(?:\+|e)\s*testo)\s*$", raw):
         return "both"
-    if re.search(r"\\brispondi\\s+a\\s+voce\\s*$", raw):
+    if re.search(r"\brispondi\s+a\s+voce\s*$", raw):
         return "voice"
-    if re.search(r"\\brispondi\\s+(?:a\\s+)?testo\\s*$", raw):
+    if re.search(r"\brispondi\s+(?:a\s+)?testo\s*$", raw):
         return "text"
     return "text"
 
