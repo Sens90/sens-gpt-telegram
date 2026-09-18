@@ -1051,10 +1051,52 @@ class CommunityFeatures:
 
         ranked_map = re.fullmatch(r"(?:ranked|classificata)\s+(.+)", q, re.I)
         if ranked_map and not re.fullmatch(r"(?:oggi|7|15|30)(?:\s+giorni)?", ranked_map.group(1), re.I):
-            map_name = ranked_map.group(1).strip()
+            raw = ranked_map.group(1).strip()
+            rank_aliases = {
+                "bronzo i":"Bronzo I","bronzo 1":"Bronzo I","bronze i":"Bronzo I","bronze 1":"Bronzo I",
+                "bronzo ii":"Bronzo II","bronzo 2":"Bronzo II","bronze ii":"Bronzo II","bronze 2":"Bronzo II",
+                "bronzo iii":"Bronzo III","bronzo 3":"Bronzo III","bronze iii":"Bronzo III","bronze 3":"Bronzo III",
+                "argento i":"Argento I","argento 1":"Argento I","silver i":"Argento I","silver 1":"Argento I",
+                "argento ii":"Argento II","argento 2":"Argento II","silver ii":"Argento II","silver 2":"Argento II",
+                "argento iii":"Argento III","argento 3":"Argento III","silver iii":"Argento III","silver 3":"Argento III",
+                "oro i":"Oro I","oro 1":"Oro I","gold i":"Oro I","gold 1":"Oro I",
+                "oro ii":"Oro II","oro 2":"Oro II","gold ii":"Oro II","gold 2":"Oro II",
+                "oro iii":"Oro III","oro 3":"Oro III","gold iii":"Oro III","gold 3":"Oro III",
+                "diamante i":"Diamante I","diamante 1":"Diamante I","diamond i":"Diamante I","diamond 1":"Diamante I",
+                "diamante ii":"Diamante II","diamante 2":"Diamante II","diamond ii":"Diamante II","diamond 2":"Diamante II",
+                "diamante iii":"Diamante III","diamante 3":"Diamante III","diamond iii":"Diamante III","diamond 3":"Diamante III",
+                "mito i":"Mito I","mito 1":"Mito I","mythic i":"Mito I","mythic 1":"Mito I",
+                "mito ii":"Mito II","mito 2":"Mito II","mythic ii":"Mito II","mythic 2":"Mito II",
+                "mito iii":"Mito III","mito 3":"Mito III","mythic iii":"Mito III","mythic 3":"Mito III",
+                "leggendario i":"Leggendario I","leggendario 1":"Leggendario I","legendary i":"Leggendario I","legendary 1":"Leggendario I",
+                "leggendario ii":"Leggendario II","leggendario 2":"Leggendario II","legendary ii":"Leggendario II","legendary 2":"Leggendario II",
+                "leggendario iii":"Leggendario III","leggendario 3":"Leggendario III","legendary iii":"Leggendario III","legendary 3":"Leggendario III",
+                "maestro":"Maestro","masters":"Maestro","master":"Maestro",
+            }
+            rank_name = None
+            map_name = raw
+            for alias, canonical in sorted(rank_aliases.items(), key=lambda x: len(x[0]), reverse=True):
+                if raw.casefold().endswith(" "+alias) or raw.casefold() == alias:
+                    rank_name=canonical
+                    map_name=raw[:-len(alias)].strip()
+                    break
+            if not rank_name:
+                try:
+                    me=self._get("community_members",{
+                        "select":"ranked_current",
+                        "chat_id":f"eq.{int(message.chat_id)}",
+                        "telegram_user_id":f"eq.{int(message.from_user.id)}",
+                        "limit":"1",
+                    })
+                    if me and me[0].get("ranked_current") not in (None,"Non classificato","Unranked"):
+                        rank_name=me[0].get("ranked_current")
+                except Exception as exc:
+                    print("ERRORE RANK DRAFT UTENTE:",repr(exc),flush=True)
             response = self.draft_map_advice_text(map_name)
             if response:
-                context.user_data["ranked_draft"] = {"map": map_name, "my_picks": [], "enemy_picks": [], "bans": []}
+                context.user_data["ranked_draft"] = {"map": map_name, "rank": rank_name, "my_picks": [], "enemy_picks": [], "bans": []}
+                if rank_name:
+                    response += f"\nFascia Ranked: {rank_name}"
                 await message.reply_text(response)
                 return True
 
