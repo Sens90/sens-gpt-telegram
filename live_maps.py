@@ -189,10 +189,12 @@ def row_text(row,names):
     return label+(" — "+" · ".join(metrics) if metrics else "")
 
 def collect_report(dataset="both",now=None,fetch=safe_get,secondary=None):
-    now=now or datetime.now(timezone.utc);paths=["event_rotation.json.gz","i18n/names.it.json.gz"]
+    now=now or datetime.now(timezone.utc)
+    # Resolve the authoritative Supercell rotation first. Fallback datasets are enrichment only.
+    official=get_official_rotation();official_events=active_events(normalize_official_events(official),now) if official else []
+    paths=["event_rotation.json.gz","i18n/names.it.json.gz"]
     with ThreadPoolExecutor(max_workers=4) as pool:initial=dict(zip(paths,pool.map(fetch,paths)))
     fallback_events=active_events(initial[paths[0]],now);names=initial[paths[1]] if isinstance(initial[paths[1]],dict) else {}
-    official=get_official_rotation();official_events=active_events(normalize_official_events(official),now) if official else []
     # Supercell is authoritative for active event timing/rotation. The public analyzer manifest remains a safe fallback.
     # Keep analyzer map IDs when map+mode match so existing BrawlTrack/stat datasets continue to join correctly.
     if official_events:
