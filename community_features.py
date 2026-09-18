@@ -230,6 +230,8 @@ class CommunityFeatures:
             if wanted not in {en.casefold(),str(it).casefold()} and not (matched_en and matched_en.casefold()==en.casefold()):continue
             en_mode=mode_aliases.get(raw_event_mode.casefold(), raw_event_mode)
             it_mode=localized(names,"modes",en_mode) if en_mode else ""
+            if str(en_mode).casefold()=="brawl ball" and (not it_mode or str(it_mode).casefold() in ("brawl ball","brawlball")):
+                it_mode="Footbrawl"
             accepted={raw_event_mode.casefold(),str(en_mode).casefold(),str(it_mode).casefold()}-{""}
             accepted.update(k for k,v in mode_aliases.items() if en_mode and v.casefold()==str(en_mode).casefold())
             if wanted_mode and accepted and wanted_mode not in accepted:return None
@@ -300,7 +302,9 @@ class CommunityFeatures:
             lines.append(f'Modalità: {identity["mode_it"]}')
         if rank_name:lines.append(f'Fascia Ranked: {rank_name}')
         if avoid_names:lines.append("Ban/evita: "+", ".join(avoid_names))
-        if pick_names:lines.append("Migliori pick: "+", ".join(pick_names))
+        if pick_names:
+            lines.append("Pick competitivi BrawlTrack: "+", ".join(pick_names))
+            lines.append("Fonte pick: BrawlTrack Pro — mappa specifica; non indica una fascia Mito II separata.")
         if not avoid_names and not pick_names:
             lines.append("La mappa è riconosciuta, ma non ho ancora pick/ban verificati da mostrare.")
         return "\n".join(lines)
