@@ -3662,7 +3662,7 @@ def _startup_brawltrack_meta_sync_once():
 if __name__ == "__main__":
     # Start the meta refresh with the process lifecycle. Keeping it non-daemon
     # prevents the worker from being silently discarded during webhook startup.
-    if os.getenv("BRAWLTRACK_META_SYNC_ON_START","1")=="1":
+    if os.getenv("BRAWLTRACK_META_SYNC_ON_START","0")=="1":
         print("BRAWLTRACK META SYNC STARTING",flush=True)
         threading.Thread(target=_startup_brawltrack_meta_sync_once,daemon=False,name="brawltrack-meta-sync").start()
 
