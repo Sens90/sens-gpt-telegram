@@ -15,10 +15,14 @@ def build_verified_rows():
   if not ch:
    tid=str(s.get("TID") or "")
    token=tid[4:].split("_",1)[0] if tid.startswith("TID_") else ""
-   aliases={"RICO":"TRICKSHOT"}
-   token=aliases.get(token,token)
    candidates=[x for x in chars.values() if x.get("id") and x.get("ItemName") and (str(x.get("ItemName")).upper()==token or str(x.get("Name")).upper()==token)]
    if len(candidates)==1: ch=candidates[0]; char_key=str(ch.get("Name") or char_key)
+   elif token=="RICO":
+    base=next((x for x in skins.values() if str(x.get("Name") or "")=="TrickshotDefault"),None)
+    base_cf=conf_by_name.get((base or {}).get("Conf") or (base or {}).get("Name")) if base else None
+    base_key=str((base_cf or {}).get("Character") or "").split(";")[0].strip()
+    base_ch=char_by_internal.get(base_key)
+    if base_ch: ch=base_ch; char_key=base_key
   loc=it.get(s.get("TID")) or {}
   if not ch: unmapped.append(s.get("id")); continue
   name_it=loc.get("IT") if isinstance(loc,dict) else None
