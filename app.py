@@ -196,10 +196,16 @@ def request_voice_mode(text):
 
 
 async def send_mode_aware_text(message, context, text, disable_web_page_preview=True):
-    # Fundamental rule: every request starts in text mode unless that request
-    # explicitly asks for "voce" or "voce + testo". No persistent mode leaks
-    # into later requests.
-    mode = context.user_data.get("_request_voice_mode") or request_voice_mode(message.text)
+    # Explicit per-request wording wins. Otherwise honor the user's saved
+    # /voce preference; replying to a bot voice is already carried in
+    # _request_voice_mode by answer().
+    mode = context.user_data.get("_request_voice_mode")
+    if not mode:
+        mode = request_voice_mode(message.text)
+    if mode == "text" and message.from_user:
+        mode = await asyncio.to_thread(
+            get_voice_mode, message.chat_id, message.from_user.id
+        )
     if mode in ("text", "both"):
         await context.bot.send_message(
             chat_id=message.chat_id,
