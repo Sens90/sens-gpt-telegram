@@ -58,8 +58,15 @@ def _parse_builds(raw):
 
 def _parse_modes(raw):
     if not raw:return []
-    matches=list(re.finditer(r"([A-Za-z][A-Za-z0-9 '&-]*?)\s+(\d+(?:\.\d+)?)\s*%",raw))
-    return [{"mode":re.sub(r"\s+"," ",m.group(1)).strip(),"win_rate":float(m.group(2))} for m in matches]
+    # BrawlTrack renders each mode as a label followed by its percentage.
+    # Keep only known game-mode labels so surrounding section copy cannot be
+    # mistaken for a mode when the page layout changes.
+    known=("Brawl Ball","Gem Grab","Hot Zone","Heist","Knockout","Bounty","Wipeout","Showdown","Duo Showdown","Brawl Arena","Brawl Hockey","Basket Brawl","Duels")
+    out=[]
+    for mode in known:
+        m=re.search(r"(?<![A-Za-z])"+re.escape(mode)+r"\s+(\d+(?:\.\d+)?)\s*%",raw,re.I)
+        if m: out.append({"mode":mode,"win_rate":float(m.group(1))})
+    return out
 
 def _parse_maps(raw):
     if not raw:return []
