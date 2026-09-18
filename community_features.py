@@ -1469,6 +1469,65 @@ class CommunityFeatures:
             await message.reply_text(FAQ_TEXT)
             return True
 
+        draft_start = re.fullmatch(r"(?:draft\\s+ranked|ranked\\s+draft|classificata\\s+draft|draft\\s+classificata)", q, re.I)
+        if draft_start:
+            context.user_data.pop("ranked_draft", None)
+            context.user_data.pop("ranked_draft_elo", None)
+            context.user_data["ranked_draft_setup"] = {"stage": "map"}
+            await message.reply_text("DRAFT RANKED — Inserisci la mappa.")
+            return True
+
+        setup = context.user_data.get("ranked_draft_setup") or {}
+        if setup.get("stage") == "map":
+            identity = self._draft_identity(q)
+            if not identity:
+                await message.reply_text("Mappa non riconosciuta. Inserisci una mappa Ranked valida.")
+                return True
+            setup.update({"stage": "rank", "map": identity.get("map_en"), "map_it": identity.get("map_it"), "map_id": identity.get("map_id"), "mode": identity.get("mode_en"), "mode_it": identity.get("mode_it")})
+            context.user_data["ranked_draft_setup"] = setup
+            me = context.user_data.get("_registered_user") or {}
+            current = me.get("ranked_current")
+            current_text = str(current) if current not in (None, "Non classificato", "Unranked") else "non disponibile"
+            await message.reply_text(f"Mappa: {identity.get('map_it') or identity.get('map_en')}.\\nRanked attuale: {current_text}.\\nScrivi 'usa il mio ranked' oppure indica il Ranked da simulare, per esempio 'Mito I'.")
+            return True
+        if setup.get("stage") == "rank":
+            rank_aliases_setup = {
+                "bronzo i":"Bronzo I","bronzo ii":"Bronzo II","bronzo iii":"Bronzo III",
+                "argento i":"Argento I","argento ii":"Argento II","argento iii":"Argento III",
+                "oro i":"Oro I","oro ii":"Oro II","oro iii":"Oro III",
+                "diamante i":"Diamante I","diamante ii":"Diamante II","diamante iii":"Diamante III",
+                "mito i":"Mito I","mito ii":"Mito II","mito iii":"Mito III",
+                "leggendario i":"Leggendario I","leggendario ii":"Leggendario II","leggendario iii":"Leggendario III",
+                "maestro":"Maestro",
+            }
+            raw_rank = re.sub(r"\\s+", " ", q.casefold()).strip()
+            me = context.user_data.get("_registered_user") or {}
+            if raw_rank in ("usa il mio ranked","mio ranked","ranked attuale","usa ranked attuale"):
+                rank_name = me.get("ranked_current")
+                elo = me.get("ranked_current_elo")
+            else:
+                rank_name = rank_aliases_setup.get(raw_rank)
+                elo = None
+            if not rank_name or rank_name in ("Non classificato","Unranked"):
+                await message.reply_text("Ranked non riconosciuto. Scrivi per esempio 'Mito I' oppure 'usa il mio ranked'.")
+                return True
+            map_name = setup.get("map")
+            response = self.draft_map_advice_text(map_name, rank_name=rank_name)
+            if not response:
+                await message.reply_text("Non riesco a preparare la Draft per questa mappa.")
+                return True
+            draft_format = self._ranked_draft_format(rank_name)
+            context.user_data["ranked_draft"] = {"map": setup.get("map"), "map_it": setup.get("map_it"), "map_id": setup.get("map_id"), "mode": setup.get("mode"), "mode_it": setup.get("mode_it"), "rank": rank_name, "elo": elo, "draft_format": draft_format, "first_pick": None, "pick_sequence": [], "my_picks": [], "enemy_picks": [], "bans": []}
+            context.user_data.pop("ranked_draft_setup", None)
+            if draft_format == "all_pick":
+                response += "\\nFormato: selezione normale, senza ban. Puoi iniziare con i pick."
+            elif draft_format == "ban_all_pick":
+                response += "\\nFormato: 6 ban totali (3+3). Inizia con i ban; i pick si aprono dopo il sesto ban."
+            elif draft_format == "turn_pick":
+                response += "\\nFormato: 6 ban totali (3+3), poi pick a turni 1-2-2-1. Inizia con i ban."
+            await message.reply_text(response)
+            return True
+
         ranked_map = re.fullmatch(r"(?:draft\s+ranked|ranked|classificata)\s+(.+)", q, re.I)
         if ranked_map and not re.fullmatch(r"(?:oggi|7|15|30)(?:\s+giorni)?", ranked_map.group(1), re.I):
             raw = ranked_map.group(1).strip()
@@ -1547,7 +1606,7 @@ class CommunityFeatures:
         if draft_state and re.fullmatch(r"(?:reset|azzera|annulla|chiudi)\\s+(?:draft|classificata)|(?:draft|classificata)\\s+(?:reset|azzera|annulla|chiudi)", q, re.I):
             context.user_data.pop("ranked_draft",None)
             context.user_data.pop("ranked_draft_elo",None)
-            await message.reply_text("Draft chiusa. Puoi iniziarne una nuova con: Ranked <nome mappa>.")
+            context.user_data.pop("ranked_draft_setup",None)\n            await message.reply_text("Draft chiusa. Puoi iniziarne una nuova con: Draft Ranked.")
             return True
         first_pick_q = re.fullmatch(r"(?:primo\\s+pick|first\\s+pick)\\s+(nostro|mio|squadra|avversario|avversaria|nemico)", q, re.I)
         if draft_state and first_pick_q:
