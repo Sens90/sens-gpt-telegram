@@ -1456,7 +1456,19 @@ class CommunityFeatures:
         skin_all_q = re.fullmatch(r"(?:quante\\s+)?skin(?:\\s+(?:ho|possiedo))?", q_skin, re.I)
 
         answer = None
-        if skin_image_q:
+        # Conversational Skin Account follow-up: remember the last Brawler scope.
+        # Example: "Quante skin ho di Moe?" -> "Quali ho?" / "Quali mi mancano?"
+        last_skin = context.user_data.get("skin_account_context") or {}
+        follow_owned = re.fullmatch(r"(?:quali(?:\\s+skin)?\\s+)?(?:ho|possiedo|ho io)", q_skin, re.I) or re.fullmatch(r"quali\\s+ho", q_skin, re.I)
+        follow_missing = re.fullmatch(r"(?:quali(?:\\s+skin)?\\s+)?(?:mi\\s+mancano|mancano)", q_skin, re.I) or re.fullmatch(r"quali\\s+mi\\s+mancano", q_skin, re.I)
+        if (follow_owned or follow_missing) and last_skin.get("brawler"):
+            answer = self.skin_account_text(
+                registered,
+                brawler_name=last_skin["brawler"],
+                category=last_skin.get("category"),
+                mode="owned" if follow_owned else "missing",
+            )
+        elif skin_image_q:
             result = await self.send_skin_image(message, skin_image_q.group(2).strip(), skin_image_q.group(1).strip())
             if result is not True:
                 await message.reply_text(result)
@@ -1482,6 +1494,22 @@ class CommunityFeatures:
         elif skin_all_q:
             answer = self.skin_account_text(registered)
         if answer is not None:
+            scoped_brawler = None
+            scoped_category = None
+            if category_brawler_list_q:
+                scoped_brawler = category_brawler_list_q.group(2).strip(); scoped_category = cat(category_brawler_list_q.group(1))
+            elif category_brawler_count_q:
+                scoped_brawler = category_brawler_count_q.group(2).strip(); scoped_category = cat(category_brawler_count_q.group(1))
+            elif missing_brawler_q:
+                scoped_brawler = missing_brawler_q.group(1).strip()
+            elif owned_brawler_q:
+                scoped_brawler = owned_brawler_q.group(1).strip()
+            elif account_brawler_q:
+                scoped_brawler = account_brawler_q.group(1).strip()
+            elif skin_brawler_count_q:
+                scoped_brawler = skin_brawler_count_q.group(1).strip()
+            if scoped_brawler:
+                context.user_data["skin_account_context"] = {"brawler": scoped_brawler, "category": scoped_category}
             await message.reply_text(answer)
             return True
 
