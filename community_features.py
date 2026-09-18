@@ -186,7 +186,6 @@ class CommunityFeatures:
                 label = names.get(int(row["counter_brawler_id"]), str(row["counter_brawler_id"]))
                 detail = f" - indice {float(row['score']):.1f}" if row.get("score") is not None else ""
                 lines.append(f"{i}. {label}{detail}")
-            lines += ["", f"Fonte dati: {rows[0].get('source') or 'dataset verificato'}"]
             return "\n".join(lines)
         except Exception as exc:
             print("ERRORE COUNTER BRAWLER:", repr(exc), flush=True)
