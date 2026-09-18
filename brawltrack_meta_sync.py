@@ -102,11 +102,16 @@ def _page_enrichment(brawler_id):
     modes={"source":"brawltrack_public_page","items":_parse_modes(modes_raw),"maps":_parse_maps(maps_raw),"raw_text":modes_raw[:12000],"best_maps_raw_text":maps_raw[:12000]}
     return {"win_rate":pct("Win Rate"),"pick_rate":pct("Meta Usage"),"star_rate":pct("Star Rate"),"popular_builds":builds,"modes":modes,"page_url":url}
 
+_CATALOG_CACHE={}
 def _catalog_rows(table,brawler_id=None):
-    params={"select":"*"}
-    if brawler_id is not None: params["brawler_id"]=f"eq.{brawler_id}"
-    r=requests.get(f"{SUPABASE_URL}/rest/v1/{table}",params=params,headers=_headers(),timeout=TIMEOUT);r.raise_for_status()
-    return r.json()
+    # These catalogs are static during one sync. Fetch each table once instead
+    # of issuing gadgets/stars/gears requests for every one of 108 Brawlers.
+    rows=_CATALOG_CACHE.get(table)
+    if rows is None:
+        r=requests.get(f"{SUPABASE_URL}/rest/v1/{table}",params={"select":"*"},headers=_headers(),timeout=TIMEOUT);r.raise_for_status()
+        rows=r.json();_CATALOG_CACHE[table]=rows
+    if brawler_id is None:return rows
+    return [x for x in rows if int(x.get("brawler_id") or -1)==int(brawler_id)]
 
 def _resolve_builds(brawler_id,builds):
     if not isinstance(builds,dict) or not isinstance(builds.get("items"),list): return builds
@@ -159,6 +164,7 @@ def sync():
     catalog=normalize_brawler_catalog(brawlers());known=_known_ids();pending=[];cached=0;enriched=0;page_errors=0
     for brawler_id,row in catalog.items():
         if brawler_id not in known:continue
+        print("BRAWLTRACK META BRAWLER START:",brawler_id,row.get("name") or "",flush=True)
         extra={}
         try: extra=_page_enrichment(brawler_id); enriched+=1
         except Exception as exc: page_errors+=1; print("BRAWLTRACK PAGE ENRICH ERROR:",brawler_id,repr(exc),flush=True)
