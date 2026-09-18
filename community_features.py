@@ -334,6 +334,46 @@ class CommunityFeatures:
     def _skin_key(value):
         return re.sub(r"[^A-Z0-9]+", "", str(value or "").upper())
 
+    def _brawlvalue_owned_skin_names(self, player_tag):
+        """Read BrawlValue's server-rendered Skin Collection; Supabase stays canonical."""
+        tag = str(player_tag or "").strip().lstrip("#").upper()
+        if not tag:
+            return set()
+        response = requests.get(
+            f"https://brawlvalue.com/en/player/{tag}/skins",
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; SensGPT/1.0)",
+                "Accept-Language": "en-US,en;q=0.9",
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        html = response.text
+        if not re.search(r"(?:YOUR SKINS|skins owned)", html, re.I):
+            raise RuntimeError("BrawlValue Skin Collection payload not available")
+        names = set()
+        # BrawlValue renders owned cards server-side. Image alt/title is the skin name.
+        for name in re.findall(r'alt=["\\\']([^"\\\']+)["\\\']', html, re.I):
+            clean = re.sub(r"\\s+", " ", name).strip()
+            if clean and clean.casefold() not in {"profile avatar", "logo"}:
+                names.add(self._skin_key(clean))
+        if not names:
+            # Text-only fallback for simplified/rendered HTML.
+            for name in re.findall(r"Image:\\s*([^<\\r\\n]+)", html, re.I):
+                clean = re.sub(r"\\s+", " ", re.sub(r"<[^>]+>", " ", name)).strip()
+                if clean:
+                    names.add(self._skin_key(clean))
+        if not names:
+            raise RuntimeError("BrawlValue Skin Collection parsed without owned skins")
+        return names
+
+    def _owned_skin_names(self, player_tag):
+        """Prefer BrawlValue; fall back to BSInfo only when BrawlValue is unavailable."""
+        try:
+            return self._brawlvalue_owned_skin_names(player_tag)
+        except Exception as brawlvalue_exc:
+            print("BRAWLVALUE SKIN ACCOUNT FALLBACK:", repr(brawlvalue_exc), flush=True)
+        return self._bsinfo_owned_skin_names(player_tag)
     def _bsinfo_owned_skin_names(self, player_tag):
         """Read BSInfo ownership only; our Supabase catalog remains canonical."""
         tag = str(player_tag or "").strip().lstrip("#").upper()
@@ -373,7 +413,7 @@ class CommunityFeatures:
             })
             if not catalog:
                 return "Il catalogo skin non è disponibile in questo momento."
-            owned_keys = self._bsinfo_owned_skin_names(registered_user["player_tag"])
+            owned_keys = self._owned_skin_names(registered_user["player_tag"])
             # Never count the default Brawler appearance: it is absent from our canonical skin catalog.
             rows = list(catalog)
             if brawler_name:
