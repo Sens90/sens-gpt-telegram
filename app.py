@@ -1539,33 +1539,42 @@ def get_brawltrack_meta_context(question):
             best_modes=modes.get("items") or []; best_maps=modes.get("maps") or []
             try: official_names=safe_get("i18n/names.it.json.gz") or {}
             except Exception: official_names={}
+            official_modes=official_names.get("modes",{}) if isinstance(official_names,dict) else {}
+            official_maps=official_names.get("maps",{}) if isinstance(official_names,dict) else {}
+            def exact_official(table,value):
+                raw=str(value or "").strip()
+                for key,label in (table or {}).items():
+                    if str(key).strip().casefold()==raw.casefold():
+                        return str(label).strip()
+                return None
             def loc_mode(value):
                 raw=str(value or "").strip()
-                # Structured labels can carry a team-size suffix (e.g. "Wipeout 5v5").
-                # Localize the canonical mode only; never translate the suffix as a new mode.
-                base=re.sub(r"\\s+(?:2v2|3v3|5v5|trio|duo)$","",raw,flags=re.I).strip()
-                suffix=raw[len(base):].strip() if raw.casefold().startswith(base.casefold()) else ""
-                translated=localized(official_names,"modes",base)
-                if translated==base: translated=mode_name_it(base)
-                return (translated+(" "+suffix if suffix else "")).strip()
+                # Only an exact key from the official Italian catalogue is accepted.
+                # Composite/source-only labels such as "Trio Wipeout" are not rewritten.
+                return exact_official(official_modes,raw) or raw
             def loc_map(value):
-                raw=str(value or "").strip(); translated=localized(official_names,"maps",raw)
-                return translated if translated!=raw else map_name_it(raw)
+                raw=str(value or "").strip()
+                # Never fall back to the hand-written map dictionary for meta output.
+                return exact_official(official_maps,raw) or raw
+            # Rank modes by their actual win rate, but only expose a mode when at least
+            # one map exists for that exact source label. This prevents unrelated pairings.
+            ranked_modes=sorted(best_modes,key=lambda m:float(m.get("win_rate") or 0),reverse=True)
             top_pairs=[]; target=str(row.get("brawler_name") or "").strip().casefold()
-            for bm in best_modes[:3]:
+            for bm in ranked_modes:
                 raw_mode=str(bm.get("mode") or "").strip()
-                same=[m for m in best_maps if str(m.get("mode") or "").casefold()==raw_mode.casefold()]
-                chosen_map=max(same,key=lambda m:(float(m.get("win_rate") or 0),int(m.get("battles") or 0))) if same else None
+                same=[m for m in best_maps if str(m.get("mode") or "").strip().casefold()==raw_mode.casefold()]
+                if not same: continue
+                chosen_map=max(same,key=lambda m:(float(m.get("win_rate") or 0),int(m.get("battles") or 0)))
                 comp=None
-                if chosen_map:
-                    try:
-                        pro=brawltrack_pro_map_stats(chosen_map.get("map")) or {}
-                        matching=[c for c in (pro.get("final_comps") or []) if any(str(x).strip().casefold()==target for x in (c.get("team") or []))]
-                        if matching:
-                            chosen=max(matching,key=lambda c:(int(c.get("sets") or 0),float(c.get("win_rate") or 0)))
-                            comp=[brawler_name_it(x) for x in (chosen.get("team") or [])]
-                    except Exception as comp_error: print("BRAWLTRACK BRAWLER COMP ERROR:",repr(comp_error),flush=True)
-                top_pairs.append({"mode":loc_mode(raw_mode),"map":loc_map(chosen_map.get("map")) if chosen_map else None,"verified_comp":comp})
+                try:
+                    pro=brawltrack_pro_map_stats(chosen_map.get("map")) or {}
+                    matching=[c for c in (pro.get("final_comps") or []) if any(str(x).strip().casefold()==target for x in (c.get("team") or []))]
+                    if matching:
+                        chosen=max(matching,key=lambda c:(int(c.get("sets") or 0),float(c.get("win_rate") or 0)))
+                        comp=[brawler_name_it(x) for x in (chosen.get("team") or [])]
+                except Exception as comp_error: print("BRAWLTRACK BRAWLER COMP ERROR:",repr(comp_error),flush=True)
+                top_pairs.append({"mode":loc_mode(raw_mode),"map":loc_map(chosen_map.get("map")),"verified_comp":comp})
+                if len(top_pairs)>=3: break
             top_maps=sorted(best_maps,key=lambda m:(float(m.get("win_rate") or 0),int(m.get("battles") or 0)),reverse=True)[:3]
             top_maps=[{"map":loc_map(m.get("map")),"mode":loc_mode(m.get("mode"))} for m in top_maps]
             payload.append({"brawler":row.get("brawler_name"),"win_rate":row.get("win_rate"),"meta_usage":row.get("pick_rate"),"star_rate":row.get("star_rate"),"rank":row.get("rank_label"),"popular_builds":clean,"overdrive":({"name_it":hyper.get("name_it")} if hyper and hyper.get("name_it") else None),"top_3_mode_maps":top_pairs,"top_3_maps":top_maps,"updated_at":row.get("source_updated_at")})
