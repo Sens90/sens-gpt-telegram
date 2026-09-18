@@ -369,13 +369,29 @@ class CommunityFeatures:
                 continue
         return selected
 
+    @staticmethod
+    def _current_ranked_season_start(now):
+        """Current Ranked season starts on the third Thursday of the month."""
+        local = now.astimezone(ROME)
+        first = local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        days_to_thursday = (3 - first.weekday()) % 7
+        third_thursday = first + timedelta(days=days_to_thursday + 14)
+        if local < third_thursday:
+            prev_last = first - timedelta(days=1)
+            prev_first = prev_last.replace(day=1)
+            days_to_thursday = (3 - prev_first.weekday()) % 7
+            third_thursday = prev_first + timedelta(days=days_to_thursday + 14)
+        return third_thursday.astimezone(timezone.utc)
+
     def ranked_elo_ranking(self, chat_id, days=0, club_name=None):
-        """Rank registered players by Ranked ELO movement, parallel to trophy history."""
+        """Rank current-season ELO movement without counting the monthly reset as a loss."""
         now = datetime.now(timezone.utc)
         start_today = now.astimezone(ROME).replace(
             hour=0, minute=0, second=0, microsecond=0
         ).astimezone(timezone.utc)
-        target = start_today if days == 0 else now - timedelta(days=days)
+        season_start = self._current_ranked_season_start(now)
+        requested_target = start_today if days == 0 else now - timedelta(days=days)
+        target = max(requested_target, season_start)
         rows = []
         for member in self.members(chat_id):
             tag = member.get("player_tag")
