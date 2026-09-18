@@ -105,7 +105,7 @@ def brawltrack_pro_map_stats(map_name,ttl=300):
         comp_pat=re.compile(r"(?:IMAGE:\s*)?([A-Z][A-Z0-9 .'-]*?)\s*\+\s*([A-Z][A-Z0-9 .'-]*?)\s*\+\s*([A-Z][A-Z0-9 .'-]*?)\s+(\d+)\s+sets?\s+(\d+(?:\.\d+)?)%\s+WR",re.I)
         comps=comp_cards or [{"team":[m.group(i).strip().upper() for i in (1,2,3)],"sets":int(m.group(4)),"win_rate":float(m.group(5))} for m in comp_pat.finditer(comps_block)]
         result={"source":"BrawlTrack Pro","scope":"competitive_pro","source_url":url,"map_id":int(mid.group(1)) if mid else None,"priority_picks":picks,"final_comps":comps}
-        if not picks and not comps:LOG.warning("LIVE_MAPS BrawlTrack pro parsed empty map=%s priority=%r comps=%r",map_name,picks_block[:1800],comps_block[:1800])
+        if not comps:LOG.warning("LIVE_MAPS BrawlTrack pro comps empty map=%s html=%r",map_name,response.text[response.text.upper().find("COMMON FINAL COMPS"):response.text.upper().find("PRO MATCHUP MATRIX")][:6000])
         _CACHE[cache_key]=(time.monotonic(),result);return result
     except Exception as error:
         LOG.warning("LIVE_MAPS BrawlTrack pro unavailable map=%s error=%s",map_name,type(error).__name__);return None
