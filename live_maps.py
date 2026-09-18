@@ -32,7 +32,10 @@ SUPERcell_EVENTS="https://api.brawlstars.com/v1/events/rotation"
 def get_official_rotation(ttl=60):
     """Official Supercell rotation, preferably through the existing TITANI ABUSIVI proxy."""
     cached=_CACHE.get(SUPERcell_EVENTS)
-    if cached and time.monotonic()-cached[0]<ttl:return cached[1]
+    if cached and time.monotonic()-cached[0]<ttl:
+        LOG.info("LIVE_MAPS official rotation cache HIT age=%.1fs events=%s",time.monotonic()-cached[0],len(cached[1]) if isinstance(cached[1],list) else "?")
+        return cached[1]
+    LOG.info("LIVE_MAPS official rotation cache MISS")
     proxy_url=(os.environ.get("BRAWL_OFFICIAL_PROXY_URL") or "").strip()
     proxy_key=(os.environ.get("BRAWL_OFFICIAL_PROXY_KEY") or "").strip()
     token=(os.environ.get("BRAWL_STARS_API_TOKEN") or os.environ.get("BRAWL_API_TOKEN") or "").strip()
