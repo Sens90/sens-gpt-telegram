@@ -1583,6 +1583,42 @@ def get_brawltrack_meta_context(question):
         print("BRAWLTRACK META CONTEXT ERROR:",repr(e),flush=True); return ""
 
 
+def render_structured_brawler_meta(context_text):
+    """Deterministic compact rendering for a single Brawler meta/build request."""
+    prefix="DATI META STRUTTURATI E LOCALIZZATI (PRIORITARI):\n"
+    if not context_text or not context_text.startswith(prefix):return None
+    try:
+        rows=json.loads(context_text[len(prefix):])
+        if not isinstance(rows,list) or len(rows)!=1:return None
+        row=rows[0]; builds=row.get("popular_builds") or []
+        if not builds:return None
+        build=builds[0]; lines=["I nostri sistemi abusivi hanno tirato fuori i dati freschi per "+str(row.get("brawler") or "")+".",""]
+        rate=build.get("use_rate")
+        title="Configurazione più usata"+(f" ({float(rate):.2f}%):" if rate is not None else ":")
+        lines.append(title)
+        labels={"gadget":"Gadget","star_power":"Abilità stellare","gear":"Equipaggiamento"}
+        gears=[]
+        for c in build.get("components") or []:
+            typ=str(c.get("type") or ""); name=str(c.get("name_it") or "").strip()
+            if not name:continue
+            if typ=="gear":gears.append(name)
+            elif typ in labels:lines.append(f"- {labels[typ]}: {name}")
+        if gears:lines.append("- Equipaggiamenti: "+", ".join(gears))
+        over=row.get("overdrive") or {}
+        if over.get("name_it"):lines.append("- Overdrive: "+str(over["name_it"]))
+        pairs=row.get("top_3_mode_maps") or []
+        lines += ["","Top 3 modalità e mappe:"]
+        for idx,pair in enumerate(pairs[:3],1):
+            mode=str(pair.get("mode") or "").strip(); map_name=str(pair.get("map") or "").strip()
+            lines.append(f"{idx}. {mode}" + (f" — {map_name}" if map_name else ""))
+            comp=pair.get("verified_comp")
+            if isinstance(comp,list) and len(comp)==3:lines.append("   Comp: "+" + ".join(str(x) for x in comp))
+            else:lines.append("   Comp verificata: non disponibile")
+        return "\n".join(lines)
+    except Exception as e:
+        print("META DETERMINISTIC RENDER ERROR:",repr(e),flush=True);return None
+
+
 def save_trophy_snapshot(player_tag, player_name, trophies):
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         print("SUPABASE NON CONFIGURATO", flush=True)
@@ -2851,6 +2887,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         brawltrack_meta_context = get_brawltrack_meta_context(question_for_ai)
+        deterministic_meta = render_structured_brawler_meta(brawltrack_meta_context)
+        if deterministic_meta:
+            await message.reply_text(deterministic_meta)
+            return
         if brawltrack_meta_context:
             web_context = brawltrack_meta_context + "\n\n" + web_context
         if web_context:
