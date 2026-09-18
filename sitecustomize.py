@@ -166,22 +166,6 @@ def _sync_catalog_runtime():
         print("CATALOGO SUPERCELL STARTUP ERRORE:",repr(exc),flush=True)
 threading.Thread(target=_sync_catalog_runtime,daemon=True).start()
 
-# Keep BrawlTrack meta fresh inside the existing Render service. This reuses the
-# service's Supabase secrets without duplicating them into a second cron service.
-def _sync_brawltrack_meta_runtime():
-    startup_delay=max(15,int(os.environ.get("BRAWLTRACK_META_STARTUP_DELAY","20")))
-    interval=max(1800,int(os.environ.get("BRAWLTRACK_META_SYNC_SECONDS","21600")))
-    time.sleep(startup_delay)
-    while True:
-        try:
-            from brawltrack_meta_sync import sync
-            result=sync()
-            print("BRAWLTRACK META SYNC OK:",result,flush=True)
-        except Exception as exc:
-            print("BRAWLTRACK META SYNC ERRORE:",repr(exc),flush=True)
-        time.sleep(interval)
-threading.Thread(target=_sync_brawltrack_meta_runtime,daemon=True).start()
-
 # One-shot structured skin master inspection at startup.
 def _inspect_skin_master_later():
     import time
