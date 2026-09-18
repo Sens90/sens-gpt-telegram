@@ -38,7 +38,7 @@ class LiveMapTests(unittest.TestCase):
         text = render_report(report)
         for event in report['events']:
             self.assertIn(localized(report['names'], 'maps', event['event_map']), text)
-        self.assertIn('Star Player', text)
+        self.assertIn('Miglior StarPlayer', text)
         self.assertIn('Squadre:', text)
         self.assertIn('Campetto sabbioso', text)
         self.assertIn('Secondaria senza dati', text)
