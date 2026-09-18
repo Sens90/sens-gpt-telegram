@@ -65,7 +65,7 @@ def brawltrack_pro_map_url(map_name):
     return f"https://brawltrack.app/pro/maps/{quote(clean, safe='')}" if clean else None
 
 def brawltrack_pro_map_stats(map_name,ttl=300):
-    """Parse BrawlTrack pro map priority picks and final comps without mixing them with Ladder/Ranked."""
+    """Parse BrawlTrack Pro map data, preserving its competitive scope."""
     url=brawltrack_pro_map_url(map_name)
     if not url:return None
     cache_key="btpro:"+url;cached=_CACHE.get(cache_key)
@@ -75,13 +75,19 @@ def brawltrack_pro_map_stats(map_name,ttl=300):
         response=requests.get(url,headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"text/html"},timeout=15);response.raise_for_status()
         text=BeautifulSoup(response.text,"html.parser").get_text(" ",strip=True)
         mid=re.search(r"MAP ID:\s*(\d+)",text,re.I)
-        picks_block=text.split("PRIORITY PICKS",1)[1].split("TEAMS ON MAP",1)[0] if "PRIORITY PICKS" in text and "TEAMS ON MAP" in text else ""
-        pick_pat=re.compile(r"(?:^|\s)(\d+)\s+([A-Z][A-Z0-9 .'-]*?)\s+[A-S]\s+[A-Z]+(?:\s+[A-Z]+)?[•\s]+(\d+(?:\.\d+)?)%\s+USE\s+WIN RATE\s+(\d+(?:\.\d+)?)%",re.I)
-        picks=[{"rank":int(m.group(1)),"brawler":re.sub(r"\s+"," ",m.group(2)).strip(),"use_rate":float(m.group(3)),"win_rate":float(m.group(4))} for m in pick_pat.finditer(picks_block)]
-        comps_block=text.split("COMMON FINAL COMPS",1)[1].split("PRO MATCHUP MATRIX",1)[0] if "COMMON FINAL COMPS" in text and "PRO MATCHUP MATRIX" in text else ""
-        comp_pat=re.compile(r"(?:Image:\s*)?([A-Z][A-Z0-9 .'-]+\s+\+\s+[A-Z][A-Z0-9 .'-]+\s+\+\s+[A-Z][A-Z0-9 .'-]+)\s+(\d+)\s+sets?\s+(\d+(?:\.\d+)?)%\s+WR",re.I)
-        comps=[{"team":[x.strip() for x in m.group(1).split("+")],"sets":int(m.group(2)),"win_rate":float(m.group(3))} for m in comp_pat.finditer(comps_block)]
-        result={"source":"BrawlTrack Pro","source_url":url,"map_id":int(mid.group(1)) if mid else None,"priority_picks":picks,"final_comps":comps}
+        def between(a,b):
+            upper=text.upper();i=upper.find(a);j=upper.find(b,i+len(a)) if i>=0 else -1
+            return text[i+len(a):j] if i>=0 and j>i else ""
+        picks_block=between("PRIORITY PICKS","TEAMS ON MAP")
+        # BrawlTrack renders: rank NAME tier ROLE •use% USE WIN RATE wr%
+        pick_pat=re.compile(r"(\d+)\s+([A-Z][A-Z0-9 .'-]*?)\s+[A-S]\s+(?:SNIPER|TANK|ASSASSIN|THROWER|SUPPORT|CONTROLLER|DAMAGE)(?:\s+DEALER)?\s*[•·]?\s*(\d+(?:\.\d+)?)%\s+USE\s+WIN RATE\s+(\d+(?:\.\d+)?)%",re.I)
+        picks=[{"rank":int(m.group(1)),"brawler":re.sub(r"\s+"," ",m.group(2)).strip().upper(),"use_rate":float(m.group(3)),"win_rate":float(m.group(4))} for m in pick_pat.finditer(picks_block)]
+        comps_block=between("COMMON FINAL COMPS","PRO MATCHUP MATRIX")
+        # Text extraction may keep or drop the image label/colon.
+        comp_pat=re.compile(r"(?:IMAGE:\s*)?([A-Z][A-Z0-9 .'-]*?)\s*\+\s*([A-Z][A-Z0-9 .'-]*?)\s*\+\s*([A-Z][A-Z0-9 .'-]*?)\s+(\d+)\s+sets?\s+(\d+(?:\.\d+)?)%\s+WR",re.I)
+        comps=[{"team":[m.group(i).strip().upper() for i in (1,2,3)],"sets":int(m.group(4)),"win_rate":float(m.group(5))} for m in comp_pat.finditer(comps_block)]
+        result={"source":"BrawlTrack Pro","scope":"competitive_pro","source_url":url,"map_id":int(mid.group(1)) if mid else None,"priority_picks":picks,"final_comps":comps}
+        if not picks and not comps:LOG.warning("LIVE_MAPS BrawlTrack pro parsed empty map=%s",map_name)
         _CACHE[cache_key]=(time.monotonic(),result);return result
     except Exception as error:
         LOG.warning("LIVE_MAPS BrawlTrack pro unavailable map=%s error=%s",map_name,type(error).__name__);return None
