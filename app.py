@@ -2693,6 +2693,28 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await community.handle_command(message, context, question):
         return
 
+    # Structured Brawl Stars intents must never silently fall through to Gemini.
+    # Gemini remains the fallback for genuinely open-ended questions, not for
+    # commands/data that Sens GPT is expected to answer from its own sources.
+    structured_q = re.sub(r"[^a-z0-9à-ÿ# ]+", " ", question.casefold())
+    structured_q = re.sub(r"\s+", " ", structured_q).strip()
+    structured_terms = (
+        "skin", "draft", "ranked", "classificata", "coppe", "trofei", "profilo",
+        "tag", "club", "classifica", "mappa", "mappe", "meta", "build",
+        "gadget", "stellare", "abilità stellare", "equipaggiamento", "gear",
+        "overdrive", "hypercharge", "brawler", "counter", "composizione",
+        "generazioni", "grafico", "andamento"
+    )
+    if any(term in structured_q for term in structured_terms):
+        await send_mode_aware_text(
+            message,
+            context,
+            "Non ho riconosciuto questa richiesta come comando Sens GPT. "
+            "Non la passo a Gemini per evitare risposte generiche o dati inventati. "
+            "Riformula la richiesta oppure scrivi 'comandi'."
+        )
+        return
+
     meta_chart_match=re.fullmatch(r"(?:grafico|andamento)\\s+(?:meta\\s+)?(?:di\\s+)?(.+?)(?:\\s+(win rate|utilizzo|pick rate|star rate))?",question.strip(),re.I)
     if meta_chart_match and any(x in question.casefold() for x in ("meta","win rate","utilizzo","pick rate","star rate")):
         target=meta_chart_match.group(1).strip()
