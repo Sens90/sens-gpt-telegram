@@ -1833,7 +1833,30 @@ class CommunityFeatures:
             await message.reply_text(body)
             return True
 
-        auto_pick_q = re.fullmatch(r"(?:pick|scelto|prende)\\s+(.+)", q, re.I)
+        # Once the turn order is known, a plain Brawler name means the current turn's pick.
+        # This matches the guided flow: the bot says whose turn it is, so users can answer simply "Edgar".
+        plain_pick_q = None
+        if draft_state and draft_state.get("draft_format") == "turn_pick" and draft_state.get("first_pick") in ("my","enemy") and len(draft_state.get("bans") or []) >= 6:
+            try:
+                catalog_rows=self._get("brawlers_catalog",{"select":"name_en,name_it"}) or []
+            except Exception as exc:
+                LOG.warning("DRAFT pick catalog unavailable: %s", type(exc).__name__)
+                catalog_rows=[]
+            wanted_pick=re.sub(r"[^a-z0-9]+"," ",q.casefold()).strip()
+            for row in catalog_rows:
+                en=str(row.get("name_en") or "").strip()
+                it=str(row.get("name_it") or en).strip()
+                aliases={re.sub(r"[^a-z0-9]+"," ",x.casefold()).strip() for x in (en,it) if x}
+                if wanted_pick in aliases:
+                    plain_pick_q=it or en
+                    break
+            if wanted_pick=="mr p": plain_pick_q="Mr. P"
+            elif wanted_pick=="grey": plain_pick_q="Gray"
+            elif wanted_pick=="pocho": plain_pick_q="Poco"
+
+        auto_pick_q = re.fullmatch(r"(?:pick|scelto|prende)\s+(.+)", q, re.I)
+        if plain_pick_q and not auto_pick_q:
+            auto_pick_q = re.fullmatch(r"(.+)", plain_pick_q)
         if draft_state and auto_pick_q and draft_state.get("draft_format") == "turn_pick":
             if draft_state.get("first_pick") not in ("my","enemy"):
                 await message.reply_text("Prima indica chi ha il primo pick: primo pick nostro oppure primo pick avversario.")
