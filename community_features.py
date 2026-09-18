@@ -1021,6 +1021,13 @@ class CommunityFeatures:
             await message.reply_text(FAQ_TEXT)
             return True
 
+        counter_match = re.fullmatch(r"(?:counter(?:\s+di)?|chi\s+countera)\s+(.+)", q, re.I)
+        if counter_match:
+            response = self.brawler_counter_text(counter_match.group(1))
+            if response:
+                await message.reply_text(response)
+                return True
+
         if ql in ("sito", "website", "web", "titaniabusivi.it"):
             await message.reply_text(
                 "Sito ufficiale della community:\n"
