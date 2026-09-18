@@ -149,6 +149,39 @@ def brawltrack_pro_map_stats(map_name,ttl=300):
     except Exception as error:
         LOG.warning("LIVE_MAPS BrawlTrack pro unavailable map=%s error=%s",map_name,type(error).__name__);return None
 
+def brawltrack_brawler_counter_evidence(brawler_name,ttl=300):
+    """BrawlTrack-first counter evidence.
+
+    BrawlTrack's public brawler pages expose meta/build/teammate statistics but
+    currently do not expose a brawler-vs-brawler counter matrix. Do not infer
+    counters from tier rank, teammate WR, or the map TEAM-vs-TEAM matrix.
+    Return only explicitly published matchup evidence when it becomes available.
+    """
+    from urllib.parse import quote
+    clean=str(brawler_name or "").strip()
+    if not clean:return []
+    url=f"https://brawltrack.app/pro/brawlers/{quote(clean.upper(),safe='')}"
+    key="btcounter:"+url;cached=_CACHE.get(key)
+    if cached and time.monotonic()-cached[0]<ttl:return cached[1]
+    try:
+        from bs4 import BeautifulSoup
+        response=requests.get(url,headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"text/html"},timeout=15)
+        response.raise_for_status()
+        soup=BeautifulSoup(response.text,"html.parser")
+        text=soup.get_text(" ",strip=True)
+        # Guardrail: BrawlTrack's current "PRO MATCHUP MATRIX" on map pages is
+        # team-vs-team, not brawler-vs-brawler. We only parse a future explicit
+        # brawler counter/matchup section, never manufacture one from win rates.
+        heading=re.search(r"(?:BRAWLER\s+MATCHUPS|COUNTERS|COUNTER\s+MATCHUPS)",text,re.I)
+        result=[]
+        if heading:
+            LOG.info("BRAWLTRACK counter section detected for %s; parser requires verified schema",clean)
+        _CACHE[key]=(time.monotonic(),result)
+        return result
+    except Exception as error:
+        LOG.warning("BRAWLTRACK counter evidence unavailable brawler=%s error=%s",clean,type(error).__name__)
+        return []
+
 def event_time(value):
     """Parse Supercell event timestamps with or without fractional seconds."""
     if not isinstance(value,str):return None
