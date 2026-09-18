@@ -3226,7 +3226,14 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         brawltrack_meta_context = get_brawltrack_meta_context(question_for_ai)
         deterministic_meta = render_structured_brawler_meta(brawltrack_meta_context)
         if deterministic_meta:
-            await message.reply_text(deterministic_meta)
+            # Structured meta replies must obey the same per-request
+            # text / voice / text+voice rule as normal AI replies.
+            await send_mode_aware_text(
+                message,
+                context,
+                deterministic_meta,
+                disable_web_page_preview=True,
+            )
             return
         if brawltrack_meta_context:
             web_context = brawltrack_meta_context + "\n\n" + web_context
