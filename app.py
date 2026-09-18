@@ -2670,6 +2670,15 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ""
         ).strip()
 
+    # Deterministic Skin Account shortcut: personal collection queries must
+    # never fall through to the generic AI response.
+    skin_q = re.sub(r"[^a-z0-9à-ÿ ]+", " ", question.casefold())
+    skin_q = re.sub(r"\\s+", " ", skin_q).strip()
+    if skin_q in {"quante skin ho", "quante skin possiedo", "skin", "skin ho", "skin possiedo"}:
+        skin_answer = community.skin_account_text(registered_user)
+        await message.reply_text(skin_answer)
+        return
+
     if await handle_premium_command(
         message, context, question, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
     ):
