@@ -2551,11 +2551,27 @@ def secondary_live_map_stats(event):
 
 async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
-    if message:
-        context.user_data["_request_voice_mode"] = request_voice_mode(message.text)
-
     if not message or not message.text:
         return
+
+    # Explicit mode on the current request always wins. Otherwise, replying
+    # directly to a voice/audio message sent by Sens GPT inherits voice mode.
+    explicit_mode = request_voice_mode(message.text)
+    has_explicit_mode = bool(re.search(
+        r"\\brispondi\\s+(?:a\\s+voce|(?:a\\s+)?testo|testo\\s*(?:\\+|e)?\\s*voce|voce\\s*(?:\\+|e)\\s*testo)\\s*$",
+        message.text.strip().casefold(),
+    ))
+    replied = message.reply_to_message
+    reply_to_bot_voice = bool(
+        replied
+        and replied.from_user
+        and replied.from_user.id == context.bot.id
+        and (replied.voice is not None or replied.audio is not None)
+    )
+    context.user_data["_request_voice_mode"] = (
+        explicit_mode if has_explicit_mode
+        else ("voice" if reply_to_bot_voice else "text")
+    )
 
     community.track_activity(message)
 
