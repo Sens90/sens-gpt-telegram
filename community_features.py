@@ -1493,7 +1493,7 @@ class CommunityFeatures:
             me = context.user_data.get("_registered_user") or {}
             current = me.get("ranked_current")
             current_text = str(current) if current not in (None, "Non classificato", "Unranked") else "non disponibile"
-            await message.reply_text(f"Mappa: {identity.get('map_it') or identity.get('map_en')}.\\nRanked attuale: {current_text}.\\nScrivi 'usa il mio ranked' oppure indica il Ranked da simulare, per esempio 'Mito I'.")
+            await message.reply_text(f"Mappa: {identity.get('map_it') or identity.get('map_en')}.\nRanked attuale: {current_text}.\nScrivi 'usa il mio ranked' oppure indica il Ranked da simulare, per esempio 'Mito I' o 'Mito 2'.")
             return True
         if setup.get("stage") == "rank":
             rank_aliases_setup = {
@@ -1505,6 +1505,14 @@ class CommunityFeatures:
                 "leggendario i":"Leggendario I","leggendario ii":"Leggendario II","leggendario iii":"Leggendario III",
                 "maestro":"Maestro",
             }
+            rank_aliases_setup.update({
+                "bronzo 1":"Bronzo I","bronzo 2":"Bronzo II","bronzo 3":"Bronzo III",
+                "argento 1":"Argento I","argento 2":"Argento II","argento 3":"Argento III",
+                "oro 1":"Oro I","oro 2":"Oro II","oro 3":"Oro III",
+                "diamante 1":"Diamante I","diamante 2":"Diamante II","diamante 3":"Diamante III",
+                "mito 1":"Mito I","mito 2":"Mito II","mito 3":"Mito III",
+                "leggendario 1":"Leggendario I","leggendario 2":"Leggendario II","leggendario 3":"Leggendario III",
+            })
             raw_rank = re.sub(r"\s+", " ", q.casefold()).strip()
             me = context.user_data.get("_registered_user") or {}
             if raw_rank in ("usa il mio ranked","mio ranked","ranked attuale","usa ranked attuale"):
