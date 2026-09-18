@@ -2572,6 +2572,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_photo(chat_id=message.chat_id,photo=chart,caption=f"Andamento trofei - {club_name or 'COMMUNITY ABUSIVI'}\nPeriodo: ultimi {days} giorni\nGiocatori inclusi: {included}")
         return
 
+    if re.fullmatch(r"(?:quante\\s+)?generazion(?:e|i)(?:\\s+(?:ai|profilo ai))?(?:\\s+(?:mi\\s+)?(?:rimangono|rimaste|restano|restanti))?", question.strip(), re.I) or re.fullmatch(r"(?:quante\\s+)?generazion(?:e|i)\\s+(?:ho|mi restano|mi rimangono)", question.strip(), re.I):
+        await handle_premium_command(message, context, "generazioni", SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        return
+
     profile_image_match = re.fullmatch(
         r"(?:profilo ai|profilo grafico|immagine profilo|profile image)(?:\s+(sorprendimi|brawl|cinematic|pixar|epico|fantascienza|fantasy))?\s*#?([0289PYLQGRJCUV]{3,15})(?:\s+(?:con\s+)?(.+?))?(?:\s+ambientazione\s+(.+))?",
         question.strip(), re.I
