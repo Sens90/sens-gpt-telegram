@@ -36,7 +36,7 @@ CLASSIFICHE COMMUNITY
 - classifica 3v3
 - classifica solo
 - classifica duo
-- classifica classificata / classifica ranked — Classificata attuale
+- classifica classificata / classifica ranked — Classificata attuale\n- classifica ranked oggi / 7 / 15 / 30 — variazione ELO nel periodo
 - classifica classificata stagione / classifica ranked stagione — record stagione
 - classifica classificata carriera / classifica ranked carriera — record carriera
 - statistiche / tutte le classifiche — riepilogo statistiche
@@ -328,6 +328,114 @@ class CommunityFeatures:
             reverse=True,
         )
         return rows
+
+    def ranked_history_rows(self, player_tag, days=10):
+        """Read chronological Ranked ELO history for one registered player."""
+        if not self.ready:
+            return []
+        tag = str(player_tag or "").upper().replace("#", "").strip()
+        since = (datetime.now(timezone.utc) - timedelta(days=max(days + 2, 10))).isoformat()
+        try:
+            rows = self._request(
+                "GET", "ranked_history",
+                params={
+                    "player_tag": f"eq.{tag}",
+                    "ranked_current_elo": "not.is.null",
+                    "recorded_at": f"gte.{since}",
+                    "select": "ranked_current_elo,recorded_at",
+                    "order": "recorded_at.asc",
+                    "limit": "5000",
+                },
+            )
+            return rows or []
+        except Exception as exc:
+            print("ERRORE LETTURA STORICO ELO:", repr(exc), flush=True)
+            return []
+
+    @staticmethod
+    def _ranked_elo_at_or_before(history, target):
+        selected = None
+        for row in history:
+            try:
+                dt = datetime.fromisoformat(str(row["recorded_at"]).replace("Z", "+00:00"))
+                if dt <= target:
+                    selected = int(row["ranked_current_elo"])
+                else:
+                    break
+            except Exception:
+                continue
+        return selected
+
+    def ranked_elo_ranking(self, chat_id, days=0, club_name=None):
+        """Rank registered players by Ranked ELO movement, parallel to trophy history."""
+        now = datetime.now(timezone.utc)
+        start_today = now.astimezone(ROME).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ).astimezone(timezone.utc)
+        target = start_today if days == 0 else now - timedelta(days=days)
+        rows = []
+        for member in self.members(chat_id):
+            tag = member.get("player_tag")
+            if not tag:
+                continue
+            player = self.player_fetcher(tag)
+            if not player:
+                continue
+            actual_club = self._club_name_from_player(player)
+            if club_name and (actual_club or "").casefold() != club_name.casefold():
+                continue
+            current = player.get("ranked_current_elo")
+            if current is None:
+                current = member.get("ranked_current_elo")
+            try:
+                current = int(current)
+            except (TypeError, ValueError):
+                continue
+            history = self.ranked_history_rows(tag, days)
+            baseline = self._ranked_elo_at_or_before(history, target)
+            if days == 0 and baseline is None:
+                for row in history:
+                    try:
+                        dt = datetime.fromisoformat(str(row["recorded_at"]).replace("Z", "+00:00"))
+                        if dt >= start_today:
+                            baseline = int(row["ranked_current_elo"])
+                            break
+                    except Exception:
+                        continue
+            delta = current - baseline if baseline is not None else None
+            rows.append({
+                "name": player.get("name") or member.get("player_name") or member.get("display_name") or tag,
+                "tag": tag,
+                "current": current,
+                "delta": delta,
+                "rank": player.get("ranked_current") or member.get("ranked_current"),
+            })
+        rows.sort(key=lambda x: (
+            x["delta"] is not None,
+            x["delta"] if x["delta"] is not None else 0,
+            x["current"],
+        ), reverse=True)
+        return rows
+
+    def ranked_elo_ranking_text(self, chat_id, days=0, club_name=None):
+        rows = self.ranked_elo_ranking(chat_id, days, club_name)
+        scope = club_name or "COMMUNITY"
+        period = "OGGI" if days == 0 else f"{days} GIORNI"
+        if not rows:
+            return f"Nessun ELO Classificata disponibile per {scope}."
+        lines = [f"CLASSIFICA {scope} - ELO CLASSIFICATA {period}", ""]
+        for index, row in enumerate(rows[:60], 1):
+            delta = row["delta"]
+            delta_text = (
+                ("+" if delta > 0 else "") + self.number_formatter(delta)
+                if delta is not None else "storico non ancora disponibile"
+            )
+            rank = f" - {row['rank']}" if row.get("rank") else ""
+            lines.append(
+                f"{index}. {row['name']} - {self.number_formatter(row['current'])} ELO"
+                f"{rank} ({delta_text})"
+            )
+        return "\n".join(lines)
 
     CLUB_ALIASES = {
         "titani": "TITANI ABUSIVI", "titani abusivi": "TITANI ABUSIVI",
@@ -903,6 +1011,18 @@ class CommunityFeatures:
         if re.search(r"\bclassific(?:a|he)\b",ql) and "3v3" in ql:
             club_name=next((v for k,v in self.CLUB_ALIASES.items() if k in ql),None)
             await message.reply_text(self.stat_ranking_text(message.chat_id, "3v3", club_name)); return True
+        ranked_delta = re.fullmatch(
+            r"classific(?:a|he)(?:\\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?))?\\s+(?:elo\\s+)?(?:ranked|classificata)(?:\\s+(oggi|7|15|30)(?:\\s+giorni)?)?",
+            q, re.I,
+        )
+        if ranked_delta:
+            club_key = ranked_delta.group(1)
+            club_name = self.CLUB_ALIASES.get(club_key.lower()) if club_key else None
+            period = ranked_delta.group(2) or "oggi"
+            days = 0 if period.lower() == "oggi" else int(period)
+            await message.reply_text(self.ranked_elo_ranking_text(message.chat_id, days, club_name))
+            return True
+
         if re.search(r"\bclassific(?:a|he)\b", ql) and re.search(r"\b(?:classificata|ranked)\b", ql):
             club_name=next((v for k,v in self.CLUB_ALIASES.items() if k in ql),None)
             stat_key="classificata carriera" if "carriera" in ql else ("classificata stagione" if "stagione" in ql else "classificata")
