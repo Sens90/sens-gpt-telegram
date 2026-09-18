@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import requests
+from live_maps import safe_get, localized, brawltrack_pro_map_stats
 
 ROME = ZoneInfo("Europe/Rome")
 
@@ -151,43 +152,66 @@ class CommunityFeatures:
     def _now_iso(self):
         return datetime.now(timezone.utc).isoformat()
 
-    def draft_map_advice_text(self, map_name):
-        """Fast cached Ranked draft opener using verified map/meta rows."""
-        wanted=str(map_name or "").strip()
+    def _draft_identity(self, raw_name, raw_mode=None):
+        """Resolve Italian/English map and mode names to one canonical identity."""
+        wanted=str(raw_name or "").strip().casefold()
+        wanted_mode=str(raw_mode or "").strip().casefold()
         if not wanted:return None
-        try:
-            # Prefer exact localized/English map identity already cached by the bot.
-            rows=self._get("brawltrack_meta_cache", {"select":"*", "limit":"500"})
-            folded=wanted.casefold()
-            candidates=[]
-            for row in rows or []:
-                blob=str(row).casefold()
-                if folded in blob:candidates.append(row)
-            if not candidates:
-                return f"Non ho ancora dati verificati per la mappa {wanted}."
-            # Avoid guessing a schema: surface only data explicitly labelled as picks/bans
-            # in the cached payload. The live draft state is kept in Telegram user_data.
-            row=candidates[0]
-            payload=row.get("payload") if isinstance(row.get("payload"),dict) else row
-            picks=payload.get("priority_picks") or payload.get("top_picks") or payload.get("best_picks") or []
-            bans=payload.get("recommended_bans") or payload.get("bans") or []
-            def labels(items,limit):
-                out=[]
-                for item in items if isinstance(items,list) else []:
-                    if isinstance(item,dict): name=item.get("name_it") or item.get("brawler") or item.get("name")
-                    else:name=item
-                    if name and str(name).casefold() not in {str(x).casefold() for x in out}:out.append(str(name))
-                    if len(out)>=limit:break
-                return out
-            p=labels(picks,5);b=labels(bans,5)
-            if not p and not b:
-                return f"Ho riconosciuto {wanted}, ma la cache Draft non contiene ancora ban/pick verificati per questa mappa."
-            lines=[f"RANKED - {wanted.upper()}",""]
-            if b:lines+=["Ban consigliati: "+", ".join(b)]
-            if p:lines+=["Migliori pick: "+", ".join(p)]
-            return "\n".join(lines)
-        except Exception as exc:
-            print("ERRORE DRAFT MAPPA:",repr(exc),flush=True);return None
+        names=safe_get("i18n/names.it.json.gz") or {}
+        rotation=safe_get("event_rotation.json.gz") or []
+        mode_aliases={
+            "gem grab":"Gem Grab","arraffagemme":"Gem Grab",
+            "brawl ball":"Brawl Ball","footbrawl":"Brawl Ball",
+            "hot zone":"Hot Zone","zona rovente":"Hot Zone",
+            "bounty":"Bounty","ricercati":"Bounty",
+            "heist":"Heist","rapina":"Heist",
+            "knockout":"Knockout","k.o.":"Knockout","ko":"Knockout",
+            "wipeout":"Wipeout","annientamento":"Wipeout",
+        }
+        for event in rotation if isinstance(rotation,list) else []:
+            en=str(event.get("event_map") or event.get("map") or "").strip()
+            if not en:continue
+            it=localized(names,"maps",en)
+            if wanted not in {en.casefold(),str(it).casefold()}:continue
+            raw_event_mode=str(event.get("event_mode") or event.get("mode") or "")
+            en_mode=mode_aliases.get(raw_event_mode.casefold(), raw_event_mode)
+            it_mode=localized(names,"modes",en_mode)
+            accepted={raw_event_mode.casefold(),str(en_mode).casefold(),str(it_mode).casefold()}
+            accepted.update(k for k,v in mode_aliases.items() if v.casefold()==str(en_mode).casefold())
+            if wanted_mode and wanted_mode not in accepted:return None
+            stats=brawltrack_pro_map_stats(en) or {}
+            return {"map_en":en,"map_it":it,"map_id":stats.get("map_id"),"mode_en":en_mode,"mode_it":it_mode}
+        return None
+
+    def draft_map_advice_text(self, map_name, rank_name=None, mode=None):
+        """Fast Ranked draft opener using canonical IT/EN identity and verified competitive map data."""
+        identity=self._draft_identity(map_name,mode)
+        if not identity:return None
+        stats=brawltrack_pro_map_stats(identity["map_en"]) or {}
+        picks=stats.get("priority_picks") or stats.get("picks") or []
+        avoid=stats.get("avoid") or stats.get("avoid_these") or []
+        catalog=self._get("brawlers_catalog",{"select":"name,name_it"})
+        it_by_en={str(x.get("name") or "").casefold():str(x.get("name_it") or x.get("name") or "") for x in catalog or []}
+        def local_brawler(value):
+            return it_by_en.get(str(value or "").casefold(),str(value or "").title())
+        pick_names=[]
+        for item in picks if isinstance(picks,list) else []:
+            name=item.get("brawler") if isinstance(item,dict) else item
+            if name and local_brawler(name) not in pick_names:pick_names.append(local_brawler(name))
+            if len(pick_names)>=5:break
+        avoid_names=[]
+        for item in avoid if isinstance(avoid,list) else []:
+            name=item.get("brawler") if isinstance(item,dict) else item
+            if name and local_brawler(name) not in avoid_names:avoid_names.append(local_brawler(name))
+            if len(avoid_names)>=5:break
+        title=f'RANKED - {identity["map_it"].upper()}'
+        lines=[title,f'Modalità: {identity["mode_it"]}']
+        if rank_name:lines.append(f'Fascia Ranked: {rank_name}')
+        if avoid_names:lines.append("Ban/evita: "+", ".join(avoid_names))
+        if pick_names:lines.append("Migliori pick: "+", ".join(pick_names))
+        if not avoid_names and not pick_names:
+            lines.append("La mappa è riconosciuta, ma non ho ancora pick/ban verificati da mostrare.")
+        return "\n".join(lines)
 
     def brawler_counter_text(self, brawler_name, mode=None, map_name=None):
         """Return verified counter data stored server-side; never invent matchups."""
@@ -1109,11 +1133,10 @@ class CommunityFeatures:
                         rank_name=me[0].get("ranked_current")
                 except Exception as exc:
                     print("ERRORE RANK DRAFT UTENTE:",repr(exc),flush=True)
-            response = self.draft_map_advice_text(map_name)
+            response = self.draft_map_advice_text(map_name, rank_name=rank_name)
             if response:
-                context.user_data["ranked_draft"] = {"map": map_name, "rank": rank_name, "my_picks": [], "enemy_picks": [], "bans": []}
-                if rank_name:
-                    response += f"\nFascia Ranked: {rank_name}"
+                identity=self._draft_identity(map_name)
+                context.user_data["ranked_draft"] = {"map": identity.get("map_en") if identity else map_name, "map_it": identity.get("map_it") if identity else map_name, "map_id": identity.get("map_id") if identity else None, "mode": identity.get("mode_en") if identity else None, "mode_it": identity.get("mode_it") if identity else None, "rank": rank_name, "my_picks": [], "enemy_picks": [], "bans": []}
                 await message.reply_text(response)
                 return True
 
