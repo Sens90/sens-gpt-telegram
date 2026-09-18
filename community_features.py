@@ -1508,7 +1508,7 @@ class CommunityFeatures:
 
         setup = context.user_data.get("ranked_draft_setup") or {}
         if setup.get("stage") == "map":
-            combined = re.fullmatch(r"(.+?)\s+(bronzo|argento|oro|diamante|mito|leggendario)\s+(i{1,3}|[1-3])$", q, re.I)
+            combined_q = re.sub(r"\\bmiti(?=\\s+(?:i{1,3}|[1-3])\\b)", "mito", q, flags=re.I)\n            combined_q = re.sub(r"\\bdiamnte(?=\\s+(?:i{1,3}|[1-3])\\b)", "diamante", combined_q, flags=re.I)\n            combined_q = re.sub(r"\\bleggendrio(?=\\s+(?:i{1,3}|[1-3])\\b)", "leggendario", combined_q, flags=re.I)\n            combined = re.fullmatch(r"(.+?)\\s+(bronzo|argento|oro|diamante|mito|leggendario)\\s+(i{1,3}|[1-3])$", combined_q, re.I)
             pending_rank = None
             map_query = q
             if combined:
@@ -1549,7 +1549,7 @@ class CommunityFeatures:
                 "mito 1":"Mito I","mito 2":"Mito II","mito 3":"Mito III",
                 "leggendario 1":"Leggendario I","leggendario 2":"Leggendario II","leggendario 3":"Leggendario III",
             })
-            raw_rank = re.sub(r"\s+", " ", q.casefold()).strip()
+            raw_rank = re.sub(r"\\s+", " ", q.casefold()).strip()\n            raw_rank = re.sub(r"^miti(?=\\s)", "mito", raw_rank)\n            raw_rank = re.sub(r"^diamnte(?=\\s)", "diamante", raw_rank)\n            raw_rank = re.sub(r"^legg(?:end)?rio(?=\\s)", "leggendario", raw_rank)
             me = context.user_data.get("_registered_user") or {}
             if raw_rank in ("usa il mio ranked","mio ranked","ranked attuale","usa ranked attuale"):
                 rank_name = me.get("ranked_current")
