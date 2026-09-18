@@ -1554,6 +1554,31 @@ class CommunityFeatures:
             await message.reply_text("Ordine pick impostato. "+self._draft_next_turn_text(draft_state))
             return True
 
+        auto_ban_q = re.fullmatch(r"(?:ban|banna|bannato)\\s+(.+)", q, re.I)
+        if draft_state and auto_ban_q:
+            draft_format=draft_state.get("draft_format")
+            if draft_format == "all_pick":
+                await message.reply_text("In questa fascia Ranked non è prevista la fase ban.")
+                return True
+            bans=draft_state.setdefault("bans",[])
+            if len(bans) >= 6:
+                await message.reply_text("I 6 ban della Draft sono già completi.")
+                return True
+            brawler=auto_ban_q.group(1).strip()
+            if any(str(x).casefold() == brawler.casefold() for x in bans):
+                await message.reply_text(f"{brawler} è già presente nei ban.")
+                return True
+            bans.append(brawler)
+            context.user_data["ranked_draft"]=draft_state
+            body=f"Ban registrato: {brawler}. Ban {len(bans)}/6."
+            if len(bans) == 6:
+                if draft_format == "turn_pick":
+                    body+="\\nBan completati. "+self._draft_next_turn_text(draft_state)
+                else:
+                    body+="\\nBan completati. Puoi procedere con le selezioni."
+            await message.reply_text(body)
+            return True
+
         auto_pick_q = re.fullmatch(r"(?:pick|scelto|prende)\\s+(.+)", q, re.I)
         if draft_state and auto_pick_q and draft_state.get("draft_format") == "turn_pick":
             if draft_state.get("first_pick") not in ("my","enemy"):
@@ -1589,6 +1614,20 @@ class CommunityFeatures:
             q, re.I,
         )
         if draft_actions and draft_state:
+            if any(action[3] for action in draft_actions):
+                draft_format=draft_state.get("draft_format")
+                if draft_format == "all_pick":
+                    await message.reply_text("In questa fascia Ranked non è prevista la fase ban.")
+                    return True
+                current_bans=draft_state.setdefault("bans",[])
+                incoming=[action[3].strip() for action in draft_actions if action[3]]
+                room=max(0,6-len(current_bans))
+                if not room:
+                    await message.reply_text("I 6 ban della Draft sono già completi.")
+                    return True
+                if len(incoming) > room:
+                    await message.reply_text(f"Puoi registrare ancora solo {room} ban: il totale massimo è 6.")
+                    return True
             mine=[]; enemy=[]; bans=[]
             for action in draft_actions:
                 if action[1]: mine.append(action[1].strip())
