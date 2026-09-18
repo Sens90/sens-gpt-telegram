@@ -23,3 +23,5 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python skin_master_sync.py
+      - name: Confirm sync
+        run: echo "Skin catalog sync completed"
