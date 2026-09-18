@@ -1149,28 +1149,17 @@ class CommunityFeatures:
                     map_name=raw[:-len(alias)].strip()
                     break
             if not rank_name:
-                try:
-                    # In private chat the Telegram chat_id is not the community chat_id.
-                    # Resolve the registered account by Telegram user id and use its live-tracked ELO/rank.
-                    me=self._get("community_members",{
-                        "select":"ranked_current,ranked_current_elo,player_last_updated_at",
-                        "telegram_user_id":f"eq.{int(message.from_user.id)}",
-                        "is_active":"eq.true",
-                        "player_tag":"not.is.null",
-                        "order":"player_last_updated_at.desc.nullslast",
-                        "limit":"1",
-                    })
-                    if me:
-                        current=me[0].get("ranked_current")
-                        elo=me[0].get("ranked_current_elo")
-                        if current not in (None,"Non classificato","Unranked"):
-                            rank_name=current
-                            try:
-                                context.user_data["ranked_draft_elo"]=int(elo) if elo is not None else None
-                            except (TypeError,ValueError):
-                                context.user_data["ranked_draft_elo"]=None
-                except Exception as exc:
-                    print("ERRORE RANK DRAFT UTENTE:",repr(exc),flush=True)
+                # answer() resolves the registered Telegram identity once per request.
+                # Reuse it here instead of performing a second community_members query.
+                me=context.user_data.get("_registered_user") or {}
+                current=me.get("ranked_current")
+                elo=me.get("ranked_current_elo")
+                if current not in (None,"Non classificato","Unranked"):
+                    rank_name=current
+                    try:
+                        context.user_data["ranked_draft_elo"]=int(elo) if elo is not None else None
+                    except (TypeError,ValueError):
+                        context.user_data["ranked_draft_elo"]=None
             response = self.draft_map_advice_text(map_name, rank_name=rank_name)
             if response:
                 identity=self._draft_identity(map_name)
