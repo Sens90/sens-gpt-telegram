@@ -2103,6 +2103,13 @@ def save_player_tracking(player):
             ).raise_for_status()
 
         member_update = {key: value for key, value in ranked_fields.items() if value is not None}
+        # A monthly reset can legitimately make current Ranked unavailable.
+        # In that case clear the stale previous-season ELO instead of preserving it.
+        if str(player.get("ranked_current") or "").casefold() == "non classificato":
+            member_update["ranked_current"] = "Non classificato"
+            member_update["ranked_current_elo"] = None
+            member_update["ranked_season_peak"] = "Non classificato"
+            member_update["ranked_season_peak_elo"] = None
         if player.get("ranked_career_peak"):
             member_update["ranked_peak"] = player["ranked_career_peak"]
         member_update["player_name"] = player.get("name")
