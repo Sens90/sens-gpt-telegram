@@ -182,6 +182,10 @@ class CommunityFeatures:
         # Then add every map in the complete Ranked dataset. Its key is the canonical
         # analyzer map id; resolve the English name from i18n instead of guessing.
         map_names=names.get("maps",{}) if isinstance(names,dict) else {}
+        # i18n keys are stored in the source's canonical casing. Resolve both
+        # English and Italian names case-insensitively; localized() alone can
+        # otherwise return the English name when the key casing differs.
+        map_it_by_en={str(k).casefold():str(v) for k,v in map_names.items() if v}
         it_to_en={str(v).casefold():str(k) for k,v in map_names.items() if v}
         for key in ranked_catalog.keys() if isinstance(ranked_catalog,dict) else []:
             key_text=str(key)
@@ -195,8 +199,11 @@ class CommunityFeatures:
             if en and not any(x[0].casefold()==en.casefold() for x in candidates):
                 candidates.append((en,"",key_text))
         for en,raw_event_mode,canonical_key in candidates:
-            it=localized(names,"maps",en)
-            if wanted not in {en.casefold(),str(it).casefold()}:continue
+            it=map_it_by_en.get(en.casefold()) or localized(names,"maps",en)
+            # Also use the reverse localization table directly so a valid
+            # Italian map name cannot escape the guided Draft state.
+            matched_en=it_to_en.get(wanted)
+            if wanted not in {en.casefold(),str(it).casefold()} and not (matched_en and matched_en.casefold()==en.casefold()):continue
             en_mode=mode_aliases.get(raw_event_mode.casefold(), raw_event_mode)
             it_mode=localized(names,"modes",en_mode) if en_mode else ""
             accepted={raw_event_mode.casefold(),str(en_mode).casefold(),str(it_mode).casefold()}-{""}
