@@ -58,14 +58,40 @@ def _parse_builds(raw):
 
 def _parse_modes(raw):
     if not raw:return []
-    # BrawlTrack renders each mode as a label followed by its percentage.
-    # Keep only known game-mode labels so surrounding section copy cannot be
-    # mistaken for a mode when the page layout changes.
-    known=("Brawl Ball","Gem Grab","Hot Zone","Heist","Knockout","Bounty","Wipeout","Showdown","Duo Showdown","Brawl Arena","Brawl Hockey","Basket Brawl","Duels")
+    # Match the complete BrawlTrack label immediately before the percentage.
+    # Longer variants are protected explicitly so e.g. Wipeout cannot steal
+    # Trio Wipeout/Wipeout 5v5 and Showdown cannot steal Solo/Duo/Trio.
+    aliases=(
+      ("Brawl Ball",("Brawl Ball",)),
+      ("Gem Grab",("Gem Grab",)),
+      ("Hot Zone",("Hot Zone",)),
+      ("Heist",("Heist",)),
+      ("Knockout",("Knockout",)),
+      ("Bounty",("Bounty",)),
+      ("Wipeout",("Wipeout",)),
+      ("Solo Showdown",("Solo Showdown","Showdown")),
+      ("Duo Showdown",("Duo Showdown",)),
+      ("Brawl Arena",("Brawl Arena",)),
+      ("Brawl Hockey",("Brawl Hockey",)),
+      ("Basket Brawl",("Basket Brawl",)),
+      ("Duels",("Duels",)),
+    )
+    variants=("Trio Wipeout","Wipeout 5v5","Trio Showdown","Duo Showdown","Solo Showdown",
+              "Loaded Showdown","Brawl Ball 2v2","Brawl Ball 5v5","Gem Grab 2v2","Gem Grab 5v5",
+              "Hot Zone 2v2","Knockout 2v2","Knockout 5v5","Brawl Hockey 2v2","Basket Brawl 2v2")
+    blocked="|".join(re.escape(x) for x in sorted(variants,key=len,reverse=True))
     out=[]
-    for mode in known:
-        m=re.search(r"(?<![A-Za-z])"+re.escape(mode)+r"\s+(\d+(?:\.\d+)?)\s*%",raw,re.I)
-        if m: out.append({"mode":mode,"win_rate":float(m.group(1))})
+    for canonical,names in aliases:
+        hit=None
+        for label in names:
+            pat=r"(?<![A-Za-z])"+re.escape(label)+r"\s+(\d+(?:\.\d+)?)\s*%"
+            for m in re.finditer(pat,raw,re.I):
+                prefix=raw[max(0,m.start()-40):m.start()+len(label)]
+                if any(re.search(re.escape(v)+r"$",prefix,re.I) for v in variants if v.casefold()!=label.casefold()):
+                    continue
+                hit=m;break
+            if hit:break
+        if hit: out.append({"mode":canonical,"win_rate":float(hit.group(1))})
     return out
 
 def _parse_maps(raw):
