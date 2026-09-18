@@ -379,6 +379,74 @@ class CommunityFeatures:
             return "Brawl Pass"
         return "Senza rarità"
 
+    def _resolve_skin_brawler_name(self, value):
+        wanted = self._skin_key(value)
+        try:
+            catalog = self._get("brawlers_catalog", {"select": "name,name_it"})
+            for row in catalog or []:
+                if wanted in (self._skin_key(row.get("name")), self._skin_key(row.get("name_it"))):
+                    return str(row.get("name") or row.get("name_it") or value)
+        except Exception as exc:
+            print("ERRORE RISOLUZIONE BRAWLER SKIN:", repr(exc), flush=True)
+        return str(value or "").strip()
+
+    def _brawlvalue_skin_image(self, brawler_name, skin_name):
+        try:
+            from bs4 import BeautifulSoup
+            slug = re.sub(r"[^a-z0-9]+", "-", str(brawler_name or "").casefold()).strip("-")
+            if not slug:
+                return None
+            response = requests.get(f"https://brawlvalue.com/en/skins/{slug}", timeout=12, headers={"User-Agent": "Mozilla/5.0"})
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+            wanted = self._skin_key(skin_name)
+            for img in soup.find_all("img"):
+                alt = str(img.get("alt") or "")
+                alt_key = self._skin_key(re.sub(r"\\s*-\\s*[^-]*skin\\s*$", "", alt, flags=re.I))
+                if alt_key != wanted:
+                    continue
+                src = img.get("src") or img.get("data-src") or img.get("data-lazy-src")
+                if not src:
+                    continue
+                if src.startswith("//"):
+                    src = "https:" + src
+                elif src.startswith("/"):
+                    src = "https://brawlvalue.com" + src
+                if src.startswith(("https://", "http://")):
+                    return src
+        except Exception as exc:
+            print("ERRORE IMMAGINE BRAWL VALUE:", repr(exc), flush=True)
+        return None
+
+    async def send_skin_image(self, message, brawler_name, skin_name):
+        try:
+            canonical_brawler = self._resolve_skin_brawler_name(brawler_name)
+            rows = self._get("skins_catalog", {
+                "select": "external_id,name_en,name_it,brawler_name",
+                "verification_status": "eq.structured_verified",
+                "brawler_name": f"eq.{canonical_brawler}",
+                "external_id": "not.in.(29001472,29001473,29001831,29001832,29001833,29001834,29001835,29001836)",
+            })
+            wanted = self._skin_key(skin_name)
+            matches = [r for r in rows or [] if wanted in (self._skin_key(r.get("name_it")), self._skin_key(r.get("name_en")))]
+            if len(matches) != 1:
+                return "Non trovo una corrispondenza univoca per questa skin."
+            row = matches[0]
+            image_url = self._brawlvalue_skin_image(canonical_brawler, row.get("name_en") or row.get("name_it"))
+            if not image_url:
+                return "Ho trovato la skin nel catalogo, ma Brawl Value non mi ha restituito un'immagine verificabile."
+            image = requests.get(image_url, timeout=12, headers={"User-Agent": "Mozilla/5.0"})
+            image.raise_for_status()
+            if not str(image.headers.get("Content-Type") or "").lower().startswith("image/"):
+                return "L'immagine trovata non è valida."
+            if len(image.content) > 10 * 1024 * 1024:
+                return "L'immagine della skin è troppo grande per essere inviata."
+            await message.reply_photo(photo=image.content, caption=str(row.get("name_it") or row.get("name_en") or skin_name))
+            return True
+        except Exception as exc:
+            print("ERRORE INVIO SKIN IMAGE:", repr(exc), flush=True)
+            return "Non riesco a recuperare l'immagine della skin in questo momento."
+
     def skin_account_text(self, registered_user, brawler_name=None, rarity=None, category=None):
         if not registered_user or not registered_user.get("player_tag"):
             return "Devi prima registrare il tuo tag Brawl Stars."
@@ -408,7 +476,8 @@ class CommunityFeatures:
             # Never count the default Brawler appearance: it is absent from our canonical skin catalog.
             rows = list(catalog)
             if brawler_name:
-                wanted = self._skin_key(brawler_name)
+                canonical_brawler = self._resolve_skin_brawler_name(brawler_name)
+                wanted = self._skin_key(canonical_brawler)
                 matches = [r for r in rows if self._skin_key(r.get("brawler_name")) == wanted]
                 if not matches:
                     return f"Non trovo il Brawler {brawler_name} nel catalogo skin."
@@ -1276,6 +1345,17 @@ class CommunityFeatures:
         registered = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
 
         # Skin Account: totals, rarity/category queries and per-Brawler collection details.
+        # Skin image is fetched only on explicit request and after exact catalogue validation.
+        skin_image_q = re.fullmatch(
+            r"(?:mostrami|fammi\\s+vedere|immagine(?:\\s+di)?|foto(?:\\s+di)?)\\s+(?:la\\s+skin\\s+)?(.+?)\\s+(?:di|del|della)\\s+(.+)",
+            q_skin, re.I,
+        )
+        if skin_image_q:
+            result = await self.send_skin_image(message, skin_image_q.group(2).strip(), skin_image_q.group(1).strip())
+            if result is not True:
+                await message.reply_text(result)
+            return True
+
         skin_all_q = re.fullmatch(r"(?:quante\s+)?skin(?:\s+(?:ho|possiedo))?", q_skin, re.I)
         skin_brawler_q = re.fullmatch(r"(?:quante\s+)?skin(?:\s+(?:ho|possiedo))?\s+(?:di|del|della)\s+(.+)", q_skin, re.I)
         skin_brawler_alt_q = re.fullmatch(r"quante\s+skin\s+ha\s+(.+)", q_skin, re.I)
