@@ -379,7 +379,7 @@ class CommunityFeatures:
             return "Brawl Pass"
         return "Speciali"
 
-    def skin_account_text(self, registered_user, brawler_name=None, rarity=None):
+    def skin_account_text(self, registered_user, brawler_name=None, rarity=None, category=None):
         if not registered_user or not registered_user.get("player_tag"):
             return "Devi prima registrare il tuo tag Brawl Stars."
         try:
@@ -416,12 +416,22 @@ class CommunityFeatures:
             if rarity:
                 wanted_rarity = self._skin_key(rarity)
                 rows = [r for r in rows if self._skin_key(r.get("rarity")) == wanted_rarity]
+            if category:
+                wanted_category = self._skin_key(category)
+                rows = [r for r in rows if self._skin_key(self._skin_category_label(r)) == wanted_category]
             for row in rows:
                 row["_owned"] = int(row.get("external_id")) in owned_ids if row.get("external_id") is not None else False
             owned = [r for r in rows if r["_owned"]]
             if not brawler_name:
-                if rarity:
-                    return f"SKIN ACCOUNT\n{rarity.title()}: {len(owned)}/{len(rows)}"
+                if rarity or category:
+                    label = category or rarity.title()
+                    missing = [r for r in rows if not r["_owned"]]
+                    lines = [f"SKIN ACCOUNT — {label}", f"Possedute: {len(owned)}/{len(rows)}", f"Mancanti: {len(missing)}"]
+                    if owned:
+                        lines.append("Nomi possedute: " + ", ".join(str(r.get("name_it") or r.get("name_en")) for r in owned))
+                    if missing:
+                        lines.append("Nomi mancanti: " + ", ".join(str(r.get("name_it") or r.get("name_en")) for r in missing))
+                    return "\n".join(lines)
                 breakdown = {}
                 for row in rows:
                     key = self._skin_category_label(row)
@@ -431,7 +441,7 @@ class CommunityFeatures:
                 lines = [f"SKIN ACCOUNT\nTotale: {len(owned)}/{len(rows)}", ""]
                 for key in sorted(breakdown):
                     have,total = breakdown[key]
-                    lines.append(f"{key}: {have}/{total}")
+                    lines.append(f"{key}: {have}/{total} — mancanti {total-have}")
                 return "\n".join(lines)
             title = str(rows[0].get("brawler_name") or brawler_name).upper()
             lines = [f"{title} — SKIN ACCOUNT", f"Totale: {len(owned)}/{len(rows)}"]
@@ -1262,17 +1272,56 @@ class CommunityFeatures:
         return "\n".join(lines)
 
     async def handle_command(self, message, context, question):
-        skin_q = re.fullmatch(r"(?:quante\s+)?skin(?:\s+(?:ho|possiedo))?(?:\s+(?:di|del|della)\s+(.+?))?", question.strip(), re.I)
-        missing_q = re.fullmatch(r"(?:quali\s+)?skin\s+(?:di|del|della)\s+(.+?)\s+(?:mi\s+)?mancano", question.strip(), re.I)
-        rarity_q = re.fullmatch(r"(?:quante\s+)?skin\s+(rare|super rare|epiche|mitiche|leggendarie|ipercharge|collector)(?:\s+(?:ho|possiedo))?", question.strip(), re.I)
-        if missing_q or skin_q or rarity_q:
-            registered = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
-            if rarity_q:
-                rarity_map={"rare":"RARE","super rare":"SUPER RARE","epiche":"EPIC","mitiche":"MYTHIC","leggendarie":"LEGENDARY","ipercharge":"HYPERCHARGE","collector":"COLLECTORS"}
-                answer=self.skin_account_text(registered, rarity=rarity_map[rarity_q.group(1).lower()])
-            else:
-                target=(missing_q.group(1) if missing_q else skin_q.group(1)) if (missing_q or skin_q) else None
-                answer=self.skin_account_text(registered, brawler_name=target)
+        q_skin = question.strip()
+        registered = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
+
+        # Skin Account: totals, rarity/category queries and per-Brawler collection details.
+        skin_all_q = re.fullmatch(r"(?:quante\s+)?skin(?:\s+(?:ho|possiedo))?", q_skin, re.I)
+        skin_brawler_q = re.fullmatch(r"(?:quante\s+)?skin(?:\s+(?:ho|possiedo))?\s+(?:di|del|della)\s+(.+)", q_skin, re.I)
+        skin_brawler_alt_q = re.fullmatch(r"quante\s+skin\s+ha\s+(.+)", q_skin, re.I)
+        missing_brawler_q = re.fullmatch(r"(?:quali\s+)?skin\s+(?:di|del|della)\s+(.+?)\s+(?:mi\s+)?mancano", q_skin, re.I)
+        owned_brawler_q = re.fullmatch(r"(?:quali\s+)?skin\s+(?:di|del|della)\s+(.+?)\s+(?:ho|possiedo)", q_skin, re.I)
+        account_brawler_q = re.fullmatch(r"(?:fammi\s+)?skin\s+account\s+(?:di\s+)?(.+)", q_skin, re.I)
+        rarity_brawler_q = re.fullmatch(
+            r"(?:quante\s+)?skin\s+(rare|super\s+rare|epiche|mitiche|leggendarie|(?:skin\s+)?overdrive|ipercharge|collezione|collector|pass\s+pro|brawl\s+pass|argento|oro(?:\s+24\s+carati)?|speciali)\s+(?:ha|di|del|della)\s+(.+)",
+            q_skin, re.I,
+        )
+        rarity_q = re.fullmatch(
+            r"(?:quante\s+)?skin\s+(rare|super\s+rare|epiche|mitiche|leggendarie|(?:skin\s+)?overdrive|ipercharge|collezione|collector|pass\s+pro|brawl\s+pass|argento|oro(?:\s+24\s+carati)?|speciali)(?:\s+(?:ho|possiedo|mi\s+mancano))?",
+            q_skin, re.I,
+        )
+        rarity_aliases = {
+            "rare":"Rare", "super rare":"Super rare", "epiche":"Epiche", "mitiche":"Mitiche",
+            "leggendarie":"Leggendarie", "overdrive":"Skin Overdrive", "skin overdrive":"Skin Overdrive",
+            "ipercharge":"Skin Overdrive", "collezione":"Collezione", "collector":"Collezione",
+            "pass pro":"Pass Pro", "brawl pass":"Brawl Pass", "argento":"Argento",
+            "oro":"Oro 24 carati", "oro 24 carati":"Oro 24 carati", "speciali":"Speciali",
+        }
+        if rarity_brawler_q:
+            answer=self.skin_account_text(
+                registered,
+                brawler_name=rarity_brawler_q.group(2).strip(),
+                category=rarity_aliases[re.sub(r"\s+", " ", rarity_brawler_q.group(1).lower()).strip()],
+            )
+        elif rarity_q:
+            answer=self.skin_account_text(
+                registered,
+                category=rarity_aliases[re.sub(r"\s+", " ", rarity_q.group(1).lower()).strip()],
+            )
+        elif missing_brawler_q or owned_brawler_q or account_brawler_q or skin_brawler_q or skin_brawler_alt_q:
+            target = (
+                missing_brawler_q.group(1) if missing_brawler_q else
+                owned_brawler_q.group(1) if owned_brawler_q else
+                account_brawler_q.group(1) if account_brawler_q else
+                skin_brawler_q.group(1) if skin_brawler_q else
+                skin_brawler_alt_q.group(1)
+            )
+            answer=self.skin_account_text(registered, brawler_name=target.strip())
+        elif skin_all_q:
+            answer=self.skin_account_text(registered)
+        else:
+            answer=None
+        if answer is not None:
             await message.reply_text(answer)
             return True
 
