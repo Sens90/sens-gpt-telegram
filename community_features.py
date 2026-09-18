@@ -1125,20 +1125,31 @@ class CommunityFeatures:
                     break
             if not rank_name:
                 try:
+                    # In private chat the Telegram chat_id is not the community chat_id.
+                    # Resolve the registered account by Telegram user id and use its live-tracked ELO/rank.
                     me=self._get("community_members",{
-                        "select":"ranked_current",
-                        "chat_id":f"eq.{int(message.chat_id)}",
+                        "select":"ranked_current,ranked_current_elo,player_last_updated_at",
                         "telegram_user_id":f"eq.{int(message.from_user.id)}",
+                        "is_active":"eq.true",
+                        "player_tag":"not.is.null",
+                        "order":"player_last_updated_at.desc.nullslast",
                         "limit":"1",
                     })
-                    if me and me[0].get("ranked_current") not in (None,"Non classificato","Unranked"):
-                        rank_name=me[0].get("ranked_current")
+                    if me:
+                        current=me[0].get("ranked_current")
+                        elo=me[0].get("ranked_current_elo")
+                        if current not in (None,"Non classificato","Unranked"):
+                            rank_name=current
+                            try:
+                                context.user_data["ranked_draft_elo"]=int(elo) if elo is not None else None
+                            except (TypeError,ValueError):
+                                context.user_data["ranked_draft_elo"]=None
                 except Exception as exc:
                     print("ERRORE RANK DRAFT UTENTE:",repr(exc),flush=True)
             response = self.draft_map_advice_text(map_name, rank_name=rank_name)
             if response:
                 identity=self._draft_identity(map_name)
-                context.user_data["ranked_draft"] = {"map": identity.get("map_en") if identity else map_name, "map_it": identity.get("map_it") if identity else map_name, "map_id": identity.get("map_id") if identity else None, "mode": identity.get("mode_en") if identity else None, "mode_it": identity.get("mode_it") if identity else None, "rank": rank_name, "my_picks": [], "enemy_picks": [], "bans": []}
+                context.user_data["ranked_draft"] = {"map": identity.get("map_en") if identity else map_name, "map_it": identity.get("map_it") if identity else map_name, "map_id": identity.get("map_id") if identity else None, "mode": identity.get("mode_en") if identity else None, "mode_it": identity.get("mode_it") if identity else None, "rank": rank_name, "elo": context.user_data.pop("ranked_draft_elo", None), "my_picks": [], "enemy_picks": [], "bans": []}
                 await message.reply_text(response)
                 return True
 
