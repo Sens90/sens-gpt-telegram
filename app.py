@@ -1526,7 +1526,10 @@ def get_brawltrack_meta_context(question):
         response.raise_for_status(); rows=response.json(); selected=[]
         for row in rows:
             name=str(row.get("brawler_name") or "").strip()
-            if name and re.search(r"(?<![a-z0-9])"+re.escape(name.casefold())+r"(?![a-z0-9])",q): selected.append(row)
+            # Accept both the canonical source name and the official Italian in-game name.
+            aliases={name.casefold(),str(brawler_name_it(name) or "").strip().casefold()}
+            aliases.discard("")
+            if any(re.search(r"(?<![a-z0-9])"+re.escape(alias)+r"(?![a-z0-9])",q) for alias in aliases): selected.append(row)
         if not selected and any(term in q for term in ("meta","tier list","tierlist","miglior brawler","migliori brawler")): selected=rows
         if not selected: return ""
         payload=[]
@@ -1617,7 +1620,7 @@ def render_structured_brawler_meta(context_text):
     try:
         rows=json.loads(context_text[len(prefix):])
         if not isinstance(rows,list) or len(rows)!=1:return None
-        row=rows[0]; builds=row.get("popular_builds") or []
+        row=rows[0]; row["brawler"]=brawler_name_it(row.get("brawler")); builds=row.get("popular_builds") or []
         if not builds:return None
         build=builds[0]; lines=["I nostri sistemi abusivi hanno tirato fuori i dati freschi per "+str(row.get("brawler") or "")+".",""]
         rate=build.get("use_rate")
