@@ -2582,6 +2582,16 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     community.track_activity(message)
 
+    # Private Sens GPT is reserved to active community members who already
+    # linked a Brawl Stars tag in the community. Registration remains a group flow.
+    if getattr(message.chat, "type", None) == "private":
+        if not community.is_registered_private_user(message.from_user.id if message.from_user else None):
+            await message.reply_text(
+                "La chat privata di Sens GPT è riservata ai membri registrati della community. "
+                "Registrati prima nel gruppo TITANI ABUSIVI collegando il tuo tag Brawl Stars."
+            )
+            return
+
     bot_username = context.bot.username
 
     if not bot_username:
