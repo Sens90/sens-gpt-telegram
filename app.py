@@ -2391,6 +2391,35 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await community.handle_command(message, context, question):
         return
 
+    natural_chart_match = re.fullmatch(
+        r"(?:fammi\\s+vedere\\s+|mostrami\\s+|crea(?:mi)?\\s+|genera(?:mi)?\\s+)?(?:il\\s+)?(?:grafico|andamento)(?:\\s+(?:dei\\s+)?trofei)?\\s+(?:di\\s+)?(.+?)(?:\\s+(?:negli\\s+)?ultimi)?\\s+(7|15|30|90)\\s+giorni",
+        question.strip(), re.I
+    )
+    if natural_chart_match:
+        who=natural_chart_match.group(1).strip()
+        days=int(natural_chart_match.group(2))
+        normalized=re.sub(r"[^a-z0-9]+","",who.casefold())
+        member=None
+        for candidate in community.members(message.chat_id):
+            aliases=[candidate.get("player_name"),candidate.get("display_name"),candidate.get("telegram_username")]
+            if any(re.sub(r"[^a-z0-9]+","",str(x).casefold())==normalized for x in aliases if x):
+                member=candidate;break
+        if not member or not member.get("player_tag"):
+            await message.reply_text("Non trovo un giocatore registrato con questo nome.")
+            return
+        player=get_brawlzone_player(member["player_tag"])
+        if not player:
+            await message.reply_text("Giocatore non trovato.")
+            return
+        save_trophy_snapshot(player["tag"],player["name"],player["trophies"])
+        history=get_trophy_history(player["tag"],days=max(days,90))
+        chart=create_trophy_chart(player["tag"],player["name"],history,days=days)
+        if not chart:
+            await message.reply_text(f"Non ci sono ancora abbastanza dati per creare il grafico degli ultimi {days} giorni.")
+            return
+        await context.bot.send_photo(chat_id=message.chat_id,photo=chart,caption=f"Andamento trofei di {player['name']}\\nPeriodo: ultimi {days} giorni\\nTrofei attuali: {format_number_it(player['trophies'])}")
+        return
+
     chart_match = re.fullmatch(
         r"grafico(?:\s+(7|15|30|90))?\s+#?([0289PYLQGRJCUV]{3,15})",
         question.strip(),
