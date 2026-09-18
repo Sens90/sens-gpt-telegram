@@ -181,10 +181,25 @@ async def send_voice_reply(context, chat_id, text):
         return False
 
 
+def request_voice_mode(text):
+    """Per-request output mode. Default is text; explicit suffix/keyword overrides it."""
+    raw = (text or "").strip().casefold()
+    normalized = re.sub(r"\\s+", " ", raw)
+    # Most specific first: voce + testo / testo + voce / equivalent compact forms.
+    if re.search(r"(?:voce\\s*\\+\\s*testo|testo\\s*\\+\\s*voce|voce\\s+e\\s+testo|testo\\s+e\\s+voce)\\s*$", normalized):
+        return "both"
+    if re.search(r"(?:^|\\s)voce\\s*$", normalized):
+        return "voice"
+    if re.search(r"(?:^|\\s)testo\\s*$", normalized):
+        return "text"
+    return "text"
+
+
 async def send_mode_aware_text(message, context, text, disable_web_page_preview=True):
-    mode = await asyncio.to_thread(
-        get_voice_mode, message.chat_id, message.from_user.id
-    )
+    # Fundamental rule: every request starts in text mode unless that request
+    # explicitly asks for "voce" or "voce + testo". No persistent mode leaks
+    # into later requests.
+    mode = context.user_data.get("_request_voice_mode") or request_voice_mode(message.text)
     if mode in ("text", "both"):
         await context.bot.send_message(
             chat_id=message.chat_id,
@@ -2538,6 +2553,9 @@ def secondary_live_map_stats(event):
 
 async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
+    if message:
+        context.user_data["_request_voice_mode"] = request_voice_mode(message.text)
+    message = update.effective_message
 
     if not message or not message.text:
         return
@@ -3878,6 +3896,7 @@ async def transcribe_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await answer(update, context)
         finally:
             context.user_data.pop("_voice_input", None)
+            context.user_data.pop("_request_voice_mode", None)
             message.text = original_text
     except Exception as exc:
         print("VOICE STT ERRORE:", repr(exc), flush=True)
