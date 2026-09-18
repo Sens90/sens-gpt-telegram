@@ -2391,6 +2391,32 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await community.handle_command(message, context, question):
         return
 
+    meta_chart_match=re.fullmatch(r"(?:grafico|andamento)\\s+(?:meta\\s+)?(?:di\\s+)?(.+?)(?:\\s+(win rate|utilizzo|pick rate|star rate))?",question.strip(),re.I)
+    if meta_chart_match and any(x in question.casefold() for x in ("meta","win rate","utilizzo","pick rate","star rate")):
+        target=meta_chart_match.group(1).strip()
+        metric=(meta_chart_match.group(2) or "meta").casefold()
+        ctx=get_brawltrack_meta_context("meta "+target)
+        prefix="DATI META STRUTTURATI E LOCALIZZATI (PRIORITARI):\\n"
+        try:
+            rows=json.loads(ctx[len(prefix):]) if ctx.startswith(prefix) else []
+            if len(rows)!=1:raise ValueError("brawler")
+            row=rows[0]
+            labels=[];values=[]
+            if metric in ("win rate","meta"):
+                labels.append("Win rate");values.append(float(row.get("win_rate") or 0))
+            if metric in ("utilizzo","pick rate","meta"):
+                labels.append("Utilizzo");values.append(float(row.get("meta_usage") or 0))
+            if metric in ("star rate","meta"):
+                labels.append("Star rate");values.append(float(row.get("star_rate") or 0))
+            fig,ax=plt.subplots(figsize=(7,4.5));bars=ax.bar(labels,values);ax.set_ylabel("Percentuale (%)");ax.set_title("Meta - "+str(row.get("brawler") or target))
+            upper=max(values) if values else 0;ax.set_ylim(0,max(100,upper*1.2))
+            for bar,value in zip(bars,values):ax.text(bar.get_x()+bar.get_width()/2,bar.get_height()+max(1,upper*.02),f"{value:.2f}%",ha="center",va="bottom")
+            fig.tight_layout();image=io.BytesIO();fig.savefig(image,format="png",dpi=150);plt.close(fig);image.seek(0);image.name="meta_brawler.png"
+            await context.bot.send_photo(chat_id=message.chat_id,photo=image,caption=f"Meta di {row.get('brawler')}: dati aggiornati.")
+        except Exception as exc:
+            print("ERRORE GRAFICO META:",repr(exc),flush=True);await message.reply_text("Non riesco a creare il grafico meta per questo Brawler.")
+        return
+
     natural_chart_match = re.fullmatch(
         r"(?:fammi\\s+vedere\\s+|mostrami\\s+|crea(?:mi)?\\s+|genera(?:mi)?\\s+)?(?:il\\s+)?(?:grafico|andamento)(?:\\s+(?:dei\\s+)?trofei)?\\s+(?:di\\s+)?(.+?)(?:\\s+(?:negli\\s+)?ultimi)?\\s+(7|15|30|90)\\s+giorni",
         question.strip(), re.I
