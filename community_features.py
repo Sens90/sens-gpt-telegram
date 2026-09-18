@@ -1391,10 +1391,10 @@ class CommunityFeatures:
             )
             return True
 
-        match = re.fullmatch(r"(?:registrami|tegistrami)\s*#?([0289PYLQGRJCUV]{3,15})", q, re.I)
+        match = re.fullmatch(r"(?:registrami|tegistrami)\s*#?([A-Z0-9]{3,15})", q, re.I)
         if match:
             try:
-                player = self.register_member(message, match.group(1))
+                player = self.register_member(message, raw_tag)
                 if not player:
                     await message.reply_text("Non riesco a trovare quel giocatore. Controlla il tag.")
                 else:
