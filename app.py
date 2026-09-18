@@ -2606,10 +2606,14 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         and replied.from_user.id == context.bot.id
         and (replied.voice is not None or replied.audio is not None)
     )
-    context.user_data["_request_voice_mode"] = (
-        explicit_mode if has_explicit_mode
-        else ("voice" if reply_to_bot_voice else "text")
-    )
+    if has_explicit_mode:
+        context.user_data["_request_voice_mode"] = explicit_mode
+    elif reply_to_bot_voice:
+        context.user_data["_request_voice_mode"] = "voice"
+    else:
+        # Leave the request mode unset so send_mode_aware_text() can honor
+        # the persistent /voce preference instead of forcing text.
+        context.user_data.pop("_request_voice_mode", None)
 
     community.track_activity(message)
 
