@@ -27,6 +27,37 @@ def safe_get(path,ttl=300):
     try:return get_json(path,60 if path=="event_rotation.json.gz" else ttl)
     except Exception as error:LOG.warning("LIVE_MAPS source unavailable path=%s error=%s",path,type(error).__name__);return None
 
+SUPERcell_EVENTS="https://api.brawlstars.com/v1/events/rotation"
+
+def get_official_rotation(ttl=60):
+    """Official Supercell rotation. Returns None so callers can use the verified fallback."""
+    cached=_CACHE.get(SUPERcell_EVENTS)
+    if cached and time.monotonic()-cached[0]<ttl:return cached[1]
+    token=(os.environ.get("BRAWL_STARS_API_TOKEN") or os.environ.get("BRAWL_API_TOKEN") or "").strip()
+    if not token:
+        LOG.warning("LIVE_MAPS official rotation unavailable: API token not configured")
+        return None
+    try:
+        response=requests.get(SUPERcell_EVENTS,headers={"Authorization":f"Bearer {token}","Accept":"application/json","User-Agent":"SensGPT/1.0"},timeout=15)
+        response.raise_for_status();rows=response.json()
+        if not isinstance(rows,list):raise ValueError("unexpected official rotation payload")
+        _CACHE[SUPERcell_EVENTS]=(time.monotonic(),rows);return rows
+    except Exception as error:
+        LOG.warning("LIVE_MAPS official rotation unavailable error=%s",type(error).__name__);return None
+
+def normalize_official_events(rows):
+    """Normalize Supercell Event objects to the internal brawlanalyzer event shape."""
+    out=[]
+    for row in rows if isinstance(rows,list) else []:
+        event=row.get("event") if isinstance(row,dict) else None
+        if not isinstance(event,dict):continue
+        mode=str(event.get("mode") or "")
+        map_name=str(event.get("map") or "")
+        if not mode or not map_name:continue
+        key=re.sub(r"[^a-z0-9]+","_",map_name.casefold()).strip("_")
+        out.append({"start_time":row.get("startTime"),"end_time":row.get("endTime"),"event_mode":mode,"event_map":map_name,"event_map_id":key,"event_id":event.get("id"),"_official":True})
+    return out
+
 def event_time(value):
     try:return datetime.strptime(value,"%Y%m%dT%H%M%S.%fZ").replace(tzinfo=timezone.utc)
     except (TypeError,ValueError):return None
@@ -71,8 +102,20 @@ def row_text(row,names):
 def collect_report(dataset="both",now=None,fetch=safe_get,secondary=None):
     now=now or datetime.now(timezone.utc);paths=["event_rotation.json.gz","i18n/names.it.json.gz"]
     with ThreadPoolExecutor(max_workers=4) as pool:initial=dict(zip(paths,pool.map(fetch,paths)))
-    events=active_events(initial[paths[0]],now);names=initial[paths[1]] if isinstance(initial[paths[1]],dict) else {}
-    if not events:return {"now":now,"events":[],"names":names,"maps":[],"rotation_missing":True}
+    fallback_events=active_events(initial[paths[0]],now);names=initial[paths[1]] if isinstance(initial[paths[1]],dict) else {}
+    official=get_official_rotation();official_events=active_events(normalize_official_events(official),now) if official else []
+    # Supercell is authoritative for active event timing/rotation. The public analyzer manifest remains a safe fallback.
+    # Keep analyzer map IDs when map+mode match so existing BrawlTrack/stat datasets continue to join correctly.
+    if official_events:
+        fallback_by_name={(str(e.get("event_mode","")).casefold(),str(e.get("event_map","")).casefold()):e for e in fallback_events}
+        events=[]
+        for event in official_events:
+            match=fallback_by_name.get((str(event.get("event_mode","")).casefold(),str(event.get("event_map","")).casefold()))
+            if match:event["event_map_id"]=match.get("event_map_id",event["event_map_id"])
+            events.append(event)
+        rotation_source="Supercell"
+    else:events=fallback_events;rotation_source="brawlanalyzer fallback"
+    if not events:return {"now":now,"events":[],"names":names,"maps":[],"rotation_missing":True,"rotation_source":rotation_source}
     paths=[f"normal-results/{mode}.json.gz" for mode in sorted({e["event_mode"] for e in events})]
     if dataset!="ladder":paths.append("pl-results.json.gz")
     with ThreadPoolExecutor(max_workers=6) as pool:data=dict(zip(paths,pool.map(fetch,paths)))
@@ -84,7 +127,7 @@ def collect_report(dataset="both",now=None,fetch=safe_get,secondary=None):
             if (dataset=="ladder" and label!="Ladder") or (dataset=="ranked" and label!="Classificata"):continue
             sections={k:valid_rows(raw.get(k)) for k in SECTIONS};entry["datasets"].append({"label":label,"raw":raw,"sections":sections})
         maps.append(entry)
-    return {"now":now,"events":events,"names":names,"maps":maps,"rotation_missing":False}
+    return {"now":now,"events":events,"names":names,"maps":maps,"rotation_missing":False,"rotation_source":rotation_source}
 
 def render_report(report,limit=5):
     if report["rotation_missing"]:return "Non riesco a verificare gli orari della rotazione attiva."
