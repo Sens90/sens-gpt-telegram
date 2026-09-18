@@ -12,6 +12,7 @@ SUPABASE_KEY=os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVI
 TIMEOUT=float(os.getenv("SUPABASE_TIMEOUT","15"))
 PAGE_TIMEOUT=float(os.getenv("BRAWLTRACK_PAGE_TIMEOUT","15"))
 PAGE_DELAY=max(0.0,float(os.getenv("BRAWLTRACK_PAGE_DELAY","0.12")))
+UPSERT_BATCH=max(1,int(os.getenv("BRAWLTRACK_UPSERT_BATCH","12")))
 UA="SensGPT-TitaniAbusivi/1.0"
 
 def _num(row,*keys):
@@ -165,17 +166,27 @@ def _build_row(brawler_id,row,enrich=None):
       "rank_label":_first(merged,"rank","tier","rankLabel","rank_label"),"popular_builds":builds,"modes":modes,
       "source_url":enrich.get("page_url") or f"https://brawltrack.app/brawlers/{brawler_id}","source_payload":payload,"source_updated_at":now,"updated_at":now}
 
+def _upsert_rows(rows):
+    if not rows:return 0
+    r=requests.post(f"{SUPABASE_URL}/rest/v1/brawltrack_meta_cache?on_conflict=brawler_id",headers=_headers(),data=json.dumps(rows,ensure_ascii=False),timeout=max(TIMEOUT,30));r.raise_for_status()
+    return len(rows)
+
 def sync():
-    catalog=normalize_brawler_catalog(brawlers());known=_known_ids();rows=[];enriched=0;page_errors=0
+    catalog=normalize_brawler_catalog(brawlers());known=_known_ids();pending=[];cached=0;enriched=0;page_errors=0
     for brawler_id,row in catalog.items():
         if brawler_id not in known:continue
         extra={}
         try: extra=_page_enrichment(brawler_id); enriched+=1
         except Exception as exc: page_errors+=1; print("BRAWLTRACK PAGE ENRICH ERROR:",brawler_id,repr(exc),flush=True)
-        rows.append(_build_row(brawler_id,row,extra))
+        pending.append(_build_row(brawler_id,row,extra))
+        if len(pending)>=UPSERT_BATCH:
+            cached+=_upsert_rows(pending)
+            print("BRAWLTRACK META PROGRESS: cached=%s/%s enriched=%s errors=%s" % (cached,len(known),enriched,page_errors),flush=True)
+            pending=[]
         if PAGE_DELAY:time.sleep(PAGE_DELAY)
-    if rows:
-        r=requests.post(f"{SUPABASE_URL}/rest/v1/brawltrack_meta_cache?on_conflict=brawler_id",headers=_headers(),data=json.dumps(rows,ensure_ascii=False),timeout=max(TIMEOUT,30));r.raise_for_status()
-    return {"seen":len(catalog),"known":len(known),"cached":len(rows),"enriched":enriched,"page_errors":page_errors}
+    if pending:
+        cached+=_upsert_rows(pending)
+        print("BRAWLTRACK META PROGRESS: cached=%s/%s enriched=%s errors=%s" % (cached,len(known),enriched,page_errors),flush=True)
+    return {"seen":len(catalog),"known":len(known),"cached":cached,"enriched":enriched,"page_errors":page_errors}
 
 if __name__=="__main__": print(json.dumps(sync(),ensure_ascii=False))
