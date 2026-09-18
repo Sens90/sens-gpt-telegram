@@ -98,7 +98,8 @@ def _page_enrichment(brawler_id):
     build_raw=_section(text,"Popular Builds",("Best Teammates","Star Powers","Gadgets","Best Game Modes"))
     modes_raw=_section(text,"Best Game Modes",("Best Maps","Meta Performance Check","Trivia & Mechanics"))
     maps_raw=_section(text,"Best Maps",("Meta Performance Check","Trivia & Mechanics"))
-    builds={"source":"brawltrack_public_page","items":_parse_builds(build_raw),"raw_text":build_raw[:8000]}
+    hyper_raw=build_raw.split("Hypercharge",1)[1].strip() if "Hypercharge" in build_raw else ""
+    builds={"source":"brawltrack_public_page","items":_parse_builds(build_raw),"raw_text":build_raw[:8000],"hypercharge_raw":hyper_raw[:4000]}
     modes={"source":"brawltrack_public_page","items":_parse_modes(modes_raw),"maps":_parse_maps(maps_raw),"raw_text":modes_raw[:12000],"best_maps_raw_text":maps_raw[:12000]}
     return {"win_rate":pct("Win Rate"),"pick_rate":pct("Meta Usage"),"star_rate":pct("Star Rate"),"popular_builds":builds,"modes":modes,"page_url":url}
 
@@ -118,6 +119,7 @@ def _resolve_builds(brawler_id,builds):
     gadgets=_catalog_rows("gadgets_catalog",brawler_id)
     stars=_catalog_rows("star_powers_catalog",brawler_id)
     gears=_catalog_rows("gears_catalog")
+    hypers=_catalog_rows("hypercharges_catalog",brawler_id)
     candidates=[]
     for kind,rows,idkey in (("gadget",gadgets,"gadget_id"),("star_power",stars,"star_power_id"),("gear",gears,"gear_id")):
         for x in rows:
@@ -139,6 +141,17 @@ def _resolve_builds(brawler_id,builds):
         row=dict(item); row["components"]=parts; row["unmatched_raw"]=remaining or None
         resolved.append(row)
     out=dict(builds);out["items"]=resolved
+    hyper_raw=str(builds.get("hypercharge_raw") or "").strip()
+    hyper=None
+    for x in hypers:
+        name=str(x.get("name_en") or "").strip()
+        if name and hyper_raw.upper().startswith(name.upper()):
+            hyper={"id":x.get("hypercharge_id"),"type":"hypercharge","name_en":name,"name_it":x.get("name_it") or name,
+                   "description_en":x.get("description_en"),"description_it":x.get("description_it")}
+            break
+    # A source placeholder such as "Hypercharge ability information coming soon."
+    # must not be mistaken for a real ability.
+    out["hypercharge"]=hyper
     return out
 
 def _build_row(brawler_id,row,enrich=None):
