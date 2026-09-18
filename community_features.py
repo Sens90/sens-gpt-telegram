@@ -1761,11 +1761,100 @@ class CommunityFeatures:
 
         return False
 
+    def save_daily_skin_snapshots(self, snapshot_date=None):
+        """Save one monotonic daily Skin Account snapshot per active registered member."""
+        day = snapshot_date or datetime.now(timezone.utc).astimezone(ROME).date().isoformat()
+        members = self._get("community_members", {
+            "select": "id,player_tag",
+            "is_active": "eq.true",
+            "player_tag": "not.is.null",
+            "order": "id.asc",
+        })
+        catalog = []
+        offset = 0
+        while True:
+            page = self._get("skins_catalog", {
+                "select": "external_id,rarity,source_payload",
+                "verification_status": "eq.structured_verified",
+                "external_id": "not.in.(29001472,29001473,29001831,29001832,29001833,29001834,29001835,29001836)",
+                "limit": "1000",
+                "offset": str(offset),
+            })
+            catalog.extend(page)
+            if len(page) < 1000:
+                break
+            offset += 1000
+        totals = {"Totale": len(catalog)}
+        for row in catalog:
+            label = self._skin_category_label(row)
+            totals[label] = totals.get(label, 0) + 1
+        saved = 0
+        skipped = 0
+        for member in members or []:
+            member_id = int(member["id"])
+            existing = self._get("skin_account_history", {
+                "select": "id",
+                "community_member_id": f"eq.{member_id}",
+                "snapshot_date": f"eq.{day}",
+                "category": "eq.Totale",
+                "limit": "1",
+            })
+            if existing:
+                skipped += 1
+                continue
+            try:
+                owned_ids = self._official_owned_skin_ids(member["player_tag"])
+                current = {"Totale": 0}
+                for row in catalog:
+                    ext = row.get("external_id")
+                    if ext is None or int(ext) not in owned_ids:
+                        continue
+                    current["Totale"] += 1
+                    label = self._skin_category_label(row)
+                    current[label] = current.get(label, 0) + 1
+                previous_rows = self._get("skin_account_history", {
+                    "select": "category,owned_count",
+                    "community_member_id": f"eq.{member_id}",
+                    "snapshot_date": f"lt.{day}",
+                    "order": "snapshot_date.desc",
+                    "limit": "50",
+                })
+                previous = {}
+                for row in previous_rows or []:
+                    previous.setdefault(str(row.get("category")), int(row.get("owned_count") or 0))
+                payload = []
+                for category, total in totals.items():
+                    observed = int(current.get(category, 0))
+                    old = previous.get(category)
+                    # Owned skins are monotonic. A lower API observation is treated as incomplete.
+                    owned = max(observed, old) if old is not None else observed
+                    gained = max(0, owned - old) if old is not None else 0
+                    payload.append({
+                        "community_member_id": member_id,
+                        "player_tag": member["player_tag"],
+                        "snapshot_date": day,
+                        "category": category,
+                        "owned_count": owned,
+                        "total_count": max(int(total), owned),
+                        "gained_count": gained,
+                    })
+                self._post("skin_account_history", payload, params={"on_conflict": "community_member_id,snapshot_date,category"}, prefer="resolution=merge-duplicates,return=minimal")
+                saved += 1
+            except Exception as exc:
+                print(f"ERRORE SNAPSHOT SKIN MEMBER {member_id}:", repr(exc), flush=True)
+        print(f"SKIN DAILY SNAPSHOT: date={day} saved={saved} skipped={skipped}", flush=True)
+        return {"date": day, "saved": saved, "skipped": skipped}
+
     async def scheduled_jobs(self, context):
         if not self.ready:
             return
         now_utc = datetime.now(timezone.utc)
         now_rome = now_utc.astimezone(ROME)
+
+        try:
+            self.save_daily_skin_snapshots(now_rome.date().isoformat())
+        except Exception as exc:
+            print("ERRORE JOB SNAPSHOT SKIN:", repr(exc), flush=True)
 
         try:
             events = self._get(
