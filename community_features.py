@@ -3,7 +3,6 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import requests
-from live_maps import safe_get, localized, brawltrack_pro_map_stats
 
 ROME = ZoneInfo("Europe/Rome")
 
@@ -157,6 +156,8 @@ class CommunityFeatures:
         wanted=str(raw_name or "").strip().casefold()
         wanted_mode=str(raw_mode or "").strip().casefold()
         if not wanted:return None
+        # Lazy import avoids the existing live_maps -> community_features startup hook cycle.
+        from live_maps import safe_get, localized, brawltrack_pro_map_stats
         names=safe_get("i18n/names.it.json.gz") or {}
         rotation=safe_get("event_rotation.json.gz") or []
         mode_aliases={
@@ -187,6 +188,7 @@ class CommunityFeatures:
         """Fast Ranked draft opener using canonical IT/EN identity and verified competitive map data."""
         identity=self._draft_identity(map_name,mode)
         if not identity:return None
+        from live_maps import brawltrack_pro_map_stats
         stats=brawltrack_pro_map_stats(identity["map_en"]) or {}
         picks=stats.get("priority_picks") or stats.get("picks") or []
         avoid=stats.get("avoid") or stats.get("avoid_these") or []
