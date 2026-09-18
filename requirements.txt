@@ -6,3 +6,4 @@ requests
 matplotlib
 Pillow
 beautifulsoup4
+ormsgpack
