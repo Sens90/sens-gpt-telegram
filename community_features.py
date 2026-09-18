@@ -347,13 +347,19 @@ class CommunityFeatures:
         )
         response.raise_for_status()
         html = response.text
-        # BSInfo server-side pages expose cards as Image: NAME -> Own -> heading NAME.
+        # Never turn a blocked/loading/empty source into a fake 0-owned result.
+        if not re.search(r"Owned Skins\s*\d+", html, re.I) or not re.search(r"Missing Skins\s*\d+", html, re.I):
+            raise RuntimeError("BSInfo Skin Collection payload not available")
         owned_block = re.split(r"Missing Skins\s*\d*", html, maxsplit=1, flags=re.I)[0]
         names = set()
-        for name in re.findall(r"(?:Image:\s*|###\s*)([A-Z0-9][A-Z0-9 .:'&!+\-]+)", owned_block, re.I):
-            clean = re.sub(r"\s+", " ", name).strip()
-            if clean and clean.casefold() not in {"owned skins", "skin collection"}:
+        # The noscript representation exposes each owned card as:
+        # Image: SKIN NAME -> Own -> heading SKIN NAME.
+        for name in re.findall(r"Image:\s*([^<\r\n]+?)\s*(?:<[^>]+>\s*)*Own", owned_block, re.I):
+            clean = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", name)).strip()
+            if clean:
                 names.add(self._skin_key(clean))
+        if not names:
+            raise RuntimeError("BSInfo Skin Collection parsed without owned skins")
         return names
 
     def skin_account_text(self, registered_user, brawler_name=None, rarity=None):
