@@ -1528,16 +1528,18 @@ def get_brawltrack_meta_context(question):
         # the authoritative join key with BrawlTrack; names are aliases only for input.
         cat=requests.get(f"{SUPABASE_URL}/rest/v1/brawlers_catalog",headers={"apikey":SUPABASE_SERVICE_ROLE_KEY,"Authorization":f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"},params={"select":"brawler_id,name_en,name_it","limit":"200"},timeout=15)
         cat.raise_for_status(); catalog=cat.json()
-        aliases_by_id={}
+        # Official Italian localization is keyed by the canonical English Brawler
+        # name; Brawler ID remains the authoritative join key with BrawlTrack.
+        try: official_brawler_names=(safe_get("i18n/names.it.json.gz") or {}).get("brawlers",{})
+        except Exception: official_brawler_names={}
+        catalog_by_id={};aliases_by_id={}
         for b in catalog:
             bid=int(b.get("brawler_id")) if b.get("brawler_id") is not None else None
             if bid is None:continue
-            names={str(b.get("name_en") or "").strip(),str(b.get("name_it") or "").strip()}
-            # Temporary compatibility alias only when the verified catalogue has not yet
-            # been populated in Italian; never use it as the BrawlTrack join key.
-            en=str(b.get("name_en") or "").strip().title()
-            names.add(str(brawler_name_it(en) or "").strip())
-            aliases_by_id[bid]={x.casefold() for x in names if x}
+            en=str(b.get("name_en") or "").strip()
+            it=str(b.get("name_it") or "").strip() or str(official_brawler_names.get(en.upper()) or "").strip()
+            catalog_by_id[bid]={"name_en":en,"name_it":it}
+            aliases_by_id[bid]={x.casefold() for x in (en,it) if x}
         for row in rows:
             bid=int(row.get("brawler_id")) if row.get("brawler_id") is not None else None
             aliases=set(aliases_by_id.get(bid,set()))
@@ -1621,7 +1623,9 @@ def get_brawltrack_meta_context(question):
                     # Sample size is only the tie-breaker.
                     active_best=sorted(candidates,key=lambda x:(x["win_rate"],x["sample"]),reverse=True)[:3]
             except Exception as active_error: print("ACTIVE BRAWLER MAP ERROR:",repr(active_error),flush=True)
-            payload.append({"brawler":row.get("brawler_name"),"win_rate":row.get("win_rate"),"meta_usage":row.get("pick_rate"),"star_rate":row.get("star_rate"),"rank":row.get("rank_label"),"popular_builds":clean,"overdrive":({"name_it":hyper.get("name_it")} if hyper and hyper.get("name_it") else None),"recommended_active_map":active_best,"top_3_mode_maps":top_pairs,"top_3_maps":top_maps,"updated_at":row.get("source_updated_at")})
+            bid=int(row.get("brawler_id")) if row.get("brawler_id") is not None else None
+            display=(catalog_by_id.get(bid) or {}).get("name_it") or (catalog_by_id.get(bid) or {}).get("name_en") or row.get("brawler_name")
+            payload.append({"brawler":display,"win_rate":row.get("win_rate"),"meta_usage":row.get("pick_rate"),"star_rate":row.get("star_rate"),"rank":row.get("rank_label"),"popular_builds":clean,"overdrive":({"name_it":hyper.get("name_it")} if hyper and hyper.get("name_it") else None),"recommended_active_map":active_best,"top_3_mode_maps":top_pairs,"top_3_maps":top_maps,"updated_at":row.get("source_updated_at")})
         return "DATI META STRUTTURATI E LOCALIZZATI (PRIORITARI):\n"+json.dumps(payload,ensure_ascii=False,separators=(",",":"))
     except Exception as e:
         print("BRAWLTRACK META CONTEXT ERROR:",repr(e),flush=True); return ""
@@ -1634,7 +1638,7 @@ def render_structured_brawler_meta(context_text):
     try:
         rows=json.loads(context_text[len(prefix):])
         if not isinstance(rows,list) or len(rows)!=1:return None
-        row=rows[0]; row["brawler"]=brawler_name_it(row.get("brawler")); builds=row.get("popular_builds") or []
+        row=rows[0]; builds=row.get("popular_builds") or []
         if not builds:return None
         build=builds[0]; lines=["I nostri sistemi abusivi hanno tirato fuori i dati freschi per "+str(row.get("brawler") or "")+".",""]
         rate=build.get("use_rate")
