@@ -1,6 +1,6 @@
-import os, requests, collections, json
+import os, requests, json
 BASE="https://api.brawlapi.com"; UA={"User-Agent":"SensGPT-TitaniAbusivi/1.0"}
-SKIN_CDN="https://cdn.bsinfox.com/brawlers/skins"
+SKIN_CDN="https://cdn.bsinfox.com/brawlers/skins"\nEXCLUDED_SKIN_IDS={29001831,29001832,29001833,29001834,29001835,29001836}\ndef _is_player_skin(s):\n return bool(not s.get("Disabled") and s.get("TID") and not str(s.get("Conf") or s.get("Name") or "").startswith("MegaBoss") and int(s.get("id") or 0) not in EXCLUDED_SKIN_IDS)
 def _get(p):
  r=requests.get(BASE+p,headers=UA,timeout=30); r.raise_for_status(); return r.json()
 def build_verified_rows():
@@ -59,7 +59,7 @@ def sync_skin_images(url,key,external_ids):
   verified_ids.update(str(x.get("external_id")) for x in batch if x.get("external_id"))
   if len(batch)<page: break
   start += page
- pending=sorted(set(str(x) for x in external_ids if x)-verified_ids)
+ target_ids=set(str(x) for x in external_ids if x)\n pending=sorted(target_ids-verified_ids)
  verified=0; missing=[]
  for eid in pending:
   image_url=_verified_skin_image(eid)
@@ -67,7 +67,7 @@ def sync_skin_images(url,key,external_ids):
    missing.append(eid); continue
   payload={"image_url":image_url,"image_source":"BSInfo CDN","image_source_url":f"https://github.com/lot-xq/BSInfo-CDN/blob/main/brawlers/skins/{eid}.png","image_verified":True}
   r=requests.patch(url+f"/rest/v1/skins_catalog?external_id=eq.{eid}",headers=h,json=payload,timeout=30); r.raise_for_status(); verified += 1
- return {"verified":verified,"already_verified":len(verified_ids.intersection(set(str(x) for x in external_ids if x))),"checked":len(pending),"missing":missing}
+ return {"verified":verified,"already_verified":len(verified_ids.intersection(target_ids)),"checked":len(pending),"missing":missing}
 
 def inspect_skin_master():
  rows,unmapped=build_verified_rows(); return {"mapped":len(rows),"unmapped":len(unmapped),"sample":rows[:5]}
@@ -94,7 +94,7 @@ def inspect_unmapped_relations():
  conf_by_name={x.get("Name"):x for x in confs.values() if x.get("Name")}
  fields=set(); out=[]
  for s in skins.values():
-  if s.get("Disabled") or not s.get("TID"): continue
+  if _is_player_skin(s):\n   cf=conf_by_name.get(s.get("Conf") or s.get("Name"))\n   if cf and char_by_internal.get(str(cf.get("Character") or "").split(";")[0].strip()): continue\n   if cf: fields.update(cf.keys())\n   out.append({"skin_id":s.get("id"),"skin":s.get("Name"),"conf":s.get("Conf"),"skin_fields":{k:v for k,v in s.items() if v not in (None,"",0,False,[])}, "conf_fields":{k:v for k,v in (cf or {}).items() if v not in (None,"",0,False,[])}})\n   continue\n  # Keep excluded/internal rows visible only as a compact diagnostic category.\n  continue\n  
   cf=conf_by_name.get(s.get("Conf") or s.get("Name"))
   if cf and char_by_internal.get(str(cf.get("Character") or "").split(";")[0].strip()): continue
   if cf: fields.update(cf.keys())
