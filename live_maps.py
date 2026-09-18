@@ -58,6 +58,12 @@ def normalize_official_events(rows):
         out.append({"start_time":row.get("startTime"),"end_time":row.get("endTime"),"event_mode":mode,"event_map":map_name,"event_map_id":key,"event_id":event.get("id"),"_official":True})
     return out
 
+def brawltrack_pro_map_url(map_name):
+    """Stable BrawlTrack competitive-map URL; name is encoded by requests/web clients."""
+    from urllib.parse import quote
+    clean=str(map_name or "").strip()
+    return f"https://brawltrack.app/pro/maps/{quote(clean, safe='')}" if clean else None
+
 def event_time(value):
     try:return datetime.strptime(value,"%Y%m%dT%H%M%S.%fZ").replace(tzinfo=timezone.utc)
     except (TypeError,ValueError):return None
@@ -122,7 +128,7 @@ def collect_report(dataset="both",now=None,fetch=safe_get,secondary=None):
     data={key:value if isinstance(value,dict) else {} for key,value in data.items()};maps=[]
     for event in events:
         key=event["event_map_id"];normal=(data.get(f"normal-results/{event['event_mode']}.json.gz") or {}).get(key,{});ranked=(data.get("pl-results.json.gz") or {}).get(key,{})
-        normal=normal if isinstance(normal,dict) else {};ranked=ranked if isinstance(ranked,dict) else {};entry={"event":event,"datasets":[],"secondary":None}
+        normal=normal if isinstance(normal,dict) else {};ranked=ranked if isinstance(ranked,dict) else {};entry={"event":event,"datasets":[],"secondary":None,"brawltrack_pro_url":brawltrack_pro_map_url(event.get("event_map"))}
         for label,raw in (("Ladder",normal),("Classificata",ranked)):
             if (dataset=="ladder" and label!="Ladder") or (dataset=="ranked" and label!="Classificata"):continue
             sections={k:valid_rows(raw.get(k)) for k in SECTIONS};entry["datasets"].append({"label":label,"raw":raw,"sections":sections})
