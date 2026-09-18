@@ -227,7 +227,9 @@ class CommunityFeatures:
             if name and local_brawler(name) not in avoid_names:avoid_names.append(local_brawler(name))
             if len(avoid_names)>=5:break
         title=f'RANKED - {identity["map_it"].upper()}'
-        lines=[title,f'Modalità: {identity["mode_it"]}']
+        lines=[title]
+        if identity.get("mode_it"):
+            lines.append(f'Modalità: {identity["mode_it"]}')
         if rank_name:lines.append(f'Fascia Ranked: {rank_name}')
         if avoid_names:lines.append("Ban/evita: "+", ".join(avoid_names))
         if pick_names:lines.append("Migliori pick: "+", ".join(pick_names))
