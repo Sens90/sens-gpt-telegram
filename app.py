@@ -2417,6 +2417,42 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print("ERRORE GRAFICO META:",repr(exc),flush=True);await message.reply_text("Non riesco a creare il grafico meta per questo Brawler.")
         return
 
+    detail_chart_match=re.fullmatch(r"(?:grafico|andamento)\\s+(?:di\\s+)?(.+?)\\s+(mappe|modalità|modalita|build)",question.strip(),re.I)
+    if detail_chart_match:
+        target=detail_chart_match.group(1).strip();kind=detail_chart_match.group(2).casefold()
+        ctx=get_brawltrack_meta_context("meta "+target);prefix="DATI META STRUTTURATI E LOCALIZZATI (PRIORITARI):\\n"
+        try:
+            rows=json.loads(ctx[len(prefix):]) if ctx.startswith(prefix) else []
+            if len(rows)!=1:raise ValueError("brawler")
+            row=rows[0];labels=[];values=[];ylabel="Win rate (%)"
+            if kind=="mappe":
+                for item in row.get("recommended_active_map") or []:
+                    labels.append(str(item.get("map") or ""));values.append(float(item.get("win_rate") or 0))
+                if not labels:raise ValueError("maps")
+            elif kind in ("modalità","modalita"):
+                for item in row.get("top_3_mode_maps") or []:
+                    labels.append(str(item.get("mode") or ""));values.append(1)
+                ylabel="Classifica";values=list(range(len(labels),0,-1))
+                if not labels:raise ValueError("modes")
+            else:
+                ylabel="Utilizzo (%)"
+                for item in row.get("popular_builds") or []:
+                    rate=item.get("use_rate")
+                    if rate is None:continue
+                    comps=[str(x.get("name_it") or "") for x in item.get("components") or [] if x.get("name_it")]
+                    labels.append(" + ".join(comps) or "Build "+str(item.get("rank") or ""));values.append(float(rate))
+                if not labels:raise ValueError("builds")
+            fig,ax=plt.subplots(figsize=(8,4.8));bars=ax.bar(labels,values);ax.set_ylabel(ylabel);ax.set_title(str(row.get("brawler") or target)+" - "+kind.capitalize());ax.tick_params(axis="x",rotation=20)
+            upper=max(values) if values else 0
+            for bar,value in zip(bars,values):
+                suffix="%" if ylabel.endswith("(%)") else ""
+                ax.text(bar.get_x()+bar.get_width()/2,bar.get_height()+max(.05,upper*.02),f"{value:.2f}{suffix}" if suffix else str(int(value)),ha="center",va="bottom")
+            fig.tight_layout();image=io.BytesIO();fig.savefig(image,format="png",dpi=150);plt.close(fig);image.seek(0);image.name="dettaglio_meta_brawler.png"
+            await context.bot.send_photo(chat_id=message.chat_id,photo=image,caption=f"{kind.capitalize()} di {row.get('brawler')}: dati aggiornati.")
+        except Exception as exc:
+            print("ERRORE GRAFICO META DETTAGLIO:",repr(exc),flush=True);await message.reply_text("Non ci sono dati sufficienti per creare questo grafico.")
+        return
+
     natural_chart_match = re.fullmatch(
         r"(?:fammi\\s+vedere\\s+|mostrami\\s+|crea(?:mi)?\\s+|genera(?:mi)?\\s+)?(?:il\\s+)?(?:grafico|andamento)(?:\\s+(?:dei\\s+)?trofei)?\\s+(?:di\\s+)?(.+?)(?:\\s+(?:negli\\s+)?ultimi)?\\s+(7|15|30|90)\\s+giorni",
         question.strip(), re.I
