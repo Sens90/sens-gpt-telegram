@@ -347,7 +347,11 @@ class CommunityFeatures:
                     "limit": "5000",
                 },
             )
-            return rows or []
+            invalid = {"unranked", "unknown", "ranked unknown", "non classificato", "–", "-"}
+            return [
+                row for row in (rows or [])
+                if str(row.get("ranked_current") or "").strip().casefold() not in invalid
+            ]
         except Exception as exc:
             print("ERRORE LETTURA STORICO ELO:", repr(exc), flush=True)
             return []
@@ -412,6 +416,19 @@ class CommunityFeatures:
                 continue
             history = self.ranked_history_rows(tag, days)
             baseline = self._ranked_state_at_or_before(history, target)
+            # When the requested period crosses the monthly reset, the first
+            # valid snapshot of the new season is the baseline. Never compare
+            # against the previous season.
+            if requested_target < season_start:
+                baseline = None
+                for row in history:
+                    try:
+                        dt = datetime.fromisoformat(str(row["recorded_at"]).replace("Z", "+00:00"))
+                        if dt >= season_start:
+                            baseline = {"elo": int(row["ranked_current_elo"]), "rank": row.get("ranked_current")}
+                            break
+                    except Exception:
+                        continue
             if days == 0 and baseline is None:
                 for row in history:
                     try:
