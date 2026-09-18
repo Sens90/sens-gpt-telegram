@@ -2596,7 +2596,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # directly to a voice/audio message sent by Sens GPT inherits voice mode.
     explicit_mode = request_voice_mode(message.text)
     has_explicit_mode = bool(re.search(
-        r"\\brispondi\\s+(?:a\\s+voce|(?:a\\s+)?testo|testo\\s*(?:\\+|e)?\\s*voce|voce\\s*(?:\\+|e)\\s*testo)\\s*$",
+        r"\brispondi\s+(?:a\s+voce|(?:a\s+)?testo|testo\s*(?:\+|e)?\s*voce|voce\s*(?:\+|e)\s*testo)\s*$",
         message.text.strip().casefold(),
     ))
     replied = message.reply_to_message
