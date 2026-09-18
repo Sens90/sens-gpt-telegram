@@ -8,7 +8,7 @@ def build_verified_rows():
  # MegaBoss skin configurations are gameplay/internal variants, not player-selectable cosmetics.
  # Keep real Buddy/Buffie cosmetics: they are legitimate catalog entries even when their CDN
  # render has not been published yet.
- cosmetics=[x for x in skins.values() if not x.get("Disabled") and x.get("TID") and not str(x.get("Conf") or x.get("Name") or "").startswith("MegaBoss")]
+ cosmetics=[x for x in skins.values() if not x.get("Disabled") and x.get("TID")]
  char_by_internal={x.get("Name"):x for x in chars.values() if x.get("id") and x.get("Name") and x.get("ItemName")}
  conf_by_name={x.get("Name"):x for x in confs.values() if x.get("Name")}
  out=[]; unmapped=[]
