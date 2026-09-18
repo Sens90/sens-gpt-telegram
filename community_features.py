@@ -361,11 +361,22 @@ class CommunityFeatures:
         if not registered_user or not registered_user.get("player_tag"):
             return "Devi prima registrare il tuo tag Brawl Stars."
         try:
-            catalog = self._get("skins_catalog", {
-                "select": "external_id,name_en,name_it,rarity,brawler_name",
-                "verification_status": "eq.structured_verified",
-                "order": "brawler_name.asc,name_en.asc",
-            })
+            # PostgREST defaults to 1,000 rows. Fetch the complete verified catalogue in pages.
+            catalog = []
+            page_size = 1000
+            offset = 0
+            while True:
+                page = self._get("skins_catalog", {
+                    "select": "external_id,name_en,name_it,rarity,brawler_name",
+                    "verification_status": "eq.structured_verified",
+                    "order": "brawler_name.asc,name_en.asc",
+                    "limit": str(page_size),
+                    "offset": str(offset),
+                })
+                catalog.extend(page)
+                if len(page) < page_size:
+                    break
+                offset += page_size
             if not catalog:
                 return "Il catalogo skin non è disponibile in questo momento."
             owned_ids = self._official_owned_skin_ids(registered_user["player_tag"])
