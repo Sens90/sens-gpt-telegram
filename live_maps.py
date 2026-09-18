@@ -213,7 +213,8 @@ def collect_report(dataset="both",now=None,fetch=safe_get,secondary=None):
         rotation_source="Supercell"
     else:events=fallback_events;rotation_source="brawlanalyzer fallback"
     if not events:return {"now":now,"events":[],"names":names,"maps":[],"rotation_missing":True,"rotation_source":rotation_source}
-    mode_files={e["event_mode"]:analyzer_mode_file(e["event_mode"]) for e in events}\n    paths=[f"normal-results/{mode}.json.gz" for mode in sorted({m for m in mode_files.values() if m})]
+    mode_files={e["event_mode"]:analyzer_mode_file(e["event_mode"]) for e in events}
+    paths=[f"normal-results/{mode}.json.gz" for mode in sorted({m for m in mode_files.values() if m})]
     if dataset!="ladder":paths.append("pl-results.json.gz")
     with ThreadPoolExecutor(max_workers=6) as pool:data=dict(zip(paths,pool.map(fetch,paths)))
     data={key:value if isinstance(value,dict) else {} for key,value in data.items()};maps=[]
