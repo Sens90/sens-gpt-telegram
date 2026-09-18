@@ -1579,7 +1579,28 @@ def get_brawltrack_meta_context(question):
                 if len(top_pairs)>=3: break
             top_maps=sorted(best_maps,key=lambda m:(float(m.get("win_rate") or 0),int(m.get("battles") or 0)),reverse=True)[:3]
             top_maps=[{"map":loc_map(m.get("map")),"mode":loc_mode(m.get("mode"))} for m in top_maps]
-            payload.append({"brawler":row.get("brawler_name"),"win_rate":row.get("win_rate"),"meta_usage":row.get("pick_rate"),"star_rate":row.get("star_rate"),"rank":row.get("rank_label"),"popular_builds":clean,"overdrive":({"name_it":hyper.get("name_it")} if hyper and hyper.get("name_it") else None),"top_3_mode_maps":top_pairs,"top_3_maps":top_maps,"updated_at":row.get("source_updated_at")})
+            # Prefer the best currently active trophy map for this Brawler.
+            # Rotation comes from Supercell; performance comes from the active-map dataset.
+            active_best=None
+            try:
+                report=collect_report("ladder")
+                candidates=[]
+                for entry in (report.get("maps") or []):
+                    for data in (entry.get("datasets") or []):
+                        if data.get("label")!="Trofei":continue
+                        for section,items in (data.get("sections") or {}).items():
+                            if section not in ("individual","solo","duo_individual","trio_individual"):continue
+                            for stat in items:
+                                stat_name=str(stat.get("brawler",stat.get("brawler_name")) or "").strip()
+                                if stat_name.casefold()!=target:continue
+                                wr=stat.get("wr",stat.get("win_rate"))
+                                if wr is None:continue
+                                event=entry.get("event") or {}
+                                candidates.append({"mode":entry.get("mode_name_it") or event.get("event_mode"),"map":entry.get("map_name_it") or event.get("event_map"),"win_rate":float(wr),"sample":int(stat.get("tm",0) or 0)})
+                if candidates:
+                    active_best=max(candidates,key=lambda x:(x["win_rate"],x["sample"]))
+            except Exception as active_error: print("ACTIVE BRAWLER MAP ERROR:",repr(active_error),flush=True)
+            payload.append({"brawler":row.get("brawler_name"),"win_rate":row.get("win_rate"),"meta_usage":row.get("pick_rate"),"star_rate":row.get("star_rate"),"rank":row.get("rank_label"),"popular_builds":clean,"overdrive":({"name_it":hyper.get("name_it")} if hyper and hyper.get("name_it") else None),"recommended_active_map":active_best,"top_3_mode_maps":top_pairs,"top_3_maps":top_maps,"updated_at":row.get("source_updated_at")})
         return "DATI META STRUTTURATI E LOCALIZZATI (PRIORITARI):\n"+json.dumps(payload,ensure_ascii=False,separators=(",",":"))
     except Exception as e:
         print("BRAWLTRACK META CONTEXT ERROR:",repr(e),flush=True); return ""
@@ -1608,14 +1629,11 @@ def render_structured_brawler_meta(context_text):
         if gears:lines.append("- Equipaggiamenti: "+", ".join(gears))
         over=row.get("overdrive") or {}
         if over.get("name_it"):lines.append("- Overdrive: "+str(over["name_it"]))
-        pairs=row.get("top_3_mode_maps") or []
-        lines += ["","Top 3 modalità e mappe:"]
-        for idx,pair in enumerate(pairs[:3],1):
-            mode=str(pair.get("mode") or "").strip(); map_name=str(pair.get("map") or "").strip()
-            lines.append(f"{idx}. {mode}" + (f" — {map_name}" if map_name else ""))
-            comp=pair.get("verified_comp")
-            if isinstance(comp,list) and len(comp)==3:lines.append("   Comp: "+" + ".join(str(x) for x in comp))
-            else:lines.append("   Comp verificata: non disponibile")
+        active=row.get("recommended_active_map")
+        if isinstance(active,dict) and active.get("map"):
+            lines += ["","Mappa consigliata in rotazione:",f"{active.get('mode')} — {active.get('map')}",f"Win rate: {float(active.get('win_rate')):.2f}%"]
+        else:
+            lines += ["","Mappa consigliata in rotazione: dati insufficienti al momento."]
         return "\n".join(lines)
     except Exception as e:
         print("META DETERMINISTIC RENDER ERROR:",repr(e),flush=True);return None
