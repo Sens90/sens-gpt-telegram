@@ -86,19 +86,22 @@ def brawltrack_pro_map_stats(map_name,ttl=300):
         # BeautifulSoup text can omit image alt names for team compositions. Parse
         # the cards from DOM so the three brawler names are retained.
         comp_cards=[]
+        # BrawlTrack renders one image per composition; its alt contains all three
+        # brawlers (e.g. "BOLT + MOE + PEARL"). Walk up to the card that also
+        # contains the sets/WR values.
         soup=BeautifulSoup(response.text,"html.parser")
-        for node in soup.find_all(string=re.compile(r"\\bsets?\\b",re.I)):
-            parent=node.parent
-            card=parent
-            for _ in range(5):
-                if card and re.search(r"\\bsets?\\b",card.get_text(" ",strip=True),re.I) and re.search(r"\\bWR\\b",card.get_text(" ",strip=True),re.I):
-                    break
+        for img in soup.find_all("img"):
+            alt=(img.get("alt") or "").strip().upper()
+            if alt.count(" + ") != 2: continue
+            card=img
+            stats=None
+            for _ in range(8):
                 card=card.parent if card else None
-            if not card: continue
-            names=[(img.get("alt") or "").strip().upper() for img in card.find_all("img") if (img.get("alt") or "").strip()]
-            stats=re.search(r"(\\d+)\\s+sets?\\s+(\\d+(?:\\.\\d+)?)\\s*%\\s+WR",card.get_text(" ",strip=True),re.I)
-            if stats and len(names)>=3:
-                team=names[-3:]
+                if not card: break
+                stats=re.search(r"(\d+)\s+sets?\s+(\d+(?:\.\d+)?)\s*%\s+WR",card.get_text(" ",strip=True),re.I)
+                if stats: break
+            if stats:
+                team=[part.strip() for part in alt.split(" + ")]
                 item={"team":team,"sets":int(stats.group(1)),"win_rate":float(stats.group(2))}
                 if item not in comp_cards: comp_cards.append(item)
         # Text extraction may keep or drop the image label/colon.
