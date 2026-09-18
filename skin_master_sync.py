@@ -42,14 +42,25 @@ def _verified_skin_image(external_id):
 
 def sync_skin_images(url,key,external_ids):
  h={"apikey":key,"Authorization":"Bearer "+key,"Content-Type":"application/json","Prefer":"return=minimal"}
+ # Never re-download images already verified. This keeps sync fast and preserves
+ # manually/independently verified sources when the primary CDN is incomplete.
+ verified_ids=set(); start=0; page=1000
+ while True:
+  q=url+"/rest/v1/skins_catalog?select=external_id&image_verified=eq.true&order=id.asc"
+  ph=dict(h); ph["Range"]=f"{start}-{start+page-1}"
+  r=requests.get(q,headers=ph,timeout=30); r.raise_for_status(); batch=r.json()
+  verified_ids.update(str(x.get("external_id")) for x in batch if x.get("external_id"))
+  if len(batch)<page: break
+  start += page
+ pending=sorted(set(str(x) for x in external_ids if x)-verified_ids)
  verified=0; missing=[]
- for eid in sorted(set(str(x) for x in external_ids if x)):
+ for eid in pending:
   image_url=_verified_skin_image(eid)
   if not image_url:
    missing.append(eid); continue
   payload={"image_url":image_url,"image_source":"BSInfo CDN","image_source_url":f"https://github.com/lot-xq/BSInfo-CDN/blob/main/brawlers/skins/{eid}.png","image_verified":True}
   r=requests.patch(url+f"/rest/v1/skins_catalog?external_id=eq.{eid}",headers=h,json=payload,timeout=30); r.raise_for_status(); verified += 1
- return {"verified":verified,"missing":missing}
+ return {"verified":verified,"already_verified":len(verified_ids.intersection(set(str(x) for x in external_ids if x))),"checked":len(pending),"missing":missing}
 
 def inspect_skin_master():
  rows,unmapped=build_verified_rows(); return {"mapped":len(rows),"unmapped":len(unmapped),"sample":rows[:5]}
