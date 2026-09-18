@@ -3719,6 +3719,13 @@ def main():
         )
     )
 
+    application.add_handler(
+        MessageHandler(
+            filters.VOICE | filters.AUDIO,
+            transcribe_voice
+        )
+    )
+
     port = int(os.environ.get("PORT", 10000))
 
     base_url = os.environ.get(
