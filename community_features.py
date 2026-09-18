@@ -1665,6 +1665,31 @@ class CommunityFeatures:
             await message.reply_text("Ordine pick impostato. "+self._draft_next_turn_text(draft_state))
             return True
 
+        # During the ban phase accept six plain Brawler names in one message.
+        # This keeps the guided Draft conversational: after "Inizia con i ban",
+        # the user can simply send "Gray Melodie Gelindo Eugenio Edgar Moe".
+        if draft_state and draft_state.get("draft_format") in ("ban_all_pick","turn_pick") and len(draft_state.get("bans") or []) < 6:
+            plain_tokens=[x for x in re.split(r"[\\s,;]+", q.strip()) if x]
+            if len(plain_tokens) == 6 and all(re.fullmatch(r"[A-Za-zÀ-ÿ0-9.'-]+", x) for x in plain_tokens):
+                seen=set()
+                duplicates=[]
+                for name in plain_tokens:
+                    key=name.casefold()
+                    if key in seen: duplicates.append(name)
+                    seen.add(key)
+                if duplicates:
+                    await message.reply_text("Ban duplicato: "+", ".join(duplicates)+". Inserisci 6 Brawler diversi.")
+                    return True
+                draft_state["bans"]=plain_tokens
+                context.user_data["ranked_draft"]=draft_state
+                body="Ban registrati (6/6): "+", ".join(plain_tokens)+"."
+                if draft_state.get("draft_format") == "turn_pick":
+                    body+="\\nBan completati. Indica chi ha il primo pick: primo pick nostro oppure primo pick avversario."
+                else:
+                    body+="\\nBan completati. Puoi procedere con le selezioni."
+                await message.reply_text(body)
+                return True
+
         auto_ban_q = re.fullmatch(r"(?:ban|banna|bannato)\\s+(.+)", q, re.I)
         if draft_state and auto_ban_q:
             draft_format=draft_state.get("draft_format")
