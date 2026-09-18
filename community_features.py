@@ -1736,25 +1736,70 @@ class CommunityFeatures:
             return True
 
         # During the ban phase accept six plain Brawler names in one message.
-        # This keeps the guided Draft conversational: after "Inizia con i ban",
-        # the user can simply send "Gray Melodie Gelindo Eugenio Edgar Moe".
+        # Parse against the canonical Brawler catalog so compound names (Mr. P)
+        # and small unique typos (grey -> Gray, pocho -> Poco) are accepted.
         if draft_state and draft_state.get("draft_format") in ("ban_all_pick","turn_pick") and len(draft_state.get("bans") or []) < 6:
-            plain_tokens=[x for x in re.split(r"[\s,;]+", q.strip()) if x]
-            if len(plain_tokens) == 6 and all(re.fullmatch(r"[A-Za-zÀ-ÿ0-9.'-]+", x) for x in plain_tokens):
-                seen=set()
-                duplicates=[]
-                for name in plain_tokens:
-                    key=name.casefold()
-                    if key in seen: duplicates.append(name)
-                    seen.add(key)
-                if duplicates:
-                    await message.reply_text("Ban duplicato: "+", ".join(duplicates)+". Inserisci 6 Brawler diversi.")
+            try:
+                from difflib import SequenceMatcher
+                catalog_rows=self._get("brawlers_catalog",{"select":"name,name_it"}) or []
+            except Exception as exc:
+                LOG.warning("DRAFT ban catalog unavailable: %s", type(exc).__name__)
+                catalog_rows=[]
+            aliases={}
+            canonical=[]
+            for row in catalog_rows:
+                en=str(row.get("name") or "").strip()
+                it=str(row.get("name_it") or en).strip()
+                if not en:
+                    continue
+                display=it or en
+                canonical.append(display)
+                for alias in (en,it):
+                    key=re.sub(r"[^a-z0-9]+"," ",str(alias).casefold()).strip()
+                    if key:
+                        aliases[key]=display
+            # Common natural spellings that remain unambiguous.
+            aliases.update({"mr p":"Mr. P","mr. p":"Mr. P","grey":"Gray","pocho":"Poco","maise":"Maisie"})
+            words=[x for x in re.split(r"[\s,;]+",q.strip()) if x]
+            parsed=[]
+            i=0
+            while i < len(words):
+                matched=None
+                # Prefer compound catalog names before single-word names.
+                for width in (3,2,1):
+                    if i+width > len(words):
+                        continue
+                    raw=" ".join(words[i:i+width])
+                    key=re.sub(r"[^a-z0-9]+"," ",raw.casefold()).strip()
+                    if key in aliases:
+                        matched=(aliases[key],width)
+                        break
+                if not matched:
+                    raw=words[i]
+                    key=re.sub(r"[^a-z0-9]+"," ",raw.casefold()).strip()
+                    scored=[]
+                    for alias,display in aliases.items():
+                        ratio=SequenceMatcher(None,key,alias).ratio()
+                        if ratio >= 0.80:
+                            scored.append((ratio,display))
+                    scored.sort(reverse=True)
+                    if scored and (len(scored)==1 or scored[0][0] > scored[1][0]+0.08):
+                        matched=(scored[0][1],1)
+                if not matched:
+                    parsed=[]
+                    break
+                parsed.append(matched[0])
+                i+=matched[1]
+            if len(parsed) == 6:
+                keys=[x.casefold() for x in parsed]
+                if len(set(keys)) != 6:
+                    await message.reply_text("Hai inserito un Brawler più di una volta. Inserisci 6 Brawler diversi.")
                     return True
-                draft_state["bans"]=plain_tokens
+                draft_state["bans"]=parsed
                 context.user_data["ranked_draft"]=draft_state
-                body="Ban registrati (6/6): "+", ".join(plain_tokens)+"."
+                body="Ban registrati (6/6): "+", ".join(parsed)+"."
                 if draft_state.get("draft_format") == "turn_pick":
-                    body+="\nBan completati. Indica chi ha il primo pick: primo pick nostro oppure primo pick avversario."
+                    body+="\nBan completati. Indica chi ha il primo pick: pick nostro oppure pick avversario."
                 else:
                     body+="\nBan completati. Puoi procedere con le selezioni."
                 await message.reply_text(body)
