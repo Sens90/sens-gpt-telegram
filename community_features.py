@@ -206,6 +206,37 @@ class CommunityFeatures:
             return {"map_en":en,"map_it":it,"map_id":stats.get("map_id"),"mode_en":en_mode or None,"mode_it":it_mode or None,"catalog_key":canonical_key}
         return None
 
+    @staticmethod
+    def _ranked_draft_format(rank_name):
+        """Current Ranked 2.0 format: all-pick through Gold, ban+all-pick Diamond, turn-pick Mythic+."""
+        value=str(rank_name or "").strip().casefold()
+        if not value:
+            return "unknown"
+        if any(x in value for x in ("bronzo","bronze","argento","silver","oro","gold")):
+            return "all_pick"
+        if any(x in value for x in ("diamante","diamond")):
+            return "ban_all_pick"
+        if any(x in value for x in ("mito","mitic","mythic","leggenda","legend","maestro","master","campion","pro")):
+            return "turn_pick"
+        return "unknown"
+
+    @staticmethod
+    def _draft_pick_order(first_pick):
+        # Official Mythic+ snake: 1-2-2-1. Values are relative to the user's team.
+        return ["my","enemy","enemy","my","my","enemy"] if first_pick == "my" else ["enemy","my","my","enemy","enemy","my"]
+
+    def _draft_next_turn_text(self, state):
+        if state.get("draft_format") != "turn_pick":
+            return None
+        first=state.get("first_pick")
+        if first not in ("my","enemy"):
+            return "Indica chi ha il primo pick: primo pick nostro oppure primo pick avversario."
+        index=len(state.get("pick_sequence") or [])
+        if index >= 6:
+            return "Draft pick completata: 3 nostri e 3 avversari."
+        side=self._draft_pick_order(first)[index]
+        return f"Pick {index+1}/6: {'NOSTRA SQUADRA' if side == 'my' else 'AVVERSARIO'}."
+
     def draft_map_advice_text(self, map_name, rank_name=None, mode=None):
         """Fast Ranked draft opener using canonical IT/EN identity and verified competitive map data."""
         identity=self._draft_identity(map_name,mode)
@@ -1475,7 +1506,14 @@ class CommunityFeatures:
             response = self.draft_map_advice_text(map_name, rank_name=rank_name)
             if response:
                 identity=self._draft_identity(map_name)
-                context.user_data["ranked_draft"] = {"map": identity.get("map_en") if identity else map_name, "map_it": identity.get("map_it") if identity else map_name, "map_id": identity.get("map_id") if identity else None, "mode": identity.get("mode_en") if identity else None, "mode_it": identity.get("mode_it") if identity else None, "rank": rank_name, "elo": context.user_data.pop("ranked_draft_elo", None), "my_picks": [], "enemy_picks": [], "bans": []}
+                draft_format=self._ranked_draft_format(rank_name)
+                context.user_data["ranked_draft"] = {"map": identity.get("map_en") if identity else map_name, "map_it": identity.get("map_it") if identity else map_name, "map_id": identity.get("map_id") if identity else None, "mode": identity.get("mode_en") if identity else None, "mode_it": identity.get("mode_it") if identity else None, "rank": rank_name, "elo": context.user_data.pop("ranked_draft_elo", None), "draft_format": draft_format, "first_pick": None, "pick_sequence": [], "my_picks": [], "enemy_picks": [], "bans": []}
+                if draft_format == "all_pick":
+                    response += "\nFormato: selezione normale, senza ban."
+                elif draft_format == "ban_all_pick":
+                    response += "\nFormato: 6 ban totali (3+3), poi selezione normale senza ordine a turni."
+                elif draft_format == "turn_pick":
+                    response += "\nFormato: 6 ban totali (3+3), poi 6 pick con ordine 1-2-2-1.\nIndica: primo pick nostro oppure primo pick avversario."
                 await message.reply_text(response)
                 return True
 
@@ -1490,6 +1528,9 @@ class CommunityFeatures:
             lines.append("Miei pick: "+(", ".join(draft_state.get("my_picks") or []) or "nessuno"))
             lines.append("Pick avversari: "+(", ".join(draft_state.get("enemy_picks") or []) or "nessuno"))
             lines.append("Ban: "+(", ".join(draft_state.get("bans") or []) or "nessuno"))
+            if draft_state.get("draft_format") == "turn_pick":
+                turn=self._draft_next_turn_text(draft_state)
+                if turn: lines.append(turn)
             comp_advice=self.draft_comp_advice_text(draft_state)
             if comp_advice: lines.append(comp_advice)
             await message.reply_text("\\n".join(lines))
@@ -1499,6 +1540,46 @@ class CommunityFeatures:
             context.user_data.pop("ranked_draft_elo",None)
             await message.reply_text("Draft chiusa. Puoi iniziarne una nuova con: Ranked <nome mappa>.")
             return True
+        first_pick_q = re.fullmatch(r"(?:primo\\s+pick|first\\s+pick)\\s+(nostro|mio|squadra|avversario|avversaria|nemico)", q, re.I)
+        if draft_state and first_pick_q:
+            if draft_state.get("draft_format") != "turn_pick":
+                await message.reply_text("L'ordine a turni dei pick si usa da Mito I in poi.")
+                return True
+            raw_side=first_pick_q.group(1).casefold()
+            draft_state["first_pick"]="enemy" if raw_side in ("avversario","avversaria","nemico") else "my"
+            draft_state["pick_sequence"]=[]
+            draft_state["my_picks"]=[]
+            draft_state["enemy_picks"]=[]
+            context.user_data["ranked_draft"]=draft_state
+            await message.reply_text("Ordine pick impostato. "+self._draft_next_turn_text(draft_state))
+            return True
+
+        auto_pick_q = re.fullmatch(r"(?:pick|scelto|prende)\\s+(.+)", q, re.I)
+        if draft_state and auto_pick_q and draft_state.get("draft_format") == "turn_pick":
+            if draft_state.get("first_pick") not in ("my","enemy"):
+                await message.reply_text("Prima indica chi ha il primo pick: primo pick nostro oppure primo pick avversario.")
+                return True
+            seq=draft_state.setdefault("pick_sequence",[])
+            if len(seq) >= 6:
+                await message.reply_text("I 6 pick della Draft sono già completi.")
+                return True
+            brawler=auto_pick_q.group(1).strip()
+            side=self._draft_pick_order(draft_state["first_pick"])[len(seq)]
+            seq.append({"side":side,"brawler":brawler})
+            target="my_picks" if side == "my" else "enemy_picks"
+            draft_state.setdefault(target,[]).append(brawler)
+            context.user_data["ranked_draft"]=draft_state
+            body=("Pick registrato per la NOSTRA SQUADRA: " if side == "my" else "Pick registrato per l'AVVERSARIO: ")+brawler+"."
+            nxt=self._draft_next_turn_text(draft_state)
+            if nxt: body+="\n"+nxt
+            if side == "enemy":
+                counter=self.brawler_counter_text(brawler,map_name=draft_state.get("map")) or self.brawler_counter_text(brawler)
+                if counter: body+="\n"+counter
+            comp=self.draft_comp_advice_text(draft_state)
+            if comp: body+="\n"+comp
+            await message.reply_text(body)
+            return True
+
         # Stateful Draft accepts natural follow-ups without forcing one exact phrase.
         # Keep parsing conservative: only explicit pick/ban wording mutates the state.
         draft_actions = re.findall(
