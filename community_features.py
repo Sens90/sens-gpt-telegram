@@ -1718,12 +1718,12 @@ class CommunityFeatures:
             context.user_data.pop("ranked_draft_setup",None)
             await message.reply_text("Draft chiusa. Puoi iniziarne una nuova con: Draft Ranked.")
             return True
-        first_pick_q = re.fullmatch(r"(?:primo\\s+pick|first\\s+pick)\\s+(nostro|mio|squadra|avversario|avversaria|nemico)", q, re.I)
+        first_pick_q = re.fullmatch(r"(?:(?:primo|first)\\s+pick|pick)\\s+(nostro|mio|squadra|avversario|avversaria|nemico)", q, re.I)
         if draft_state and first_pick_q:
             if draft_state.get("draft_format") != "turn_pick":
                 await message.reply_text("L'ordine a turni dei pick si usa da Mito I in poi.")
                 return True
-            raw_side=first_pick_q.group(1).casefold()
+            if len(draft_state.get("bans") or []) < 6:\n                await message.reply_text("Prima completa i 6 ban. Poi indica: pick nostro oppure pick avversario.")\n                return True\n            raw_side=first_pick_q.group(1).casefold()
             draft_state["first_pick"]="enemy" if raw_side in ("avversario","avversaria","nemico") else "my"
             draft_state["pick_sequence"]=[]
             draft_state["my_picks"]=[]
