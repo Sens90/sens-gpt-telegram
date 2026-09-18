@@ -13,6 +13,11 @@ BASE="https://storage.googleapis.com/brawlanalyzer-public/"; ROME=ZoneInfo("Euro
 SECTIONS={"individual":"Individuali","teams":"Squadre","solo":"Solo — individuali","duo_individual":"Duo — individuali","duo_team":"Duo — squadre","trio_individual":"Trio — individuali","trio_team":"Trio — squadre"}
 METRICS={"wr":("Vittorie","%"),"win_rate":("Vittorie","%"),"ur":("Utilizzo","%"),"use_rate":("Utilizzo","%"),"sr":("Miglior StarPlayer","%"),"starplayer_rate":("Miglior StarPlayer","%"),"avg_rank":("Piazzamento medio",""),"tm":("Partite","")}
 MODES={"brawlBall":"Brawl Ball","gemGrab":"Gem Grab","hotZone":"Hot Zone","bounty":"Bounty","heist":"Heist","knockout":"Knockout","showdown":"Showdown","airHockey":"Brawl Hockey","brawlArena":"Brawl Arena","deathmatch5v5":"Wipeout 5v5","wipeout":"Wipeout","basketBrawl":"Basket Brawl","payload":"Payload"}
+# Supercell event-mode names are not always identical to brawlanalyzer dataset filenames.
+ANALYZER_MODE_FILES={"soloShowdown":"showdown","duoShowdown":"showdown","trioShowdown":"showdown","tagTeam":None}
+
+def analyzer_mode_file(mode):
+    return ANALYZER_MODE_FILES.get(str(mode),str(mode))
 
 def get_json(path,ttl=300):
     cached=_CACHE.get(path)
@@ -208,12 +213,12 @@ def collect_report(dataset="both",now=None,fetch=safe_get,secondary=None):
         rotation_source="Supercell"
     else:events=fallback_events;rotation_source="brawlanalyzer fallback"
     if not events:return {"now":now,"events":[],"names":names,"maps":[],"rotation_missing":True,"rotation_source":rotation_source}
-    paths=[f"normal-results/{mode}.json.gz" for mode in sorted({e["event_mode"] for e in events})]
+    mode_files={e["event_mode"]:analyzer_mode_file(e["event_mode"]) for e in events}\n    paths=[f"normal-results/{mode}.json.gz" for mode in sorted({m for m in mode_files.values() if m})]
     if dataset!="ladder":paths.append("pl-results.json.gz")
     with ThreadPoolExecutor(max_workers=6) as pool:data=dict(zip(paths,pool.map(fetch,paths)))
     data={key:value if isinstance(value,dict) else {} for key,value in data.items()};maps=[]
     for event in events:
-        key=event["event_map_id"];normal=(data.get(f"normal-results/{event['event_mode']}.json.gz") or {}).get(key,{});ranked=(data.get("pl-results.json.gz") or {}).get(key,{})
+        key=event["event_map_id"];mode_file=mode_files.get(event["event_mode"]);normal=(data.get(f"normal-results/{mode_file}.json.gz") or {}).get(key,{}) if mode_file else {};ranked=(data.get("pl-results.json.gz") or {}).get(key,{})
         normal=normal if isinstance(normal,dict) else {};ranked=ranked if isinstance(ranked,dict) else {};competitive=brawltrack_pro_map_stats(event.get("event_map"));map_image=brawltrack_pro_map_image(event.get("event_map"));canonical_id=competitive.get("map_id") if competitive else None;identity_verified=bool(canonical_id and map_image and map_image.get("verified") and map_image.get("map_id")==canonical_id);entry={"event":event,"datasets":[],"secondary":None,"map_name_it":localized(names,"maps",event.get("event_map")),"mode_name_it":localized(names,"modes",MODES.get(event.get("event_mode"),event.get("event_mode"))),"canonical_map_id":canonical_id,"map_identity_verified":identity_verified,"rotation_source":rotation_source,"map_image":map_image,"brawltrack_pro_url":brawltrack_pro_map_url(event.get("event_map")),"competitive":competitive}
         for label,raw in (("Trofei",normal),("Classificata",ranked)):
             if (dataset=="ladder" and label!="Trofei") or (dataset=="ranked" and label!="Classificata"):continue
