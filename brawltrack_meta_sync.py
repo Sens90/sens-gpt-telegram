@@ -96,18 +96,23 @@ def _parse_modes(raw):
     return out
 
 def _parse_maps(raw):
-    if not raw:return []
-    group_pat=re.compile(r"(.+?)\\s+(\\d+)\\s+Maps\\s+(?=.+?\\s+\\d+\\s+Battles\\s+\\d+(?:\\.\\d+)?\\s*%)")
-    groups=list(group_pat.finditer(raw));out=[]
-    known=("Special Delivery 2v2","Brawl Hockey 2v2","Basket Brawl 2v2","Brawl Ball 5v5","Brawl Ball 2v2","Gem Grab 5v5","Gem Grab 2v2","Knockout 5v5","Wipeout 5v5","Solo Showdown","Duo Showdown","Trio Showdown","Soul Collector","Cleaning Duty","Treasure Hunt","Present Plunder","Samurai Smash 5v5","Samurai Smash","Tag Team","Air Hockey","Brawl Hockey","Basket Brawl","Brawl Arena","Hot Zone","Gem Grab","Knockout","Wipeout","Bounty","Heist","Duels","Payload","Volley Brawl","Mecha Van")
-    for idx,g in enumerate(groups):
-        mode=g.group(1).strip()
-        for label in sorted(known,key=len,reverse=True):
-            if mode.casefold().endswith(label.casefold()):mode=label;break
-        body=raw[g.end():groups[idx+1].start() if idx+1<len(groups) else len(raw)].strip()
-        for m in re.finditer(r"(.+?)\\s+(\\d+)\\s+Battles\\s+(\\d+(?:\\.\\d+)?)\\s*%",body):
-            name=m.group(1).strip()
-            if name:out.append({"mode":mode,"map":name,"battles":int(m.group(2)),"win_rate":float(m.group(3))})
+    if not raw or raw.strip().casefold()=="no map data found.":return []
+    # BrawlTrack text is a flat stream: <mode> <N> Maps followed by exactly N
+    # <map> <battles> Battles <win_rate> % records. Use the declared count to
+    # delimit groups instead of a broad regex that can absorb the next heading.
+    heading=re.compile(r"(.+?)\\s+(\\d+)\\s+Maps\\s+")
+    entry=re.compile(r"(.+?)\\s+(\\d+)\\s+Battles\\s+(\\d+(?:\\.\\d+)?)\\s*%")
+    out=[];pos=0
+    while pos<len(raw):
+        h=heading.match(raw,pos)
+        if not h:break
+        mode=h.group(1).strip();count=int(h.group(2));pos=h.end()
+        for _ in range(count):
+            m=entry.match(raw,pos)
+            if not m:return out
+            out.append({"mode":mode,"map":m.group(1).strip(),"battles":int(m.group(2)),"win_rate":float(m.group(3))})
+            pos=m.end()
+            while pos<len(raw) and raw[pos].isspace():pos+=1
     return out
 
 def _page_enrichment(brawler_id):
