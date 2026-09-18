@@ -3237,7 +3237,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # nei termini ufficiali italiani prima di mostrare la risposta.
         # Structured meta already resolved names against the verified Italian catalogue.
         # Do not run the legacy hand-written dictionaries over it afterwards.
-        if "DATI META STRUTTURATI E LOCALIZZATI (PRIORITARI):" not in question_for_ai:
+        if not brawltrack_meta_context:
             final_text = translate_map_names_in_text(final_text)
             final_text = translate_mode_names_in_text(final_text)
         final_text = translate_game_terms_in_text(final_text)
