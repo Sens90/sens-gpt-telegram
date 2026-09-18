@@ -83,9 +83,27 @@ def brawltrack_pro_map_stats(map_name,ttl=300):
         pick_pat=re.compile(r"(\d+)\s+([A-Z][A-Z0-9 .'-]*?)\s+[A-S]\s+(?:SNIPER|TANK|ASSASSIN|THROWER|SUPPORT|CONTROLLER|DAMAGE)(?:\s+DEALER)?\s*[•·]?\s*(\d+(?:\.\d+)?)%\s+USE\s+WIN RATE\s+(\d+(?:\.\d+)?)%",re.I)
         picks=[{"rank":int(m.group(1)),"brawler":re.sub(r"\s+"," ",m.group(2)).strip().upper(),"use_rate":float(m.group(3)),"win_rate":float(m.group(4))} for m in pick_pat.finditer(picks_block)]
         comps_block=between("COMMON FINAL COMPS","PRO MATCHUP MATRIX")
+        # BeautifulSoup text can omit image alt names for team compositions. Parse
+        # the cards from DOM so the three brawler names are retained.
+        comp_cards=[]
+        soup=BeautifulSoup(response.text,"html.parser")
+        for node in soup.find_all(string=re.compile(r"\\bsets?\\b",re.I)):
+            parent=node.parent
+            card=parent
+            for _ in range(5):
+                if card and re.search(r"\\bsets?\\b",card.get_text(" ",strip=True),re.I) and re.search(r"\\bWR\\b",card.get_text(" ",strip=True),re.I):
+                    break
+                card=card.parent if card else None
+            if not card: continue
+            names=[(img.get("alt") or "").strip().upper() for img in card.find_all("img") if (img.get("alt") or "").strip()]
+            stats=re.search(r"(\\d+)\\s+sets?\\s+(\\d+(?:\\.\\d+)?)\\s*%\\s+WR",card.get_text(" ",strip=True),re.I)
+            if stats and len(names)>=3:
+                team=names[-3:]
+                item={"team":team,"sets":int(stats.group(1)),"win_rate":float(stats.group(2))}
+                if item not in comp_cards: comp_cards.append(item)
         # Text extraction may keep or drop the image label/colon.
         comp_pat=re.compile(r"(?:IMAGE:\s*)?([A-Z][A-Z0-9 .'-]*?)\s*\+\s*([A-Z][A-Z0-9 .'-]*?)\s*\+\s*([A-Z][A-Z0-9 .'-]*?)\s+(\d+)\s+sets?\s+(\d+(?:\.\d+)?)%\s+WR",re.I)
-        comps=[{"team":[m.group(i).strip().upper() for i in (1,2,3)],"sets":int(m.group(4)),"win_rate":float(m.group(5))} for m in comp_pat.finditer(comps_block)]
+        comps=comp_cards or [{"team":[m.group(i).strip().upper() for i in (1,2,3)],"sets":int(m.group(4)),"win_rate":float(m.group(5))} for m in comp_pat.finditer(comps_block)]
         result={"source":"BrawlTrack Pro","scope":"competitive_pro","source_url":url,"map_id":int(mid.group(1)) if mid else None,"priority_picks":picks,"final_comps":comps}
         if not picks and not comps:LOG.warning("LIVE_MAPS BrawlTrack pro parsed empty map=%s priority=%r comps=%r",map_name,picks_block[:1800],comps_block[:1800])
         _CACHE[cache_key]=(time.monotonic(),result);return result
