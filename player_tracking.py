@@ -12,6 +12,46 @@ RANK_NAMES_IT = {
 BRAWLZONE_BASE_URL = "https://brawlzone.net/player"
 
 
+# Current Ranked thresholds. Derive the displayed subdivision from ELO so stale
+# third-party labels such as "Unranked" cannot contradict the score.
+RANKED_ELO_TIERS = (
+    (11250, "Pro"),
+    (10250, "Campione III"), (9250, "Campione II"), (8250, "Campione I"),
+    (7500, "Leggenda III"), (6750, "Leggenda II"), (6000, "Leggenda I"),
+    (5500, "Mito III"), (5000, "Mito II"), (4500, "Mito I"),
+    (4000, "Diamante III"), (3500, "Diamante II"), (3000, "Diamante I"),
+    (2500, "Oro III"), (2000, "Oro II"), (1500, "Oro I"),
+    (1250, "Argento III"), (1000, "Argento II"), (750, "Argento I"),
+    (500, "Bronzo III"), (250, "Bronzo II"), (0, "Bronzo I"),
+)
+
+def ranked_name_from_elo(value):
+    elo = _number(value)
+    if elo is None:
+        return None
+    for threshold, label in RANKED_ELO_TIERS:
+        if elo >= threshold:
+            return label
+    return "Bronzo I"
+
+def normalize_ranked_fields(player):
+    """Make current/peak rank labels consistent with their ELO values."""
+    if not isinstance(player, dict):
+        return player
+    for rank_key, elo_key in (
+        ("ranked_current", "ranked_current_elo"),
+        ("ranked_season_peak", "ranked_season_peak_elo"),
+        ("ranked_career_peak", "ranked_career_peak_elo"),
+    ):
+        derived = ranked_name_from_elo(player.get(elo_key))
+        raw = str(player.get(rank_key) or "").strip()
+        if derived and (not raw or raw.casefold() in {"unranked", "unknown", "ranked unknown", "non disponibile"} or raw != derived):
+            player[rank_key] = derived
+    player["ranked_peak"] = player.get("ranked_career_peak") or player.get("ranked_peak")
+    player["ranked_peak_elo"] = player.get("ranked_career_peak_elo") or player.get("ranked_peak_elo")
+    return player
+
+
 def _number(value):
     if value is None or value == "": return None
     if isinstance(value, (int, float)): return int(value)
@@ -158,6 +198,7 @@ def get_brawltrack_player(player_tag, timeout=20):
         for key, value in enrichment.items():
             if value is not None:
                 result[key] = value
+        normalize_ranked_fields(result)
         print("SUPERCELL OFFICIAL PLAYER:", tag, club_name, club_tag, flush=True)
         return result
     except Exception as error:
