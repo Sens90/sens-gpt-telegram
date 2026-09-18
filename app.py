@@ -3683,6 +3683,29 @@ def _startup_structured_meta_smoke():
 
 _startup_structured_meta_smoke()
 
+def _startup_brawler_it_sync():
+    """Populate only missing Italian Brawler names from the verified localization catalogue."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:return
+    try:
+        names=(safe_get("i18n/names.it.json.gz") or {}).get("brawlers",{})
+        headers={"apikey":SUPABASE_SERVICE_ROLE_KEY,"Authorization":"Bearer "+SUPABASE_SERVICE_ROLE_KEY,"Content-Type":"application/json","Prefer":"return=minimal"}
+        r=requests.get(SUPABASE_URL+"/rest/v1/brawlers_catalog",headers=headers,params={"select":"brawler_id,name_en,name_it","limit":"200"},timeout=15);r.raise_for_status()
+        rows=r.json();resolved=[];missing=[]
+        for b in rows:
+            if str(b.get("name_it") or "").strip():continue
+            en=str(b.get("name_en") or "").strip(); it=str(names.get(en.upper()) or "").strip()
+            if it and it.casefold()!=en.casefold():resolved.append((int(b["brawler_id"]),en,it))
+            elif it:resolved.append((int(b["brawler_id"]),en,it))
+            else:missing.append((b.get("brawler_id"),en))
+        for bid,en,it in resolved:
+            u=requests.patch(SUPABASE_URL+"/rest/v1/brawlers_catalog",headers=headers,params={"brawler_id":"eq."+str(bid),"name_it":"is.null"},json={"name_it":it},timeout=15);u.raise_for_status()
+        print("BRAWLER IT SYNC: resolved=%s missing=%s total=%s" % (len(resolved),len(missing),len(rows)),flush=True)
+        if missing:print("BRAWLER IT SYNC MISSING:",missing,flush=True)
+    except Exception as exc:
+        print("BRAWLER IT SYNC ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
+
+_startup_brawler_it_sync()
+
 def _startup_brawltrack_meta_sync_once():
     """Refresh BrawlTrack meta after parser changes; safe upsert by brawler_id."""
     try:
