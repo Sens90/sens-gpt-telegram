@@ -4083,6 +4083,28 @@ def _startup_brawltrack_map_smoke():
 
 _startup_brawltrack_map_smoke()
 
+def _startup_official_skins_smoke():
+    """One-shot safe probe of the proxy's official /v1/skins route."""
+    proxy_url=(os.environ.get("BRAWL_OFFICIAL_PROXY_URL") or "").strip()
+    proxy_key=(os.environ.get("BRAWL_OFFICIAL_PROXY_KEY") or "").strip()
+    tag=(os.environ.get("SKIN_SMOKE_PLAYER_TAG") or "2V2VY0PJ8").strip().lstrip("#").upper()
+    if not proxy_url or not proxy_key:
+        print("OFFICIAL SKINS SMOKE SKIPPED: proxy not configured",flush=True);return
+    try:
+        response=requests.get(proxy_url,params={"action":"skins","tag":tag},headers={"X-Sens-Key":proxy_key,"Accept":"application/json","User-Agent":"SensGPT/1.0"},timeout=15)
+        payload=None
+        try: payload=response.json()
+        except Exception: pass
+        if isinstance(payload,dict):
+            shape="dict:"+",".join(sorted(str(k) for k in payload.keys())[:12])
+        elif isinstance(payload,list): shape="list:%s" % len(payload)
+        else: shape=type(payload).__name__ if payload is not None else "non-json"
+        print("OFFICIAL SKINS SMOKE: status=%s shape=%s" % (response.status_code,shape),flush=True)
+    except Exception as exc:
+        print("OFFICIAL SKINS SMOKE ERROR: %s" % type(exc).__name__,flush=True)
+
+_startup_official_skins_smoke()
+
 def _startup_structured_meta_smoke():
     try:
         for label,question in (("Stecca","build migliore di stecca"),("Wendy","build migliore di wendy")):
