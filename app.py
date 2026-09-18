@@ -1524,10 +1524,24 @@ def get_brawltrack_meta_context(question):
     try:
         response=requests.get(f"{SUPABASE_URL}/rest/v1/brawltrack_meta_cache",headers={"apikey":SUPABASE_SERVICE_ROLE_KEY,"Authorization":f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"},params={"select":"brawler_id,brawler_name,win_rate,pick_rate,star_rate,rank_label,popular_builds,modes,source_updated_at","order":"brawler_name.asc","limit":"108"},timeout=15)
         response.raise_for_status(); rows=response.json(); selected=[]
+        # Resolve user-facing names through the official Brawler ID catalogue. The ID is
+        # the authoritative join key with BrawlTrack; names are aliases only for input.
+        cat=requests.get(f"{SUPABASE_URL}/rest/v1/brawlers_catalog",headers={"apikey":SUPABASE_SERVICE_ROLE_KEY,"Authorization":f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"},params={"select":"brawler_id,name_en,name_it","limit":"200"},timeout=15)
+        cat.raise_for_status(); catalog=cat.json()
+        aliases_by_id={}
+        for b in catalog:
+            bid=int(b.get("brawler_id")) if b.get("brawler_id") is not None else None
+            if bid is None:continue
+            names={str(b.get("name_en") or "").strip(),str(b.get("name_it") or "").strip()}
+            # Temporary compatibility alias only when the verified catalogue has not yet
+            # been populated in Italian; never use it as the BrawlTrack join key.
+            en=str(b.get("name_en") or "").strip().title()
+            names.add(str(brawler_name_it(en) or "").strip())
+            aliases_by_id[bid]={x.casefold() for x in names if x}
         for row in rows:
-            name=str(row.get("brawler_name") or "").strip()
-            # Accept both the canonical source name and the official Italian in-game name.
-            aliases={name.casefold(),str(brawler_name_it(name) or "").strip().casefold()}
+            bid=int(row.get("brawler_id")) if row.get("brawler_id") is not None else None
+            aliases=set(aliases_by_id.get(bid,set()))
+            aliases.add(str(row.get("brawler_name") or "").strip().casefold())
             aliases.discard("")
             if any(re.search(r"(?<![a-z0-9])"+re.escape(alias)+r"(?![a-z0-9])",q) for alias in aliases): selected.append(row)
         if not selected and any(term in q for term in ("meta","tier list","tierlist","miglior brawler","migliori brawler")): selected=rows
