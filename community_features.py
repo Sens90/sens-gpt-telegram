@@ -427,10 +427,20 @@ class CommunityFeatures:
     def _resolve_skin_brawler_name(self, value):
         wanted = self._skin_key(value)
         try:
-            catalog = self._get("brawlers_catalog", {"select": "name,name_it"})
+            catalog = self._get("brawlers_catalog", {"select": "brawler_id,name_en,name_it"})
             for row in catalog or []:
-                if wanted in (self._skin_key(row.get("name")), self._skin_key(row.get("name_it"))):
-                    return str(row.get("name") or row.get("name_it") or value)
+                if wanted in (self._skin_key(row.get("name_en")), self._skin_key(row.get("name_it"))):
+                    brawler_id = row.get("brawler_id")
+                    if brawler_id is not None:
+                        skin_rows = self._get("skins_catalog", {
+                            "select": "brawler_name",
+                            "brawler_id": f"eq.{int(brawler_id)}",
+                            "verification_status": "eq.structured_verified",
+                            "limit": "1",
+                        })
+                        if skin_rows and skin_rows[0].get("brawler_name"):
+                            return str(skin_rows[0]["brawler_name"])
+                    return str(row.get("name_en") or row.get("name_it") or value)
         except Exception as exc:
             print("ERRORE RISOLUZIONE BRAWLER SKIN:", repr(exc), flush=True)
         return str(value or "").strip()
@@ -501,7 +511,7 @@ class CommunityFeatures:
             offset = 0
             while True:
                 page = self._get("skins_catalog", {
-                    "select": "external_id,name_en,name_it,rarity,brawler_name,source_payload",
+                    "select": "external_id,brawler_id,name_en,name_it,rarity,brawler_name,source_payload",
                     "verification_status": "eq.structured_verified",
                     "external_id": "not.in.(29001472,29001473,29001831,29001832,29001833,29001834,29001835,29001836)",
                     "order": "brawler_name.asc,name_en.asc",
@@ -540,12 +550,13 @@ class CommunityFeatures:
             brawler_title = None
             if brawler_name:
                 canonical = str(rows[0].get("brawler_name") or brawler_name)
+                brawler_id = rows[0].get("brawler_id")
                 brawler_rows = self._get("brawlers_catalog", {
-                    "select": "name,name_it",
-                    "name": f"eq.{canonical}",
+                    "select": "brawler_id,name_en,name_it",
+                    "brawler_id": f"eq.{int(brawler_id)}",
                     "limit": "1",
-                })
-                brawler_title = str((brawler_rows[0].get("name_it") if brawler_rows else None) or canonical).upper()
+                }) if brawler_id is not None else []
+                brawler_title = str((brawler_rows[0].get("name_it") if brawler_rows else None) or brawler_name or canonical).upper()
             if mode == "owned":
                 title = brawler_title if brawler_name else (category or rarity or "SKIN").upper()
                 return f"{title} — SKIN POSSEDUTE ({len(owned)}/{len(rows)})\n" + (", ".join(name(r) for r in owned) if owned else "Nessuna.")
