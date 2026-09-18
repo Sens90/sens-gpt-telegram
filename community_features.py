@@ -151,6 +151,47 @@ class CommunityFeatures:
     def _now_iso(self):
         return datetime.now(timezone.utc).isoformat()
 
+    def brawler_counter_text(self, brawler_name, mode=None, map_name=None):
+        """Return verified counter data stored server-side; never invent matchups."""
+        try:
+            catalog = self._get("brawlers_catalog", {"select": "id,name,name_it"})
+            wanted = str(brawler_name or "").strip().casefold()
+            target = next((b for b in catalog if wanted in {
+                str(b.get("name") or "").casefold(), str(b.get("name_it") or "").casefold()
+            }), None)
+            if not target:
+                return None
+            params = {
+                "select": "counter_brawler_id,mode,map_name,score,sample_size,source,source_updated_at",
+                "brawler_id": f"eq.{target['id']}",
+                "order": "score.desc.nullslast",
+                "limit": "10",
+            }
+            if mode:
+                params["mode"] = f"eq.{mode}"
+            if map_name:
+                params["map_name"] = f"eq.{map_name}"
+            rows = self._get("brawler_counters", params)
+            if not rows:
+                return (
+                    f"Non ho ancora counter verificati per {target.get('name_it') or target.get('name')}. "
+                    "Non invento matchup: il dato verrà mostrato quando sarà disponibile nella cache counter."
+                )
+            names = {int(b["id"]): (b.get("name_it") or b.get("name")) for b in catalog if b.get("id") is not None}
+            title = f"COUNTER DI {(target.get('name_it') or target.get('name')).upper()}"
+            if map_name: title += f" - {map_name}"
+            elif mode: title += f" - {mode}"
+            lines = [title, ""]
+            for i,row in enumerate(rows[:5],1):
+                label = names.get(int(row["counter_brawler_id"]), str(row["counter_brawler_id"]))
+                detail = f" - indice {float(row['score']):.1f}" if row.get("score") is not None else ""
+                lines.append(f"{i}. {label}{detail}")
+            lines += ["", f"Fonte dati: {rows[0].get('source') or 'dataset verificato'}"]
+            return "\n".join(lines)
+        except Exception as exc:
+            print("ERRORE COUNTER BRAWLER:", repr(exc), flush=True)
+            return None
+
     def track_activity(self, message):
         if not self.ready or not message or not message.from_user:
             return
