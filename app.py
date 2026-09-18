@@ -1549,13 +1549,15 @@ def get_brawltrack_meta_context(question):
                 return translated if translated!=raw else None
             def loc_mode(value):
                 raw=str(value or "").strip()
-                # Only an exact key from the official Italian catalogue is accepted.
-                # Composite/source-only labels such as "Trio Wipeout" are not rewritten.
+                # Keep BrawlTrack's canonical label unless the exact same source label
+                # exists in the verified catalogue. Composite variants must never be
+                # synthesized from their component words.
                 return exact_official(official_modes,raw) or raw
             def loc_map(value):
                 raw=str(value or "").strip()
-                # Never fall back to the hand-written map dictionary for meta output.
-                return exact_official(official_maps,raw) or raw
+                # BrawlTrack map identity is authoritative for meta pairing. The
+                # generated names catalogue is not authoritative for display here.
+                return raw
             # Rank modes by their actual win rate, but only expose a mode when at least
             # one map exists for that exact source label. This prevents unrelated pairings.
             ranked_modes=sorted(best_modes,key=lambda m:float(m.get("win_rate") or 0),reverse=True)
@@ -1564,7 +1566,7 @@ def get_brawltrack_meta_context(question):
                 raw_mode=str(bm.get("mode") or "").strip()
                 same=[m for m in best_maps if str(m.get("mode") or "").strip().casefold()==raw_mode.casefold()]
                 if not same: continue
-                chosen_map=max(same,key=lambda m:(float(m.get("win_rate") or 0),int(m.get("battles") or 0)))
+                chosen_map=same[0]
                 comp=None
                 try:
                     pro=brawltrack_pro_map_stats(chosen_map.get("map")) or {}
