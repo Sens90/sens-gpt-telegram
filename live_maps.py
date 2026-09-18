@@ -35,11 +35,11 @@ def get_official_rotation(ttl=60):
     if cached and time.monotonic()-cached[0]<ttl:
         LOG.info("LIVE_MAPS official rotation cache HIT age=%.1fs events=%s",time.monotonic()-cached[0],len(cached[1]) if isinstance(cached[1],list) else "?")
         return cached[1]
-    LOG.info("LIVE_MAPS official rotation cache MISS")
+    print("LIVE_MAPS official rotation cache MISS",flush=True)
     proxy_url=(os.environ.get("BRAWL_OFFICIAL_PROXY_URL") or "").strip()
     proxy_key=(os.environ.get("BRAWL_OFFICIAL_PROXY_KEY") or "").strip()
     token=(os.environ.get("BRAWL_STARS_API_TOKEN") or os.environ.get("BRAWL_API_TOKEN") or "").strip()
-    LOG.info("LIVE_MAPS official rotation attempt proxy_url=%s proxy_key=%s token=%s",bool(proxy_url),bool(proxy_key),bool(token))
+    print("LIVE_MAPS official rotation attempt proxy_url=%s proxy_key=%s token=%s" % (bool(proxy_url),bool(proxy_key),bool(token)),flush=True)
     try:
         if proxy_url and proxy_key:
             response=requests.get(proxy_url,params={"action":"events"},headers={"X-Sens-Key":proxy_key,"Accept":"application/json","User-Agent":"SensGPT/1.0"},timeout=15)
@@ -53,10 +53,11 @@ def get_official_rotation(ttl=60):
         response.raise_for_status();rows=response.json()
         if not isinstance(rows,list):raise ValueError("unexpected official rotation payload")
         _CACHE[SUPERcell_EVENTS]=(time.monotonic(),rows)
-        LOG.info("LIVE_MAPS official rotation OK source=%s events=%s",source,len(rows))
+        print("LIVE_MAPS official rotation OK source=%s events=%s" % (source,len(rows)),flush=True)
         return rows
     except Exception as error:
-        LOG.warning("LIVE_MAPS official rotation unavailable error=%s",type(error).__name__);return None
+        status=getattr(getattr(error,"response",None),"status_code",None)
+        print("LIVE_MAPS official rotation unavailable error=%s status=%s" % (type(error).__name__,status),flush=True);return None
 
 def normalize_official_events(rows):
     """Normalize Supercell Event objects to the internal brawlanalyzer event shape."""
