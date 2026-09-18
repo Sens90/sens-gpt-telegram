@@ -9,10 +9,12 @@ def build_verified_rows():
  conf_by_name={x.get("Name"):x for x in confs.values() if x.get("Name")}
  out=[]; unmapped=[]
  for s in cosmetics:
-  cf=conf_by_name.get(s.get("Conf") or s.get("Name")); ch=char_by_internal.get(cf.get("Character")) if cf else None; loc=it.get(s.get("TID")) or {}
+  cf=conf_by_name.get(s.get("Conf") or s.get("Name")); raw_char=cf.get("Character") if cf else None
+  char_key=str(raw_char or "").split(";")[0].strip()
+  ch=char_by_internal.get(char_key); loc=it.get(s.get("TID")) or {}
   if not ch: unmapped.append(s.get("id")); continue
   name_it=loc.get("IT") if isinstance(loc,dict) else None
-  out.append({"external_id":str(s["id"]),"brawler_id":ch["id"],"brawler_name":str(ch["ItemName"]).upper(),"name_en":s["Name"],"name_it":name_it,"rarity":s.get("Rarity"),"price_gems":s.get("PriceGems"),"source":"brawlapi_game_csv","source_url":BASE+"/game/csv_logic/skins","source_payload":{"tid":s.get("TID"),"conf":s.get("Conf"),"character":cf.get("Character")},"verification_status":"structured_verified","image_verified":False,"name_it_source":"brawlapi_game_localization_it","name_it_source_url":BASE+"/game/localization/it"})
+  out.append({"external_id":str(s["id"]),"brawler_id":ch["id"],"brawler_name":str(ch["ItemName"]).upper(),"name_en":s["Name"],"name_it":name_it,"rarity":s.get("Rarity"),"price_gems":s.get("PriceGems"),"source":"brawlapi_game_csv","source_url":BASE+"/game/csv_logic/skins","source_payload":{"tid":s.get("TID"),"conf":s.get("Conf"),"character":char_key},"verification_status":"structured_verified","image_verified":False,"name_it_source":"brawlapi_game_localization_it","name_it_source_url":BASE+"/game/localization/it"})
  return out,unmapped
 def inspect_skin_master():
  rows,unmapped=build_verified_rows(); return {"mapped":len(rows),"unmapped":len(unmapped),"sample":rows[:5]}
