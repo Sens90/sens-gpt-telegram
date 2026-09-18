@@ -3491,6 +3491,18 @@ def _startup_brawltrack_map_smoke():
 
 _startup_brawltrack_map_smoke()
 
+def _startup_brawltrack_meta_sync_once():
+    """Refresh BrawlTrack meta after parser changes; safe upsert by brawler_id."""
+    try:
+        from brawltrack_meta_sync import sync
+        result=sync()
+        print("BRAWLTRACK META SYNC ONCE:",result,flush=True)
+    except Exception as exc:
+        print("BRAWLTRACK META SYNC ONCE ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
+
+if os.getenv("BRAWLTRACK_META_SYNC_ON_START","1")=="1":
+    threading.Thread(target=_startup_brawltrack_meta_sync_once,daemon=True).start()
+
 if __name__ == "__main__":
     threading.Thread(
         target=automatic_trophy_monitor,
