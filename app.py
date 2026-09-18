@@ -3673,6 +3673,16 @@ def _startup_brawltrack_map_smoke():
 
 _startup_brawltrack_map_smoke()
 
+def _startup_structured_meta_smoke():
+    try:
+        for label,question in (("Stecca","build migliore di stecca"),("Wendy","build migliore di wendy")):
+            ctx=get_brawltrack_meta_context(question); rendered=render_structured_brawler_meta(ctx)
+            print("STRUCTURED META SMOKE %s: %s" % (label,"OK" if ctx and rendered else "FAILED"),flush=True)
+    except Exception as exc:
+        print("STRUCTURED META SMOKE ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
+
+_startup_structured_meta_smoke()
+
 def _startup_brawltrack_meta_sync_once():
     """Refresh BrawlTrack meta after parser changes; safe upsert by brawler_id."""
     try:
