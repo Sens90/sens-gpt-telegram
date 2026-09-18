@@ -1223,11 +1223,10 @@ class CommunityFeatures:
             draft_state.setdefault("enemy_picks",[]).extend(x for x in enemy if x)
             draft_state.setdefault("bans",[]).extend(x for x in bans if x)
             context.user_data["ranked_draft"]=draft_state
+            counter_response=None
             if enemy:
-                response=self.brawler_counter_text(enemy[-1], map_name=draft_state.get("map"))
-                if not response: response=self.brawler_counter_text(enemy[-1])
-                if response:
-                    await message.reply_text(response);return True
+                counter_response=self.brawler_counter_text(enemy[-1], map_name=draft_state.get("map"))
+                if not counter_response: counter_response=self.brawler_counter_text(enemy[-1])
             summary=[]
             if mine: summary.append("Miei pick: "+", ".join(draft_state["my_picks"]))
             if enemy: summary.append("Pick avversari: "+", ".join(draft_state["enemy_picks"]))
@@ -1235,6 +1234,7 @@ class CommunityFeatures:
             comp_advice=self.draft_comp_advice_text(draft_state)
             body="Draft aggiornato. "+(" | ".join(summary) if summary else "Inserisci il prossimo pick.")
             if comp_advice: body+="\n"+comp_advice
+            if counter_response: body+="\n"+counter_response
             await message.reply_text(body)
             return True
 
