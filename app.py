@@ -1513,6 +1513,34 @@ async def send_comp_brawler_images(context, chat_id, brawler_names):
 
 
 
+def get_brawltrack_meta_context(question):
+    """Return verified BrawlTrack meta rows with official Italian build names."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return ""
+    q=(question or "").casefold()
+    if not any(term in q for term in ("meta","brawler","build","configurazione","gadget","abilità stellare","abilita stellare","equipaggiamento","gear","overdrive","hypercharge","win rate","pick rate","star rate","modalità","modalita","mappa")):
+        return ""
+    try:
+        response=requests.get(f"{SUPABASE_URL}/rest/v1/brawltrack_meta_cache",headers={"apikey":SUPABASE_SERVICE_ROLE_KEY,"Authorization":f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"},params={"select":"brawler_id,brawler_name,win_rate,pick_rate,star_rate,rank_label,popular_builds,modes,source_updated_at","order":"brawler_name.asc","limit":"108"},timeout=15)
+        response.raise_for_status(); rows=response.json(); selected=[]
+        for row in rows:
+            name=str(row.get("brawler_name") or "").strip()
+            if name and re.search(r"(?<![a-z0-9])"+re.escape(name.casefold())+r"(?![a-z0-9])",q): selected.append(row)
+        if not selected and any(term in q for term in ("meta","tier list","tierlist","miglior brawler","migliori brawler")): selected=rows
+        if not selected: return ""
+        payload=[]
+        for row in selected:
+            builds=row.get("popular_builds") if isinstance(row.get("popular_builds"),dict) else {}; clean=[]
+            for item in (builds.get("items") or []):
+                clean.append({"rank":item.get("rank"),"use_rate":item.get("use_rate"),"components":[{"type":c.get("type"),"name_it":c.get("name_it")} for c in (item.get("components") or []) if c.get("name_it")]})
+            hyper=builds.get("hypercharge") if isinstance(builds.get("hypercharge"),dict) else None
+            modes=row.get("modes") if isinstance(row.get("modes"),dict) else {}
+            payload.append({"brawler":row.get("brawler_name"),"win_rate":row.get("win_rate"),"meta_usage":row.get("pick_rate"),"star_rate":row.get("star_rate"),"rank":row.get("rank_label"),"popular_builds":clean,"overdrive":({"name_it":hyper.get("name_it")} if hyper and hyper.get("name_it") else None),"best_game_modes":modes.get("items") or [],"best_maps":modes.get("maps") or [],"updated_at":row.get("source_updated_at")})
+        return "DATI BRAWLTRACK STRUTTURATI E LOCALIZZATI (PRIORITARI):\n"+json.dumps(payload,ensure_ascii=False,separators=(",",":"))
+    except Exception as e:
+        print("BRAWLTRACK META CONTEXT ERROR:",repr(e),flush=True); return ""
+
+
 def save_trophy_snapshot(player_tag, player_name, trophies):
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         print("SUPABASE NON CONFIGURATO", flush=True)
@@ -2780,6 +2808,9 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
     try:
+        brawltrack_meta_context = get_brawltrack_meta_context(question_for_ai)
+        if brawltrack_meta_context:
+            web_context = brawltrack_meta_context + "\n\n" + web_context
         if web_context:
             instructions = (
                 "Sei Sens GPT, l'intelligenza artificiale ufficiale "
