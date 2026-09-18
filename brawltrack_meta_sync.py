@@ -97,11 +97,17 @@ def _parse_modes(raw):
 
 def _parse_maps(raw):
     if not raw:return []
-    pat=re.compile(r"(.+?)\s+(\d+)\s+Battles\s+(\d+(?:\.\d+)?)\s*%")
-    out=[]
-    for m in pat.finditer(raw):
-        name=re.sub(r"^(?:[A-Za-z][A-Za-z0-9 '&-]*?\s+\d+\s+Maps\s+)","",m.group(1)).strip()
-        out.append({"map":name,"battles":int(m.group(2)),"win_rate":float(m.group(3))})
+    group_pat=re.compile(r"(.+?)\\s+(\\d+)\\s+Maps\\s+(?=.+?\\s+\\d+\\s+Battles\\s+\\d+(?:\\.\\d+)?\\s*%)")
+    groups=list(group_pat.finditer(raw));out=[]
+    known=("Special Delivery 2v2","Brawl Hockey 2v2","Basket Brawl 2v2","Brawl Ball 5v5","Brawl Ball 2v2","Gem Grab 5v5","Gem Grab 2v2","Knockout 5v5","Wipeout 5v5","Solo Showdown","Duo Showdown","Trio Showdown","Soul Collector","Cleaning Duty","Treasure Hunt","Present Plunder","Samurai Smash 5v5","Samurai Smash","Tag Team","Air Hockey","Brawl Hockey","Basket Brawl","Brawl Arena","Hot Zone","Gem Grab","Knockout","Wipeout","Bounty","Heist","Duels","Payload","Volley Brawl","Mecha Van")
+    for idx,g in enumerate(groups):
+        mode=g.group(1).strip()
+        for label in sorted(known,key=len,reverse=True):
+            if mode.casefold().endswith(label.casefold()):mode=label;break
+        body=raw[g.end():groups[idx+1].start() if idx+1<len(groups) else len(raw)].strip()
+        for m in re.finditer(r"(.+?)\\s+(\\d+)\\s+Battles\\s+(\\d+(?:\\.\\d+)?)\\s*%",body):
+            name=m.group(1).strip()
+            if name:out.append({"mode":mode,"map":name,"battles":int(m.group(2)),"win_rate":float(m.group(3))})
     return out
 
 def _page_enrichment(brawler_id):
