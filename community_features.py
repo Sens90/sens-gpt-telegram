@@ -1607,11 +1607,11 @@ class CommunityFeatures:
             context.user_data["ranked_draft"] = {"map": setup.get("map"), "map_it": setup.get("map_it"), "map_id": setup.get("map_id"), "mode": setup.get("mode"), "mode_it": setup.get("mode_it"), "rank": rank_name, "elo": elo, "draft_format": draft_format, "first_pick": None, "pick_sequence": [], "my_picks": [], "enemy_picks": [], "bans": []}
             context.user_data.pop("ranked_draft_setup", None)
             if draft_format == "all_pick":
-                response += "\\nFormato: selezione normale, senza ban. Puoi iniziare con i pick."
+                response += "\nFormato: selezione normale, senza ban. Puoi iniziare con i pick."
             elif draft_format == "ban_all_pick":
-                response += "\\nFormato: 6 ban totali (3+3). Inizia con i ban; i pick si aprono dopo il sesto ban."
+                response += "\nFormato: 6 ban totali (3+3). Inizia con i ban; i pick si aprono dopo il sesto ban."
             elif draft_format == "turn_pick":
-                response += "\\nFormato: 6 ban totali (3+3), poi pick a turni 1-2-2-1. Inizia con i ban."
+                response += "\nFormato: 6 ban totali (3+3), poi pick a turni 1-2-2-1. Inizia con i ban."
             await message.reply_text(response)
             return True
 
@@ -1714,7 +1714,7 @@ class CommunityFeatures:
         # This keeps the guided Draft conversational: after "Inizia con i ban",
         # the user can simply send "Gray Melodie Gelindo Eugenio Edgar Moe".
         if draft_state and draft_state.get("draft_format") in ("ban_all_pick","turn_pick") and len(draft_state.get("bans") or []) < 6:
-            plain_tokens=[x for x in re.split(r"[\\s,;]+", q.strip()) if x]
+            plain_tokens=[x for x in re.split(r"[\s,;]+", q.strip()) if x]
             if len(plain_tokens) == 6 and all(re.fullmatch(r"[A-Za-zÀ-ÿ0-9.'-]+", x) for x in plain_tokens):
                 seen=set()
                 duplicates=[]
@@ -1729,9 +1729,9 @@ class CommunityFeatures:
                 context.user_data["ranked_draft"]=draft_state
                 body="Ban registrati (6/6): "+", ".join(plain_tokens)+"."
                 if draft_state.get("draft_format") == "turn_pick":
-                    body+="\\nBan completati. Indica chi ha il primo pick: primo pick nostro oppure primo pick avversario."
+                    body+="\nBan completati. Indica chi ha il primo pick: primo pick nostro oppure primo pick avversario."
                 else:
-                    body+="\\nBan completati. Puoi procedere con le selezioni."
+                    body+="\nBan completati. Puoi procedere con le selezioni."
                 await message.reply_text(body)
                 return True
 
