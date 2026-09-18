@@ -1633,7 +1633,7 @@ def render_structured_brawler_meta(context_text):
         if over.get("name_it"):lines.append("- Overdrive: "+str(over["name_it"]))
         active=row.get("recommended_active_map")
         if isinstance(active,list) and active:
-            lines += ["","Top 3 mappe consigliate in rotazione:"]
+            lines += ["","Top 3 mappe consigliate tra quelle attualmente in rotazione in game:"]
             for idx,item in enumerate(active[:3],1):
                 lines.append(f"{idx}. {item.get('mode')} — {item.get('map')} — Win rate: {float(item.get('win_rate')):.2f}%")
         else:
