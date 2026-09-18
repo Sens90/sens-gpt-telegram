@@ -252,7 +252,11 @@ class CommunityFeatures:
         stats=brawltrack_pro_map_stats(identity["map_en"]) or {}
         picks=stats.get("priority_picks") or stats.get("picks") or []
         avoid=stats.get("avoid") or stats.get("avoid_these") or []
-        catalog=self._get("brawlers_catalog",{"select":"name,name_it"})
+        try:
+            catalog=self._get("brawlers_catalog",{"select":"name,name_it"})
+        except Exception as exc:
+            LOG.warning("DRAFT brawler localization unavailable: %s", type(exc).__name__)
+            catalog=[]
         it_by_en={str(x.get("name") or "").casefold():str(x.get("name_it") or x.get("name") or "") for x in catalog or []}
         def local_brawler(value):
             return it_by_en.get(str(value or "").casefold(),str(value or "").title())
@@ -1544,10 +1548,14 @@ class CommunityFeatures:
                 await message.reply_text("Ranked non riconosciuto. Scrivi per esempio 'Mito I' oppure 'usa il mio ranked'.")
                 return True
             map_name = setup.get("map")
-            response = self.draft_map_advice_text(map_name, rank_name=rank_name)
+            try:
+                response = self.draft_map_advice_text(map_name, rank_name=rank_name)
+            except Exception as exc:
+                LOG.warning("DRAFT advice unavailable map=%s error=%s", map_name, type(exc).__name__)
+                response = None
             if not response:
-                await message.reply_text("Non riesco a preparare la Draft per questa mappa.")
-                return True
+                map_label = setup.get("map_it") or setup.get("map") or map_name
+                response = f"RANKED - {str(map_label).upper()}\nFascia Ranked: {rank_name}"
             draft_format = self._ranked_draft_format(rank_name)
             context.user_data["ranked_draft"] = {"map": setup.get("map"), "map_it": setup.get("map_it"), "map_id": setup.get("map_id"), "mode": setup.get("mode"), "mode_it": setup.get("mode_it"), "rank": rank_name, "elo": elo, "draft_format": draft_format, "first_pick": None, "pick_sequence": [], "my_picks": [], "enemy_picks": [], "bans": []}
             context.user_data.pop("ranked_draft_setup", None)
