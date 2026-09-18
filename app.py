@@ -27,7 +27,7 @@ from ai_profile_experience import build_visual_prompt, choose_scene
 from ai_profile_generator import generate_scene, overlay_stats, quota_status, consume_quota
 from brawler_reference import resolve_ai_brawler_reference
 from player_tracking import extract_brawlzone_ranked, get_brawltrack_player
-from live_maps import collect_report, render_report, report_csv, brawltrack_pro_map_stats
+from live_maps import collect_report, render_report, report_csv, brawltrack_pro_map_stats, safe_get, localized
 from premium_ai import handle_premium_command
 
 
@@ -1537,23 +1537,39 @@ def get_brawltrack_meta_context(question):
             hyper=builds.get("hypercharge") if isinstance(builds.get("hypercharge"),dict) else None
             modes=row.get("modes") if isinstance(row.get("modes"),dict) else {}
             best_modes=modes.get("items") or []; best_maps=modes.get("maps") or []
-            best_mode=best_modes[0] if best_modes else None
-            best_map=None
-            if best_mode:
-                same=[m for m in best_maps if str(m.get("mode") or "").casefold()==str(best_mode.get("mode") or "").casefold()]
-                if same: best_map=max(same,key=lambda m:(float(m.get("win_rate") or 0),int(m.get("battles") or 0)))
-            if best_map is None and best_maps: best_map=max(best_maps,key=lambda m:(float(m.get("win_rate") or 0),int(m.get("battles") or 0)))
-            best_comp=None
-            if best_map and row.get("brawler_name"):
-                try:
-                    pro=brawltrack_pro_map_stats(best_map.get("map")) or {}; target=str(row.get("brawler_name") or "").strip().casefold()
-                    matching=[c for c in (pro.get("final_comps") or []) if any(str(x).strip().casefold()==target for x in (c.get("team") or []))]
-                    if matching:
-                        chosen=max(matching,key=lambda c:(int(c.get("sets") or 0),float(c.get("win_rate") or 0)))
-                        best_comp={"team":chosen.get("team"),"map":best_map.get("map"),"mode":best_map.get("mode")}
-                except Exception as comp_error: print("BRAWLTRACK BRAWLER COMP ERROR:",repr(comp_error),flush=True)
-            payload.append({"brawler":row.get("brawler_name"),"win_rate":row.get("win_rate"),"meta_usage":row.get("pick_rate"),"star_rate":row.get("star_rate"),"rank":row.get("rank_label"),"popular_builds":clean,"overdrive":({"name_it":hyper.get("name_it")} if hyper and hyper.get("name_it") else None),"best_game_modes":best_modes,"best_maps":best_maps,"recommended_mode_map":{"mode":best_mode.get("mode"),"map":best_map.get("map")} if best_mode and best_map else None,"best_verified_comp":best_comp,"updated_at":row.get("source_updated_at")})
-        return "DATI BRAWLTRACK STRUTTURATI E LOCALIZZATI (PRIORITARI):\n"+json.dumps(payload,ensure_ascii=False,separators=(",",":"))
+            try: official_names=safe_get("i18n/names.it.json.gz") or {}
+            except Exception: official_names={}
+            def loc_mode(value):
+                raw=str(value or "").strip()
+                # Structured labels can carry a team-size suffix (e.g. "Wipeout 5v5").
+                # Localize the canonical mode only; never translate the suffix as a new mode.
+                base=re.sub(r"\\s+(?:2v2|3v3|5v5|trio|duo)$","",raw,flags=re.I).strip()
+                suffix=raw[len(base):].strip() if raw.casefold().startswith(base.casefold()) else ""
+                translated=localized(official_names,"modes",base)
+                if translated==base: translated=mode_name_it(base)
+                return (translated+(" "+suffix if suffix else "")).strip()
+            def loc_map(value):
+                raw=str(value or "").strip(); translated=localized(official_names,"maps",raw)
+                return translated if translated!=raw else map_name_it(raw)
+            top_pairs=[]; target=str(row.get("brawler_name") or "").strip().casefold()
+            for bm in best_modes[:3]:
+                raw_mode=str(bm.get("mode") or "").strip()
+                same=[m for m in best_maps if str(m.get("mode") or "").casefold()==raw_mode.casefold()]
+                chosen_map=max(same,key=lambda m:(float(m.get("win_rate") or 0),int(m.get("battles") or 0))) if same else None
+                comp=None
+                if chosen_map:
+                    try:
+                        pro=brawltrack_pro_map_stats(chosen_map.get("map")) or {}
+                        matching=[c for c in (pro.get("final_comps") or []) if any(str(x).strip().casefold()==target for x in (c.get("team") or []))]
+                        if matching:
+                            chosen=max(matching,key=lambda c:(int(c.get("sets") or 0),float(c.get("win_rate") or 0)))
+                            comp=[brawler_name_it(x) for x in (chosen.get("team") or [])]
+                    except Exception as comp_error: print("BRAWLTRACK BRAWLER COMP ERROR:",repr(comp_error),flush=True)
+                top_pairs.append({"mode":loc_mode(raw_mode),"map":loc_map(chosen_map.get("map")) if chosen_map else None,"verified_comp":comp})
+            top_maps=sorted(best_maps,key=lambda m:(float(m.get("win_rate") or 0),int(m.get("battles") or 0)),reverse=True)[:3]
+            top_maps=[{"map":loc_map(m.get("map")),"mode":loc_mode(m.get("mode"))} for m in top_maps]
+            payload.append({"brawler":row.get("brawler_name"),"win_rate":row.get("win_rate"),"meta_usage":row.get("pick_rate"),"star_rate":row.get("star_rate"),"rank":row.get("rank_label"),"popular_builds":clean,"overdrive":({"name_it":hyper.get("name_it")} if hyper and hyper.get("name_it") else None),"top_3_mode_maps":top_pairs,"top_3_maps":top_maps,"updated_at":row.get("source_updated_at")})
+        return "DATI META STRUTTURATI E LOCALIZZATI (PRIORITARI):\n"+json.dumps(payload,ensure_ascii=False,separators=(",",":"))
     except Exception as e:
         print("BRAWLTRACK META CONTEXT ERROR:",repr(e),flush=True); return ""
 
