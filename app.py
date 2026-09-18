@@ -1598,7 +1598,9 @@ def get_brawltrack_meta_context(question):
                                 event=entry.get("event") or {}
                                 candidates.append({"mode":entry.get("mode_name_it") or event.get("event_mode"),"map":entry.get("map_name_it") or event.get("event_map"),"win_rate":float(wr),"sample":int(stat.get("tm",0) or 0)})
                 if candidates:
-                    active_best=max(candidates,key=lambda x:(x["win_rate"],x["sample"]))
+                    # Keep the three strongest active maps, highest win rate first.
+                    # Sample size is only the tie-breaker.
+                    active_best=sorted(candidates,key=lambda x:(x["win_rate"],x["sample"]),reverse=True)[:3]
             except Exception as active_error: print("ACTIVE BRAWLER MAP ERROR:",repr(active_error),flush=True)
             payload.append({"brawler":row.get("brawler_name"),"win_rate":row.get("win_rate"),"meta_usage":row.get("pick_rate"),"star_rate":row.get("star_rate"),"rank":row.get("rank_label"),"popular_builds":clean,"overdrive":({"name_it":hyper.get("name_it")} if hyper and hyper.get("name_it") else None),"recommended_active_map":active_best,"top_3_mode_maps":top_pairs,"top_3_maps":top_maps,"updated_at":row.get("source_updated_at")})
         return "DATI META STRUTTURATI E LOCALIZZATI (PRIORITARI):\n"+json.dumps(payload,ensure_ascii=False,separators=(",",":"))
@@ -1630,10 +1632,12 @@ def render_structured_brawler_meta(context_text):
         over=row.get("overdrive") or {}
         if over.get("name_it"):lines.append("- Overdrive: "+str(over["name_it"]))
         active=row.get("recommended_active_map")
-        if isinstance(active,dict) and active.get("map"):
-            lines += ["","Mappa consigliata in rotazione:",f"{active.get('mode')} — {active.get('map')}",f"Win rate: {float(active.get('win_rate')):.2f}%"]
+        if isinstance(active,list) and active:
+            lines += ["","Top 3 mappe consigliate in rotazione:"]
+            for idx,item in enumerate(active[:3],1):
+                lines.append(f"{idx}. {item.get('mode')} — {item.get('map')} — Win rate: {float(item.get('win_rate')):.2f}%")
         else:
-            lines += ["","Mappa consigliata in rotazione: dati insufficienti al momento."]
+            lines += ["","Mappe consigliate in rotazione: dati insufficienti al momento."]
         return "\n".join(lines)
     except Exception as e:
         print("META DETERMINISTIC RENDER ERROR:",repr(e),flush=True);return None
