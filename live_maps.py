@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 BASE="https://storage.googleapis.com/brawlanalyzer-public/"; ROME=ZoneInfo("Europe/Rome"); LOG=logging.getLogger(__name__); _CACHE={}
 SECTIONS={"individual":"Individuali","teams":"Squadre","solo":"Solo — individuali","duo_individual":"Duo — individuali","duo_team":"Duo — squadre","trio_individual":"Trio — individuali","trio_team":"Trio — squadre"}
-METRICS={"wr":("Vittorie","%"),"win_rate":("Vittorie","%"),"ur":("Utilizzo","%"),"use_rate":("Utilizzo","%"),"sr":("Miglior Star Player","%"),"starplayer_rate":("Miglior Star Player","%"),"avg_rank":("Piazzamento medio",""),"tm":("Partite","")}
+METRICS={"wr":("Vittorie","%"),"win_rate":("Vittorie","%"),"ur":("Utilizzo","%"),"use_rate":("Utilizzo","%"),"sr":("Miglior StarPlayer","%"),"starplayer_rate":("Miglior StarPlayer","%"),"avg_rank":("Piazzamento medio",""),"tm":("Partite","")}
 MODES={"brawlBall":"Brawl Ball","gemGrab":"Gem Grab","hotZone":"Hot Zone","bounty":"Bounty","heist":"Heist","knockout":"Knockout","showdown":"Showdown","airHockey":"Brawl Hockey","brawlArena":"Brawl Arena","deathmatch5v5":"Wipeout 5v5","wipeout":"Wipeout","basketBrawl":"Basket Brawl","payload":"Payload"}
 
 def get_json(path,ttl=300):
@@ -114,8 +114,12 @@ def brawltrack_pro_map_stats(map_name,ttl=300):
         LOG.warning("LIVE_MAPS BrawlTrack pro unavailable map=%s error=%s",map_name,type(error).__name__);return None
 
 def event_time(value):
-    try:return datetime.strptime(value,"%Y%m%dT%H%M%S.%fZ").replace(tzinfo=timezone.utc)
-    except (TypeError,ValueError):return None
+    """Parse Supercell event timestamps with or without fractional seconds."""
+    if not isinstance(value,str):return None
+    for fmt in ("%Y%m%dT%H%M%S.%fZ","%Y%m%dT%H%M%SZ"):
+        try:return datetime.strptime(value,fmt).replace(tzinfo=timezone.utc)
+        except ValueError:pass
+    return None
 
 def active_events(rows,now):
     active={}
@@ -177,7 +181,7 @@ def collect_report(dataset="both",now=None,fetch=safe_get,secondary=None):
     data={key:value if isinstance(value,dict) else {} for key,value in data.items()};maps=[]
     for event in events:
         key=event["event_map_id"];normal=(data.get(f"normal-results/{event['event_mode']}.json.gz") or {}).get(key,{});ranked=(data.get("pl-results.json.gz") or {}).get(key,{})
-        normal=normal if isinstance(normal,dict) else {};ranked=ranked if isinstance(ranked,dict) else {};entry={"event":event,"datasets":[],"secondary":None,"brawltrack_pro_url":brawltrack_pro_map_url(event.get("event_map")),"competitive":brawltrack_pro_map_stats(event.get("event_map"))}
+        normal=normal if isinstance(normal,dict) else {};ranked=ranked if isinstance(ranked,dict) else {};entry={"event":event,"datasets":[],"secondary":None,"map_name_it":localized(names,"maps",event.get("event_map")),"mode_name_it":localized(names,"modes",MODES.get(event.get("event_mode"),event.get("event_mode"))),"brawltrack_pro_url":brawltrack_pro_map_url(event.get("event_map")),"competitive":brawltrack_pro_map_stats(event.get("event_map"))}
         for label,raw in (("Ladder",normal),("Classificata",ranked)):
             if (dataset=="ladder" and label!="Ladder") or (dataset=="ranked" and label!="Classificata"):continue
             sections={k:valid_rows(raw.get(k)) for k in SECTIONS};entry["datasets"].append({"label":label,"raw":raw,"sections":sections})
