@@ -58,41 +58,17 @@ def _parse_builds(raw):
     return out
 
 def _parse_modes(raw):
-    if not raw:return []
-    # Match the complete BrawlTrack label immediately before the percentage.
-    # Longer variants are protected explicitly so e.g. Wipeout cannot steal
-    # Trio Wipeout/Wipeout 5v5 and Showdown cannot steal Solo/Duo/Trio.
-    aliases=(
-      ("Brawl Ball",("Brawl Ball",)),
-      ("Gem Grab",("Gem Grab",)),
-      ("Hot Zone",("Hot Zone",)),
-      ("Heist",("Heist",)),
-      ("Knockout",("Knockout",)),
-      ("Bounty",("Bounty",)),
-      ("Wipeout",("Wipeout",)),
-      ("Solo Showdown",("Solo Showdown","Showdown")),
-      ("Duo Showdown",("Duo Showdown",)),
-      ("Brawl Arena",("Brawl Arena",)),
-      ("Brawl Hockey",("Brawl Hockey",)),
-      ("Basket Brawl",("Basket Brawl",)),
-      ("Duels",("Duels",)),
-    )
-    variants=("Trio Wipeout","Wipeout 5v5","Trio Showdown","Duo Showdown","Solo Showdown",
-              "Loaded Showdown","Brawl Ball 2v2","Brawl Ball 5v5","Gem Grab 2v2","Gem Grab 5v5",
-              "Hot Zone 2v2","Knockout 2v2","Knockout 5v5","Brawl Hockey 2v2","Basket Brawl 2v2")
-    blocked="|".join(re.escape(x) for x in sorted(variants,key=len,reverse=True))
-    out=[]
-    for canonical,names in aliases:
-        hit=None
-        for label in names:
-            pat=r"(?<![A-Za-z])"+re.escape(label)+r"\s+(\d+(?:\.\d+)?)\s*%"
-            for m in re.finditer(pat,raw,re.I):
-                prefix=raw[max(0,m.start()-40):m.start()+len(label)]
-                if any(re.search(re.escape(v)+r"$",prefix,re.I) for v in variants if v.casefold()!=label.casefold()):
-                    continue
-                hit=m;break
-            if hit:break
-        if hit: out.append({"mode":canonical,"win_rate":float(hit.group(1))})
+    if not raw or raw.strip().casefold()=="insufficient mode data.":return []
+    # BrawlTrack renders this section as a flat sequence:
+    # MODE LABEL -> WIN RATE %.  Parse boundaries from percentages instead of
+    # maintaining a mode allow-list, so event/special modes are preserved.
+    rate=re.compile(r"(\d+(?:\.\d+)?)\s*%")
+    out=[];pos=0
+    for m in rate.finditer(raw):
+        label=raw[pos:m.start()].strip()
+        pos=m.end()
+        if not label:continue
+        out.append({"mode":label,"win_rate":float(m.group(1))})
     return out
 
 def _parse_maps(raw):
