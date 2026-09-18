@@ -1583,7 +1583,7 @@ def get_brawltrack_meta_context(question):
             # Rotation comes from Supercell; performance comes from the active-map dataset.
             active_best=None
             try:
-                print("ACTIVE BRAWLER MAP: collect_report ladder START",flush=True)
+                print("ACTIVE BRAWLER MAP: collect_report ladder START module="+str(getattr(collect_report,"__module__",None))+" file="+str(getattr(__import__(getattr(collect_report,"__module__","live_maps")),"__file__",None)),flush=True)
                 report=collect_report("ladder")
                 print("ACTIVE BRAWLER MAP: rotation_source="+str(report.get("rotation_source")),flush=True)
                 candidates=[]
