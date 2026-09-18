@@ -1718,7 +1718,7 @@ class CommunityFeatures:
             context.user_data.pop("ranked_draft_setup",None)
             await message.reply_text("Draft chiusa. Puoi iniziarne una nuova con: Draft Ranked.")
             return True
-        first_pick_q = re.fullmatch(r"(?:(?:(?:primo|first)\\s+pick|pick)\\s+(nostro|mio|squadra|avversario|avversaria|nemico)|(nostro|mio|squadra|avversario|avversaria|nemico)\\s+pick)", q, re.I)
+        first_pick_q = re.fullmatch(r"(?:(?:(?:primo|first)\s+pick|pick)\s+(nostro|mio|squadra|avversario|avversaria|nemico)|(nostro|mio|squadra|avversario|avversaria|nemico)\s+pick)", q, re.I)
         if draft_state and first_pick_q:
             if draft_state.get("draft_format") != "turn_pick":
                 await message.reply_text("L'ordine a turni dei pick si usa da Mito I in poi.")
