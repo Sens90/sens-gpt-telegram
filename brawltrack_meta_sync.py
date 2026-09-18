@@ -97,11 +97,8 @@ def _parse_modes(raw):
 
 def _parse_maps(raw):
     if not raw or raw.strip().casefold()=="no map data found.":return []
-    # BrawlTrack text is a flat stream: <mode> <N> Maps followed by exactly N
-    # <map> <battles> Battles <win_rate> % records. Use the declared count to
-    # delimit groups instead of a broad regex that can absorb the next heading.
-    heading=re.compile(r"(.+?)\\s+(\\d+)\\s+Maps\\s+")
-    entry=re.compile(r"(.+?)\\s+(\\d+)\\s+Battles\\s+(\\d+(?:\\.\\d+)?)\\s*%")
+    heading=re.compile("(.+?)" + r"\s+" + r"(\d+)" + r"\s+Maps\s+")
+    entry=re.compile("(.+?)" + r"\s+" + r"(\d+)" + r"\s+Battles\s+" + r"(\d+(?:\.\d+)?)" + r"\s*%")
     out=[];pos=0
     while pos<len(raw):
         h=heading.match(raw,pos)
