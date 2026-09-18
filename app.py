@@ -783,6 +783,9 @@ def brawlplanet_structured_stats(results, max_rows=10):
 
 
 def web_search(query):
+    # Tavily is an optional legacy fallback. Core BrawlTrack/Supercell paths do not depend on it.
+    if not TAVILY_API_KEY:
+        return {"results": [], "images": [], "answer": None, "disabled": True}
     if not TAVILY_ENABLED or not TAVILY_API_KEY:
         return {"results": [], "images": [], "answer": None}
     query_lower = query.lower()
@@ -1030,6 +1033,8 @@ def extract_brawl_ball_map(search_data):
 
 
 def get_verified_map_comp(map_name):
+    if not TAVILY_API_KEY:
+        return []
     if not TAVILY_ENABLED or not TAVILY_API_KEY:
         return []
     try:
@@ -1173,6 +1178,8 @@ def get_verified_map_comp(map_name):
     return []
 
 def search_map_comp(map_name):
+    if not TAVILY_API_KEY:
+        return {"results": []}
     if not TAVILY_ENABLED or not TAVILY_API_KEY:
         return {"results": []}
     response = requests.post(
@@ -1308,6 +1315,8 @@ def get_noff_map_image(map_name):
 
 
 def image_search(query):
+    if not TAVILY_API_KEY:
+        return {"results": [], "images": []}
     if not TAVILY_ENABLED or not TAVILY_API_KEY:
         return {"images": [], "results": []}
     search_query = (
@@ -2512,6 +2521,8 @@ async def deliver_live_map_report(message, context, report, rendered):
 
 
 def secondary_live_map_stats(event):
+    if not TAVILY_API_KEY:
+        return []
     """Try secondary sources for one verified event, keeping table cells intact."""
     if not TAVILY_ENABLED or not TAVILY_API_KEY:
         return None
