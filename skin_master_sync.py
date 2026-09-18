@@ -11,7 +11,13 @@ def build_verified_rows():
  for s in cosmetics:
   cf=conf_by_name.get(s.get("Conf") or s.get("Name")); raw_char=cf.get("Character") if cf else None
   char_key=str(raw_char or "").split(";")[0].strip()
-  ch=char_by_internal.get(char_key); loc=it.get(s.get("TID")) or {}
+  ch=char_by_internal.get(char_key)
+  if not ch:
+   tid=str(s.get("TID") or "")
+   token=tid[4:].split("_",1)[0] if tid.startswith("TID_") else ""
+   candidates=[x for x in chars.values() if x.get("id") and x.get("ItemName") and (str(x.get("ItemName")).upper()==token or str(x.get("Name")).upper()==token)]
+   if len(candidates)==1: ch=candidates[0]; char_key=str(ch.get("Name") or char_key)
+  loc=it.get(s.get("TID")) or {}
   if not ch: unmapped.append(s.get("id")); continue
   name_it=loc.get("IT") if isinstance(loc,dict) else None
   out.append({"external_id":str(s["id"]),"brawler_id":ch["id"],"brawler_name":str(ch["ItemName"]).upper(),"name_en":s["Name"],"name_it":name_it,"rarity":s.get("Rarity"),"price_gems":s.get("PriceGems"),"source":"brawlapi_game_csv","source_url":BASE+"/game/csv_logic/skins","source_payload":{"tid":s.get("TID"),"conf":s.get("Conf"),"character":char_key},"verification_status":"structured_verified","image_verified":False,"name_it_source":"brawlapi_game_localization_it","name_it_source_url":BASE+"/game/localization/it"})
