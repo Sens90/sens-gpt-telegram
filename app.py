@@ -1543,10 +1543,10 @@ def get_brawltrack_meta_context(question):
             official_maps=official_names.get("maps",{}) if isinstance(official_names,dict) else {}
             def exact_official(table,value):
                 raw=str(value or "").strip()
-                for key,label in (table or {}).items():
-                    if str(key).strip().casefold()==raw.casefold():
-                        return str(label).strip()
-                return None
+                if not raw:return None
+                # Reuse the live-map catalogue resolver: its canonical keys are uppercase.
+                translated=localized({"verified":table},"verified",raw)
+                return translated if translated!=raw else None
             def loc_mode(value):
                 raw=str(value or "").strip()
                 # Only an exact key from the official Italian catalogue is accepted.
@@ -3235,8 +3235,11 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Converte i nomi inglesi delle mappe e la terminologia generica
         # nei termini ufficiali italiani prima di mostrare la risposta.
-        final_text = translate_map_names_in_text(final_text)
-        final_text = translate_mode_names_in_text(final_text)
+        # Structured meta already resolved names against the verified Italian catalogue.
+        # Do not run the legacy hand-written dictionaries over it afterwards.
+        if "DATI META STRUTTURATI E LOCALIZZATI (PRIORITARI):" not in question_for_ai:
+            final_text = translate_map_names_in_text(final_text)
+            final_text = translate_mode_names_in_text(final_text)
         final_text = translate_game_terms_in_text(final_text)
 
         if (
