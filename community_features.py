@@ -1025,7 +1025,7 @@ class CommunityFeatures:
             club_name=next((v for k,v in self.CLUB_ALIASES.items() if k in ql),None)
             await message.reply_text(self.stat_ranking_text(message.chat_id, "3v3", club_name)); return True
         ranked_delta = re.fullmatch(
-            r"classific(?:a|he)(?:\\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?))?\\s+(?:elo\\s+)?(?:ranked|classificata)(?:\\s+(oggi|7|15|30)(?:\\s+giorni)?)?",
+            r"classific(?:a|he)(?:\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?))?\s+(?:elo\s+)?(?:ranked|classificata)(?:\s+(oggi|7|15|30)(?:\s+giorni)?)?",
             q, re.I,
         )
         if ranked_delta:
