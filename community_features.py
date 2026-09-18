@@ -266,7 +266,7 @@ class CommunityFeatures:
         for item in picks if isinstance(picks,list) else []:
             name=item.get("brawler") if isinstance(item,dict) else item
             if name and local_brawler(name) not in pick_names:pick_names.append(local_brawler(name))
-            if len(pick_names)>=5:break
+            if len(pick_names)>=6:break
         avoid_names=[]
         for item in avoid if isinstance(avoid,list) else []:
             name=item.get("brawler") if isinstance(item,dict) else item
