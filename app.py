@@ -3472,6 +3472,22 @@ def main():
     )
 
 
+def _startup_brawltrack_map_smoke():
+    """One-shot production smoke check for the BrawlTrack competitive map parser."""
+    try:
+        from live_maps import brawltrack_pro_map_stats
+        data=brawltrack_pro_map_stats("Hard Rock Mine",ttl=0) or {}
+        picks=data.get("priority_picks") or []
+        comps=data.get("final_comps") or []
+        ok=data.get("map_id")==15000007 and bool(picks) and bool(comps)
+        print("BRAWLTRACK MAP SMOKE %s: map_id=%s picks=%s comps=%s" % (
+            "OK" if ok else "FAILED",data.get("map_id"),len(picks),len(comps)
+        ),flush=True)
+    except Exception as exc:
+        print("BRAWLTRACK MAP SMOKE ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
+
+_startup_brawltrack_map_smoke()
+
 if __name__ == "__main__":
     threading.Thread(
         target=automatic_trophy_monitor,
