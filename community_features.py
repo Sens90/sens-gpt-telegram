@@ -1393,6 +1393,13 @@ class CommunityFeatures:
 
         match = re.fullmatch(r"(?:registrami|tegistrami)\s*#?([A-Z0-9]{3,15})", q, re.I)
         if match:
+            raw_tag = match.group(1).upper()
+            if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", raw_tag):
+                await message.reply_text(
+                    "Tag Brawl Stars non valido. Controllalo e riprova con: registrami #TAG. "
+                    "Attenzione: nei tag Brawl Stars la lettera O non è valida; potrebbe essere uno zero (0)."
+                )
+                return True
             try:
                 player = self.register_member(message, raw_tag)
                 if not player:
