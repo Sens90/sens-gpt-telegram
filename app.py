@@ -2675,6 +2675,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     web_sources = []
     web_images = []
     structured_stats_context = ""
+    rotation_instruction = ""
 
     if needs_web_search(question_for_ai):
         try:
@@ -2711,7 +2712,6 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
 
             rotation_manifest = search_data.get("brawlplanet_rotation", [])
-            rotation_instruction = ""
             if is_all_maps_request(question_for_ai):
                 if rotation_manifest:
                     rotation_rows = "\n".join(
