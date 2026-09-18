@@ -64,6 +64,23 @@ def brawltrack_pro_map_url(map_name):
     clean=str(map_name or "").strip()
     return f"https://brawltrack.app/pro/maps/{quote(clean, safe='')}" if clean else None
 
+def brawltrack_pro_map_image(map_name,ttl=300):
+    """Return BrawlTrack's map image only when the page identifies the same map."""
+    url=brawltrack_pro_map_url(map_name)
+    if not url:return None
+    key="btproimg:"+url;cached=_CACHE.get(key)
+    if cached and time.monotonic()-cached[0]<ttl:return cached[1]
+    try:
+        from bs4 import BeautifulSoup
+        response=requests.get(url,headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"text/html"},timeout=15);response.raise_for_status()
+        soup=BeautifulSoup(response.text,"html.parser");text=soup.get_text(" ",strip=True)
+        mid=re.search(r"MAP ID:\s*(\d+)",text,re.I);target=str(map_name or "").strip().casefold()
+        candidates=[(img.get("src") or "").strip() for img in soup.find_all("img") if (img.get("alt") or "").strip().casefold()==target and (img.get("src") or "").strip()]
+        result={"source":"BrawlTrack Pro","source_url":url,"map_id":int(mid.group(1)) if mid else None,"image_url":candidates[0] if candidates else None,"verified":bool(mid and candidates)}
+        _CACHE[key]=(time.monotonic(),result);return result
+    except Exception as error:
+        LOG.warning("LIVE_MAPS BrawlTrack map image unavailable map=%s error=%s",map_name,type(error).__name__);return None
+
 def brawltrack_pro_map_stats(map_name,ttl=300):
     """Parse BrawlTrack Pro map data, preserving its competitive scope."""
     url=brawltrack_pro_map_url(map_name)
@@ -181,7 +198,7 @@ def collect_report(dataset="both",now=None,fetch=safe_get,secondary=None):
     data={key:value if isinstance(value,dict) else {} for key,value in data.items()};maps=[]
     for event in events:
         key=event["event_map_id"];normal=(data.get(f"normal-results/{event['event_mode']}.json.gz") or {}).get(key,{});ranked=(data.get("pl-results.json.gz") or {}).get(key,{})
-        normal=normal if isinstance(normal,dict) else {};ranked=ranked if isinstance(ranked,dict) else {};entry={"event":event,"datasets":[],"secondary":None,"map_name_it":localized(names,"maps",event.get("event_map")),"mode_name_it":localized(names,"modes",MODES.get(event.get("event_mode"),event.get("event_mode"))),"brawltrack_pro_url":brawltrack_pro_map_url(event.get("event_map")),"competitive":brawltrack_pro_map_stats(event.get("event_map"))}
+        normal=normal if isinstance(normal,dict) else {};ranked=ranked if isinstance(ranked,dict) else {};competitive=brawltrack_pro_map_stats(event.get("event_map"));map_image=brawltrack_pro_map_image(event.get("event_map"));entry={"event":event,"datasets":[],"secondary":None,"map_name_it":localized(names,"maps",event.get("event_map")),"mode_name_it":localized(names,"modes",MODES.get(event.get("event_mode"),event.get("event_mode"))),"canonical_map_id":competitive.get("map_id") if competitive else None,"map_image":map_image,"brawltrack_pro_url":brawltrack_pro_map_url(event.get("event_map")),"competitive":competitive}
         for label,raw in (("Ladder",normal),("Classificata",ranked)):
             if (dataset=="ladder" and label!="Ladder") or (dataset=="ranked" and label!="Classificata"):continue
             sections={k:valid_rows(raw.get(k)) for k in SECTIONS};entry["datasets"].append({"label":label,"raw":raw,"sections":sections})
