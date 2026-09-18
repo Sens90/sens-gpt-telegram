@@ -15,6 +15,8 @@ def build_verified_rows():
   if not ch:
    tid=str(s.get("TID") or "")
    token=tid[4:].split("_",1)[0] if tid.startswith("TID_") else ""
+   aliases={"RICO":"TRICKSHOT"}
+   token=aliases.get(token,token)
    candidates=[x for x in chars.values() if x.get("id") and x.get("ItemName") and (str(x.get("ItemName")).upper()==token or str(x.get("Name")).upper()==token)]
    if len(candidates)==1: ch=candidates[0]; char_key=str(ch.get("Name") or char_key)
   loc=it.get(s.get("TID")) or {}
