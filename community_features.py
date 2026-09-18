@@ -151,6 +151,44 @@ class CommunityFeatures:
     def _now_iso(self):
         return datetime.now(timezone.utc).isoformat()
 
+    def draft_map_advice_text(self, map_name):
+        """Fast cached Ranked draft opener using verified map/meta rows."""
+        wanted=str(map_name or "").strip()
+        if not wanted:return None
+        try:
+            # Prefer exact localized/English map identity already cached by the bot.
+            rows=self._get("brawltrack_meta_cache", {"select":"*", "limit":"500"})
+            folded=wanted.casefold()
+            candidates=[]
+            for row in rows or []:
+                blob=str(row).casefold()
+                if folded in blob:candidates.append(row)
+            if not candidates:
+                return f"Non ho ancora dati verificati per la mappa {wanted}."
+            # Avoid guessing a schema: surface only data explicitly labelled as picks/bans
+            # in the cached payload. The live draft state is kept in Telegram user_data.
+            row=candidates[0]
+            payload=row.get("payload") if isinstance(row.get("payload"),dict) else row
+            picks=payload.get("priority_picks") or payload.get("top_picks") or payload.get("best_picks") or []
+            bans=payload.get("recommended_bans") or payload.get("bans") or []
+            def labels(items,limit):
+                out=[]
+                for item in items if isinstance(items,list) else []:
+                    if isinstance(item,dict): name=item.get("name_it") or item.get("brawler") or item.get("name")
+                    else:name=item
+                    if name and str(name).casefold() not in {str(x).casefold() for x in out}:out.append(str(name))
+                    if len(out)>=limit:break
+                return out
+            p=labels(picks,5);b=labels(bans,5)
+            if not p and not b:
+                return f"Ho riconosciuto {wanted}, ma la cache Draft non contiene ancora ban/pick verificati per questa mappa."
+            lines=[f"RANKED - {wanted.upper()}",""]
+            if b:lines+=["Ban consigliati: "+", ".join(b)]
+            if p:lines+=["Migliori pick: "+", ".join(p)]
+            return "\n".join(lines)
+        except Exception as exc:
+            print("ERRORE DRAFT MAPPA:",repr(exc),flush=True);return None
+
     def brawler_counter_text(self, brawler_name, mode=None, map_name=None):
         """Return verified counter data stored server-side; never invent matchups."""
         try:
@@ -1009,6 +1047,30 @@ class CommunityFeatures:
 
         if ql in ("regole", "faq", "regolamento"):
             await message.reply_text(FAQ_TEXT)
+            return True
+
+        ranked_map = re.fullmatch(r"(?:ranked|classificata)\s+(.+)", q, re.I)
+        if ranked_map and not re.fullmatch(r"(?:oggi|7|15|30)(?:\s+giorni)?", ranked_map.group(1), re.I):
+            map_name = ranked_map.group(1).strip()
+            response = self.draft_map_advice_text(map_name)
+            if response:
+                context.user_data["ranked_draft"] = {"map": map_name, "my_picks": [], "enemy_picks": [], "bans": []}
+                await message.reply_text(response)
+                return True
+
+        draft_state = context.user_data.get("ranked_draft") or {}
+        draft_pick = re.fullmatch(r"(?:mio\s+pick|pick\s+mio)\s+(.+?)(?:\s*,?\s*(?:pick\s+)?avversari[oa]\s+(.+))?", q, re.I)
+        if draft_pick and draft_state:
+            mine=draft_pick.group(1).strip();enemy=(draft_pick.group(2) or "").strip()
+            draft_state.setdefault("my_picks",[]).append(mine)
+            if enemy:draft_state.setdefault("enemy_picks",[]).append(enemy)
+            context.user_data["ranked_draft"]=draft_state
+            if enemy:
+                response=self.brawler_counter_text(enemy, map_name=draft_state.get("map"))
+                if not response: response=self.brawler_counter_text(enemy)
+                if response:
+                    await message.reply_text(response);return True
+            await message.reply_text("Draft aggiornato. Inserisci il prossimo pick avversario.")
             return True
 
         counter_match = re.fullmatch(r"(?:counter(?:\s+di)?|chi\s+countera)\s+(.+)", q, re.I)
