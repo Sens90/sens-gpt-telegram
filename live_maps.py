@@ -30,18 +30,27 @@ def safe_get(path,ttl=300):
 SUPERcell_EVENTS="https://api.brawlstars.com/v1/events/rotation"
 
 def get_official_rotation(ttl=60):
-    """Official Supercell rotation. Returns None so callers can use the verified fallback."""
+    """Official Supercell rotation, preferably through the existing TITANI ABUSIVI proxy."""
     cached=_CACHE.get(SUPERcell_EVENTS)
     if cached and time.monotonic()-cached[0]<ttl:return cached[1]
+    proxy_url=(os.environ.get("BRAWL_OFFICIAL_PROXY_URL") or "").strip()
+    proxy_key=(os.environ.get("BRAWL_OFFICIAL_PROXY_KEY") or "").strip()
     token=(os.environ.get("BRAWL_STARS_API_TOKEN") or os.environ.get("BRAWL_API_TOKEN") or "").strip()
-    if not token:
-        LOG.warning("LIVE_MAPS official rotation unavailable: API token not configured")
-        return None
     try:
-        response=requests.get(SUPERcell_EVENTS,headers={"Authorization":f"Bearer {token}","Accept":"application/json","User-Agent":"SensGPT/1.0"},timeout=15)
+        if proxy_url and proxy_key:
+            response=requests.get(proxy_url,params={"action":"events"},headers={"X-Sens-Key":proxy_key,"Accept":"application/json","User-Agent":"SensGPT/1.0"},timeout=15)
+            source="proxy"
+        elif token:
+            response=requests.get(SUPERcell_EVENTS,headers={"Authorization":f"Bearer {token}","Accept":"application/json","User-Agent":"SensGPT/1.0"},timeout=15)
+            source="direct"
+        else:
+            LOG.warning("LIVE_MAPS official rotation unavailable: official proxy/token not configured")
+            return None
         response.raise_for_status();rows=response.json()
         if not isinstance(rows,list):raise ValueError("unexpected official rotation payload")
-        _CACHE[SUPERcell_EVENTS]=(time.monotonic(),rows);return rows
+        _CACHE[SUPERcell_EVENTS]=(time.monotonic(),rows)
+        LOG.info("LIVE_MAPS official rotation OK source=%s events=%s",source,len(rows))
+        return rows
     except Exception as error:
         LOG.warning("LIVE_MAPS official rotation unavailable error=%s",type(error).__name__);return None
 
