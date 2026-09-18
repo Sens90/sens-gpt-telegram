@@ -255,22 +255,27 @@ class CommunityFeatures:
             print("ERRORE COUNTER BRAWLER:", repr(exc), flush=True)
             return None
 
-    def is_registered_private_user(self, telegram_user_id):
-        """Private bot access is reserved to active registered community members."""
+    def get_registered_user(self, telegram_user_id):
+        """Resolve an active registered member immediately from Telegram identity."""
         if not self.ready or telegram_user_id is None:
-            return False
+            return None
         try:
             rows=self._get("community_members",{
-                "select":"telegram_user_id,player_tag,is_active",
+                "select":"*",
                 "telegram_user_id":f"eq.{int(telegram_user_id)}",
                 "is_active":"eq.true",
                 "player_tag":"not.is.null",
+                "order":"player_last_updated_at.desc.nullslast",
                 "limit":"1",
             })
-            return bool(rows)
+            return rows[0] if rows else None
         except Exception as exc:
-            print("ERRORE ACCESSO PRIVATO:",repr(exc),flush=True)
-            return False
+            print("ERRORE RICONOSCIMENTO UTENTE:",repr(exc),flush=True)
+            return None
+
+    def is_registered_private_user(self, telegram_user_id):
+        """Private bot access is reserved to active registered community members."""
+        return self.get_registered_user(telegram_user_id) is not None
 
     def track_activity(self, message):
         if not self.ready or not message or not message.from_user:
