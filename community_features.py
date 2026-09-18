@@ -377,7 +377,7 @@ class CommunityFeatures:
             return "Argento"
         if "PROPASS_PROGRESSION" in tid:
             return "Brawl Pass"
-        return "Speciali"
+        return "Senza rarità"
 
     def skin_account_text(self, registered_user, brawler_name=None, rarity=None, category=None):
         if not registered_user or not registered_user.get("player_tag"):
@@ -1295,7 +1295,7 @@ class CommunityFeatures:
             "leggendarie":"Leggendarie", "overdrive":"Skin Overdrive", "skin overdrive":"Skin Overdrive",
             "ipercharge":"Skin Overdrive", "collezione":"Collezione", "collector":"Collezione",
             "pass pro":"Pass Pro", "brawl pass":"Brawl Pass", "argento":"Argento",
-            "oro":"Oro 24 carati", "oro 24 carati":"Oro 24 carati", "speciali":"Speciali",
+            "oro":"Oro 24 carati", "oro 24 carati":"Oro 24 carati", "speciali":"Senza rarità", "senza rarità":"Senza rarità", "senza rarita":"Senza rarità",
         }
         if rarity_brawler_q:
             answer=self.skin_account_text(
