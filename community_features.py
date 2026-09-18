@@ -342,7 +342,7 @@ class CommunityFeatures:
                     "player_tag": f"eq.{tag}",
                     "ranked_current_elo": "not.is.null",
                     "recorded_at": f"gte.{since}",
-                    "select": "ranked_current_elo,recorded_at",
+                    "select": "ranked_current,ranked_current_elo,recorded_at",
                     "order": "recorded_at.asc",
                     "limit": "5000",
                 },
@@ -353,13 +353,16 @@ class CommunityFeatures:
             return []
 
     @staticmethod
-    def _ranked_elo_at_or_before(history, target):
+    def _ranked_state_at_or_before(history, target):
         selected = None
         for row in history:
             try:
                 dt = datetime.fromisoformat(str(row["recorded_at"]).replace("Z", "+00:00"))
                 if dt <= target:
-                    selected = int(row["ranked_current_elo"])
+                    selected = {
+                        "elo": int(row["ranked_current_elo"]),
+                        "rank": row.get("ranked_current"),
+                    }
                 else:
                     break
             except Exception:
@@ -392,23 +395,27 @@ class CommunityFeatures:
             except (TypeError, ValueError):
                 continue
             history = self.ranked_history_rows(tag, days)
-            baseline = self._ranked_elo_at_or_before(history, target)
+            baseline = self._ranked_state_at_or_before(history, target)
             if days == 0 and baseline is None:
                 for row in history:
                     try:
                         dt = datetime.fromisoformat(str(row["recorded_at"]).replace("Z", "+00:00"))
                         if dt >= start_today:
-                            baseline = int(row["ranked_current_elo"])
+                            baseline = {
+                                "elo": int(row["ranked_current_elo"]),
+                                "rank": row.get("ranked_current"),
+                            }
                             break
                     except Exception:
                         continue
-            delta = current - baseline if baseline is not None else None
+            delta = current - baseline["elo"] if baseline is not None else None
             rows.append({
                 "name": player.get("name") or member.get("player_name") or member.get("display_name") or tag,
                 "tag": tag,
                 "current": current,
                 "delta": delta,
                 "rank": player.get("ranked_current") or member.get("ranked_current"),
+                "previous_rank": (baseline or {}).get("rank"),
             })
         rows.sort(key=lambda x: (
             x["delta"] is not None,
@@ -430,10 +437,16 @@ class CommunityFeatures:
                 ("+" if delta > 0 else "") + self.number_formatter(delta)
                 if delta is not None else "storico non ancora disponibile"
             )
-            rank = f" - {row['rank']}" if row.get("rank") else ""
+            rank_now = row.get("rank") or "Non disponibile"
+            rank_before = row.get("previous_rank")
+            rank_change = ""
+            if rank_before and rank_now and rank_before.casefold() != rank_now.casefold():
+                rank_change = f" - {rank_before} ↑ {rank_now}" if (delta or 0) > 0 else f" - {rank_before} ↓ {rank_now}"
+            else:
+                rank_change = f" - {rank_now}"
             lines.append(
                 f"{index}. {row['name']} - {self.number_formatter(row['current'])} ELO"
-                f"{rank} ({delta_text})"
+                f"{rank_change} ({delta_text})"
             )
         return "\n".join(lines)
 
