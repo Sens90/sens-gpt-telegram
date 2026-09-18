@@ -1469,7 +1469,7 @@ class CommunityFeatures:
             await message.reply_text(FAQ_TEXT)
             return True
 
-        ranked_map = re.fullmatch(r"(?:ranked|classificata)\s+(.+)", q, re.I)
+        ranked_map = re.fullmatch(r"(?:draft\s+ranked|ranked|classificata)\s+(.+)", q, re.I)
         if ranked_map and not re.fullmatch(r"(?:oggi|7|15|30)(?:\s+giorni)?", ranked_map.group(1), re.I):
             raw = ranked_map.group(1).strip()
             rank_aliases = {
