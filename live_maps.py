@@ -80,7 +80,7 @@ def brawltrack_pro_map_stats(map_name,ttl=300):
             return text[i+len(a):j] if i>=0 and j>i else ""
         picks_block=between("PRIORITY PICKS","TEAMS ON MAP")
         # BrawlTrack renders: rank NAME tier ROLE •use% USE WIN RATE wr%
-        pick_pat=re.compile(r"(\d+)\s+([A-Z][A-Z0-9 .'-]*?)\s+[A-S]\s+(?:SNIPER|TANK|ASSASSIN|THROWER|SUPPORT|CONTROLLER|DAMAGE)(?:\s+DEALER)?\s*[•·]?\s*(\d+(?:\.\d+)?)%\s+USE\s+WIN RATE\s+(\d+(?:\.\d+)?)%",re.I)
+        pick_pat=re.compile(r"(\d+)\s+([A-Z][A-Z0-9 .'-]*?)\s+[A-S]\s+(?:SNIPER|TANK|ASSASSIN|THROWER|SUPPORT|CONTROLLER|DAMAGE)(?:\s+DEALER)?\s*[•·]?\s*(\d+(?:\.\d+)?)\s*%\s+USE\s+WIN RATE\s+(\d+(?:\.\d+)?)\s*%",re.I)
         picks=[{"rank":int(m.group(1)),"brawler":re.sub(r"\s+"," ",m.group(2)).strip().upper(),"use_rate":float(m.group(3)),"win_rate":float(m.group(4))} for m in pick_pat.finditer(picks_block)]
         comps_block=between("COMMON FINAL COMPS","PRO MATCHUP MATRIX")
         # BeautifulSoup text can omit image alt names for team compositions. Parse
