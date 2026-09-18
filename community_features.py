@@ -229,6 +229,23 @@ class CommunityFeatures:
             print("ERRORE COUNTER BRAWLER:", repr(exc), flush=True)
             return None
 
+    def is_registered_private_user(self, telegram_user_id):
+        """Private bot access is reserved to active registered community members."""
+        if not self.ready or telegram_user_id is None:
+            return False
+        try:
+            rows=self._get("community_members",{
+                "select":"telegram_user_id,player_tag,is_active",
+                "telegram_user_id":f"eq.{int(telegram_user_id)}",
+                "is_active":"eq.true",
+                "player_tag":"not.is.null",
+                "limit":"1",
+            })
+            return bool(rows)
+        except Exception as exc:
+            print("ERRORE ACCESSO PRIVATO:",repr(exc),flush=True)
+            return False
+
     def track_activity(self, message):
         if not self.ready or not message or not message.from_user:
             return
