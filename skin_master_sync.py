@@ -44,9 +44,9 @@ def inspect_unmapped_relations():
  for s in skins.values():
   if s.get("Disabled") or not s.get("TID"): continue
   cf=conf_by_name.get(s.get("Conf") or s.get("Name"))
-  if cf and char_by_internal.get(cf.get("Character")): continue
+  if cf and char_by_internal.get(str(cf.get("Character") or "").split(";")[0].strip()): continue
   if cf: fields.update(cf.keys())
   out.append({"skin_id":s.get("id"),"skin":s.get("Name"),"conf":s.get("Conf"),"skin_fields":{k:v for k,v in s.items() if v not in (None,"",0,False,[])}, "conf_fields":{k:v for k,v in (cf or {}).items() if v not in (None,"",0,False,[])}})
- return {"count":len(out),"candidate_fields":sorted(fields),"rows":out}
+ return {"count":len(out),"candidate_fields":sorted(fields),"rows":[{"skin_id":r["skin_id"],"skin":r["skin"],"conf":r["conf"],"character":r["conf_fields"].get("Character"),"progression_base":r["skin_fields"].get("ProgressionSkinBase"),"tid":r["skin_fields"].get("TID")} for r in out]}
 
 if __name__=="__main__": print(inspect_unmapped_relations())
