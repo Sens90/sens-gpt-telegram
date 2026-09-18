@@ -1,5 +1,6 @@
 import os
 import re
+import io
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -1360,6 +1361,17 @@ class CommunityFeatures:
         }
         cat = lambda raw: rarity_aliases[re.sub(r"\\s+", " ", raw.lower()).strip()]
 
+        skin_chart_q = re.fullmatch(r"(?:fammi\\s+)?grafico\\s+skin(?:\\s+"+category_rx+r")?(?:\\s+(7|15|30|60|90|180|365)(?:\\s+giorni)?)?", q_skin, re.I)
+        if skin_chart_q:
+            chart_category = cat(skin_chart_q.group(1)) if skin_chart_q.group(1) else "Totale"
+            chart_days = int(skin_chart_q.group(2) or 30)
+            chart, error = self.skin_history_chart(registered, category=chart_category, days=chart_days)
+            if error:
+                await message.reply_text(error)
+            else:
+                await message.reply_photo(photo=chart, caption=f"Skin Account — {chart_category} — ultimi {chart_days} giorni")
+            return True
+
         skin_image_q = re.fullmatch(
             r"(?:mostrami|fammi\\s+vedere|immagine(?:\\s+di)?|foto(?:\\s+di)?)\\s+(?:la\\s+skin\\s+)?(.+?)\\s+(?:di|del|della)\\s+(.+)",
             q_skin, re.I,
@@ -1760,6 +1772,52 @@ class CommunityFeatures:
             return True
 
         return False
+
+    def skin_history_chart(self, registered_user, category="Totale", days=30):
+        """Build a PNG chart from real Skin Account snapshots."""
+        if not registered_user or not registered_user.get("id"):
+            return None, "Devi prima registrare il tuo tag Brawl Stars."
+        try:
+            rows = self._get("skin_account_history", {
+                "select": "snapshot_date,owned_count,total_count,gained_count",
+                "community_member_id": f"eq.{int(registered_user['id'])}",
+                "category": f"eq.{category}",
+                "order": "snapshot_date.asc",
+                "limit": str(max(2, min(int(days or 30), 365))),
+            })
+            if not rows:
+                return None, "Non ci sono ancora dati storici Skin Account per questo account."
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            dates = [datetime.strptime(r["snapshot_date"], "%Y-%m-%d") for r in rows]
+            owned = [int(r.get("owned_count") or 0) for r in rows]
+            totals = [int(r.get("total_count") or 0) for r in rows]
+            fig, ax = plt.subplots(figsize=(10, 5.6))
+            ax.plot(dates, owned, marker="o", linewidth=2, label="Possedute")
+            ax.plot(dates, totals, marker="o", linewidth=1.5, linestyle="--", label="Totali disponibili")
+            for i, (x, y) in enumerate(zip(dates, owned)):
+                if i == 0:
+                    label = str(y)
+                else:
+                    gain = max(0, y - owned[i - 1])
+                    label = f"{y} (+{gain})"
+                ax.annotate(label, (x, y), xytext=(0, 9), textcoords="offset points", ha="center", fontsize=9)
+            ax.set_title(f"Skin Account — {category}")
+            ax.set_xlabel("Data")
+            ax.set_ylabel("Numero di skin")
+            ax.grid(True, alpha=0.25)
+            ax.legend()
+            fig.autofmt_xdate()
+            fig.tight_layout()
+            output = io.BytesIO()
+            fig.savefig(output, format="png", dpi=150)
+            plt.close(fig)
+            output.seek(0)
+            return output, None
+        except Exception as exc:
+            print("ERRORE GRAFICO SKIN:", repr(exc), flush=True)
+            return None, "Non riesco a generare il grafico Skin Account in questo momento."
 
     def save_daily_skin_snapshots(self, snapshot_date=None):
         """Save one monotonic daily Skin Account snapshot per active registered member."""
