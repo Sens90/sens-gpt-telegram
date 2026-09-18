@@ -334,73 +334,27 @@ class CommunityFeatures:
     def _skin_key(value):
         return re.sub(r"[^A-Z0-9]+", "", str(value or "").upper())
 
-    def _brawlvalue_owned_skin_names(self, player_tag):
-        """Read BrawlValue's server-rendered Skin Collection; Supabase stays canonical."""
-        tag = str(player_tag or "").strip().lstrip("#").upper()
-        if not tag:
-            return set()
-        response = requests.get(
-            f"https://brawlvalue.com/en/player/{tag}/skins",
-            headers={
-                "User-Agent": "Mozilla/5.0 (compatible; SensGPT/1.0)",
-                "Accept-Language": "en-US,en;q=0.9",
-            },
-            timeout=20,
-        )
+    def _official_owned_skin_ids(self, player_tag):
+        """Read owned skin IDs from the verified official skins endpoint via our private proxy."""
+        tag=str(player_tag or "").strip().lstrip("#").upper()
+        proxy_url=(os.environ.get("BRAWL_OFFICIAL_PROXY_URL") or "").strip()
+        proxy_key=(os.environ.get("BRAWL_OFFICIAL_PROXY_KEY") or "").strip()
+        if not tag or not proxy_url or not proxy_key:
+            raise RuntimeError("Official skins proxy is not configured")
+        response=requests.get(proxy_url,params={"action":"skins","tag":tag},headers={"X-Sens-Key":proxy_key,"Accept":"application/json","User-Agent":"SensGPT/1.0"},timeout=20)
         response.raise_for_status()
-        html = response.text
-        if not re.search(r"(?:YOUR SKINS|skins owned)", html, re.I):
-            raise RuntimeError("BrawlValue Skin Collection payload not available")
-        names = set()
-        # BrawlValue renders owned cards server-side. Image alt/title is the skin name.
-        for name in re.findall(r'alt=["\\\']([^"\\\']+)["\\\']', html, re.I):
-            clean = re.sub(r"\\s+", " ", name).strip()
-            if clean and clean.casefold() not in {"profile avatar", "logo"}:
-                names.add(self._skin_key(clean))
-        if not names:
-            # Text-only fallback for simplified/rendered HTML.
-            for name in re.findall(r"Image:\\s*([^<\\r\\n]+)", html, re.I):
-                clean = re.sub(r"\\s+", " ", re.sub(r"<[^>]+>", " ", name)).strip()
-                if clean:
-                    names.add(self._skin_key(clean))
-        if not names:
-            raise RuntimeError("BrawlValue Skin Collection parsed without owned skins")
-        return names
-
-    def _owned_skin_names(self, player_tag):
-        """Prefer BrawlValue; fall back to BSInfo only when BrawlValue is unavailable."""
-        try:
-            return self._brawlvalue_owned_skin_names(player_tag)
-        except Exception as brawlvalue_exc:
-            print("BRAWLVALUE SKIN ACCOUNT FALLBACK:", repr(brawlvalue_exc), flush=True)
-        return self._bsinfo_owned_skin_names(player_tag)
-    def _bsinfo_owned_skin_names(self, player_tag):
-        """Read BSInfo ownership only; our Supabase catalog remains canonical."""
-        tag = str(player_tag or "").strip().lstrip("#").upper()
-        if not tag:
-            return set()
-        response = requests.get(
-            f"https://bsinfox.com/player/{tag}/skins/",
-            params={"lang": "en", "PageSpeed": "noscript", "tag": tag},
-            headers={"User-Agent": "Mozilla/5.0 SensGPT/1.0"},
-            timeout=20,
-        )
-        response.raise_for_status()
-        html = response.text
-        # Never turn a blocked/loading/empty source into a fake 0-owned result.
-        if not re.search(r"Owned Skins\s*\d+", html, re.I) or not re.search(r"Missing Skins\s*\d+", html, re.I):
-            raise RuntimeError("BSInfo Skin Collection payload not available")
-        owned_block = re.split(r"Missing Skins\s*\d*", html, maxsplit=1, flags=re.I)[0]
-        names = set()
-        # The noscript representation exposes each owned card as:
-        # Image: SKIN NAME -> Own -> heading SKIN NAME.
-        for name in re.findall(r"Image:\s*([^<\r\n]+?)\s*(?:<[^>]+>\s*)*Own", owned_block, re.I):
-            clean = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", name)).strip()
-            if clean:
-                names.add(self._skin_key(clean))
-        if not names:
-            raise RuntimeError("BSInfo Skin Collection parsed without owned skins")
-        return names
+        payload=response.json()
+        items=payload.get("items") if isinstance(payload,dict) else None
+        if not isinstance(items,list):
+            raise RuntimeError("Official skins payload missing items")
+        owned=set()
+        for brawler in items:
+            if not isinstance(brawler,dict): continue
+            for skin in brawler.get("skins") or []:
+                if isinstance(skin,dict) and skin.get("id") is not None:
+                    try: owned.add(int(skin["id"]))
+                    except (TypeError,ValueError): pass
+        return owned
 
     def skin_account_text(self, registered_user, brawler_name=None, rarity=None):
         if not registered_user or not registered_user.get("player_tag"):
@@ -413,7 +367,7 @@ class CommunityFeatures:
             })
             if not catalog:
                 return "Il catalogo skin non è disponibile in questo momento."
-            owned_keys = self._owned_skin_names(registered_user["player_tag"])
+            owned_ids = self._official_owned_skin_ids(registered_user["player_tag"])
             # Never count the default Brawler appearance: it is absent from our canonical skin catalog.
             rows = list(catalog)
             if brawler_name:
@@ -426,7 +380,7 @@ class CommunityFeatures:
                 wanted_rarity = self._skin_key(rarity)
                 rows = [r for r in rows if self._skin_key(r.get("rarity")) == wanted_rarity]
             for row in rows:
-                row["_owned"] = self._skin_key(row.get("name_en")) in owned_keys
+                row["_owned"] = int(row.get("external_id")) in owned_ids if row.get("external_id") is not None else False
             owned = [r for r in rows if r["_owned"]]
             if not brawler_name:
                 if rarity:
@@ -1277,7 +1231,7 @@ class CommunityFeatures:
         if missing_q or skin_q or rarity_q:
             registered = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
             if rarity_q:
-                rarity_map={"rare":"RARE","super rare":"SUPER RARE","epiche":"EPIC","mitiche":"MYTHIC","leggendarie":"LEGENDARY","ipercharge":"HYPERCHARGE","collector":"COLLECTOR"}
+                rarity_map={"rare":"RARE","super rare":"SUPER RARE","epiche":"EPIC","mitiche":"MYTHIC","leggendarie":"LEGENDARY","ipercharge":"HYPERCHARGE","collector":"COLLECTORS"}
                 answer=self.skin_account_text(registered, rarity=rarity_map[rarity_q.group(1).lower()])
             else:
                 target=(missing_q.group(1) if missing_q else skin_q.group(1)) if (missing_q or skin_q) else None
