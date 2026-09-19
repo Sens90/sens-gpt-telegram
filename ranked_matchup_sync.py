@@ -28,42 +28,40 @@ _WIKI_MODE_CATEGORIES={
 }
 
 def _wiki_active_map_names():
-    """Read Ranked Active maps through MediaWiki API (HTML page is blocked on Render)."""
+    """Read the Ranked Active maps section through MediaWiki API section indexes."""
     from bs4 import BeautifulSoup
+    common={"action":"parse","page":"Ranked","format":"json","origin":"*"}
+    headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"application/json"}
+    r=requests.get(RANKED_WIKI_API,params={**common,"prop":"sections"},headers=headers,timeout=20)
+    r.raise_for_status()
+    sections=((r.json().get("parse") or {}).get("sections") or [])
+    active=next((x for x in sections if "active maps" in str(x.get("line") or "").casefold()),None)
+    if not active or active.get("index") is None:
+        available=[str(x.get("line") or "") for x in sections]
+        raise RuntimeError(f"Wiki Active maps section not found; sections={available}")
     r=requests.get(
         RANKED_WIKI_API,
-        params={"action":"parse","page":"Ranked","prop":"text","format":"json","origin":"*"},
-        headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"application/json"},
-        timeout=20,
+        params={**common,"prop":"text","section":str(active["index"])},
+        headers=headers,timeout=20,
     )
     r.raise_for_status()
     html=(((r.json().get("parse") or {}).get("text") or {}).get("*") or "")
     if not html:
-        raise RuntimeError("Wiki API returned no Ranked HTML")
+        raise RuntimeError("Wiki API returned empty Active maps section")
     soup=BeautifulSoup(html,"html.parser")
-    marker=soup.find(id=re.compile(r"^Active_maps$",re.I))
-    if marker is None:
-        marker=next((h for h in soup.find_all(["h2","h3"]) if "active maps" in h.get_text(" ",strip=True).casefold()),None)
-    if marker is None:
-        raise RuntimeError("Wiki Active maps section not found")
-    heading=marker.find_parent(["h2","h3"]) if getattr(marker,"name",None) not in {"h2","h3"} else marker
-    if heading is None:
-        raise RuntimeError("Wiki Active maps heading not found")
     names=[]
-    for node in heading.find_all_next():
-        if node is not heading and node.name in {"h2","h3"}:
-            break
-        if node.name!="a":
-            continue
+    for node in soup.find_all("a"):
         href=str(node.get("href") or "")
         name=node.get_text(" ",strip=True)
         if not name or name in names:
+            continue
+        if not (href.startswith("/wiki/") or "brawlstars.fandom.com/wiki/" in href):
             continue
         if any(x in href for x in ("/File:","/Category:","/Help:")):
             continue
         names.append(name)
     if len(names)<24 or len(names)>40:
-        raise RuntimeError(f"Wiki Active maps suspicious count={len(names)}")
+        raise RuntimeError(f"Wiki Active maps suspicious count={len(names)} names={names}")
     return names
 
 def _wiki_map_mode(name):
