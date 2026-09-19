@@ -1897,6 +1897,7 @@ class CommunityFeatures:
                                     "select":"counter_brawler_id,score,sample_size",
                                     "brawler_id":f"eq.{target['brawler_id']}",
                                     "mode":"eq.brawlBall",
+                                    "map_name":f"eq.{draft_state.get('map')}",
                                     "order":"score.desc.nullslast",
                                     "limit":"30",
                                 }) or []
