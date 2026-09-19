@@ -2535,6 +2535,11 @@ def get_brawlzone_player(player_tag):
         return None
 
 
+def get_registration_player(player_tag):
+    """Registration identity/profile: official Supercell only, no Ranked enrichment."""
+    return get_brawltrack_player(player_tag, timeout=15, enrich_ranked=False)
+
+
 def format_number_it(value):
     if value is None:
         return "Non disponibile"
@@ -2545,7 +2550,7 @@ def format_number_it(value):
 community = CommunityFeatures(
     SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY,
-    get_brawlzone_player,
+    get_registration_player,
     get_trophy_history,
     calculate_trophy_changes,
     format_number_it,
