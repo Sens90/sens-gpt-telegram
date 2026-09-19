@@ -184,13 +184,18 @@ async def send_voice_reply(context, chat_id, text):
 
 
 def request_voice_mode(text):
-    """Output mode is explicit per request. Default: text."""
+    """Output mode is explicit per request. Default: text.
+
+    Accept a few common mobile typos of "rispondi" so an explicit voice
+    request is not silently downgraded to text.
+    """
     raw = re.sub(r"\s+", " ", (text or "").strip().casefold())
-    if re.search(r"\brispondi\s+(?:testo\s*(?:\+|e)?\s*voce|voce\s*(?:\+|e)\s*testo)\s*$", raw):
+    reply_word = r"(?:rispondi|rspondi|rispomdi|rispndi|rispodi)"
+    if re.search(r"\b" + reply_word + r"\s+(?:testo\s*(?:\+|e)?\s*voce|voce\s*(?:\+|e)\s*testo)\s*$", raw):
         return "both"
-    if re.search(r"\brispondi\s+a\s+voce\s*$", raw):
+    if re.search(r"\b" + reply_word + r"\s+(?:a\s+)?voce\s*$", raw):
         return "voice"
-    if re.search(r"\brispondi\s+(?:a\s+)?testo\s*$", raw):
+    if re.search(r"\b" + reply_word + r"\s+(?:a\s+)?testo\s*$", raw):
         return "text"
     return "text"
 
@@ -2596,7 +2601,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # directly to a voice/audio message sent by Sens GPT inherits voice mode.
     explicit_mode = request_voice_mode(message.text)
     has_explicit_mode = bool(re.search(
-        r"\brispondi\s+(?:a\s+voce|(?:a\s+)?testo|testo\s*(?:\+|e)?\s*voce|voce\s*(?:\+|e)\s*testo)\s*$",
+        r"\b(?:rispondi|rspondi|rispomdi|rispndi|rispodi)\s+(?:a\s+voce|voce|(?:a\s+)?testo|testo\s*(?:\+|e)?\s*voce|voce\s*(?:\+|e)\s*testo)\s*$",
         message.text.strip().casefold(),
     ))
     replied = message.reply_to_message
@@ -2658,7 +2663,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     question = message.text
     question = re.sub(
-        r"\\s+rispondi\\s+(?:a\\s+voce|(?:a\\s+)?testo|testo\\s*(?:\\+|e)?\\s*voce|voce\\s*(?:\\+|e)\\s*testo)\\s*$",
+        r"\\s+(?:rispondi|rspondi|rispomdi|rispndi|rispodi)\\s+(?:a\\s+voce|voce|(?:a\\s+)?testo|testo\\s*(?:\\+|e)?\\s*voce|voce\\s*(?:\\+|e)\\s*testo)\\s*$",
         "",
         question,
         flags=re.I,
