@@ -2884,6 +2884,35 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await community.handle_command(message, context, question):
         return
 
+    # Command firewall: known command families must never fall through to the
+    # generative AI. Voice/text directives are delivery modes only and have
+    # already been stripped from question above.
+    _command_q = re.sub(r"[^a-z0-9à-ÿ# ]+", " ", question.casefold())
+    _command_q = re.sub(r"\\s+", " ", _command_q).strip()
+    _command_prefixes = (
+        "registrami", "tegistrami", "aggiungi account", "aggiungi profilo",
+        "i miei account", "miei account", "account collegati",
+        "elenco registrati", "registrati", "membri registrati", "account registrati",
+        "non registrati", "nonregistrati", "utenti non registrati",
+        "classifica", "classifiche", "statistiche", "stats community",
+        "grafico", "andamento", "draft ranked", "ranked draft",
+        "classificata draft", "draft classificata", "ban ", "banna ", "pick ",
+        "inattivi", "inattivita", "inattività", "assenza ", "eventi",
+        "partecipo ", "evento crea ", "reclutamento", "candidature",
+        "report", "autokick ", "soglie inattività ", "soglie inattivita ",
+        "club", "profilo club", "stato club", "regole", "faq", "regolamento",
+        "sito", "website", "discord", "comandi", "aiuto", "help", "funzioni",
+        "skin", "quante skin", "quali skin", "counter ", "chi countera ",
+        "ripristina registrazione",
+    )
+    if any(_command_q == p.rstrip() or _command_q.startswith(p) for p in _command_prefixes):
+        print("COMMAND FIREWALL blocked AI fallback:", repr(question), flush=True)
+        await send_mode_aware_text(
+            message, context,
+            "Comando riconosciuto, ma non completato correttamente. Non uso l'AI per inventare una risposta: riprova oppure segnala il comando alla Direzione."
+        )
+        return
+
 
     meta_chart_match=re.fullmatch(r"(?:grafico|andamento)\\s+(?:meta\\s+)?(?:di\\s+)?(.+?)(?:\\s+(win rate|utilizzo|pick rate|star rate))?",question.strip(),re.I)
     if meta_chart_match and any(x in question.casefold() for x in ("meta","win rate","utilizzo","pick rate","star rate")):
