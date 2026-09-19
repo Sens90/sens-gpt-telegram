@@ -2743,7 +2743,16 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Telegram text, before activity tracking, premium handlers or any Gemini
     # path. Remove bot/user mentions and invisible Unicode formatting first.
     _raw_command = (message.text or "").translate(dict.fromkeys([0x200B,0x200C,0x200D,0x200E,0x200F,0x202A,0x202B,0x202C,0x202D,0x202E,0x2060,0xFEFF]))
-    _raw_command = re.sub(r"(?<!\w)@[A-Za-z0-9_]{5,32}\b", " ", _raw_command, flags=re.IGNORECASE)
+    # Remove only the bot's own mention here. Stripping every @username
+    # breaks admin commands whose target is another Telegram user.
+    _bot_username_for_command = getattr(context.bot, "username", None)
+    if _bot_username_for_command:
+        _raw_command = re.sub(
+            r"@" + re.escape(_bot_username_for_command) + r"\b",
+            " ",
+            _raw_command,
+            flags=re.IGNORECASE,
+        )
     _raw_command = re.sub(
         r"\\s+(?:rispondi|rspondi|rispomdi|rispndi|rispodi)\\s+(?:a\\s+voce|voce|(?:a\\s+)?testo|testo\\s*(?:\\+|e)?\\s*voce|voce\\s*(?:\\+|e)\\s*testo)\\s*$",
         "",
