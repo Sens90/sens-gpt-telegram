@@ -4171,6 +4171,30 @@ def _startup_brawltrack_map_smoke():
 
 _startup_brawltrack_map_smoke()
 
+def _startup_brawltrack_draft_meta_smoke():
+    """Verify BrawlTrack competitive picks/comps on every current Ranked map."""
+    try:
+        from ranked_matchup_sync import current_ranked_pool
+        from live_maps import brawltrack_pro_map_stats
+        pairs=sorted(current_ranked_pool())
+        ok=partial=failed=0; details=[]
+        for mode,map_name in pairs:
+            data=brawltrack_pro_map_stats(map_name,ttl=0) or {}
+            picks=data.get("priority_picks") or []
+            comps=data.get("final_comps") or []
+            map_id=data.get("map_id")
+            if map_id and picks and comps: status="OK";ok+=1
+            elif map_id and (picks or comps): status="PARTIAL";partial+=1
+            else: status="FAILED";failed+=1
+            details.append("%s/%s:%s:p%s:c%s" % (mode,map_name,status,len(picks),len(comps)))
+        print("BRAWLTRACK DRAFT META SMOKE: total=%s ok=%s partial=%s failed=%s details=%s" % (
+            len(pairs),ok,partial,failed," | ".join(details)
+        ),flush=True)
+    except Exception as exc:
+        print("BRAWLTRACK DRAFT META SMOKE ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
+
+_startup_brawltrack_draft_meta_smoke()
+
 def _startup_ranked_pool_smoke():
     """One-shot production verification of the live Ranked Wiki pool."""
     try:
