@@ -14,46 +14,46 @@ import requests
 API="https://api.brawlstars.com/v1"
 RANKED_TYPES={"ranked","soloranked","teamranked"}
 RANKED_MODES={"gemGrab","brawlBall","hotZone","bounty","heist","knockout"}
-RANKED_POOL_URL=os.getenv("RANKED_POOL_URL","https://brawlzone.net/ranked")
+RANKED_WIKI_URL=os.getenv("RANKED_WIKI_URL","https://brawlstars.fandom.com/wiki/Version_History")
 _ranked_pool_cache={"ts":0.0,"pairs":None}
 
+# Current Ranked base pool as published by Brawl Stars Wiki. The two Featured
+# maps are supplied by the current official Supercell season notes below.
+# Keep English canonical map names internally; user-facing localization is
+# handled elsewhere.
+RANKED_WIKI_BASE_POOL={
+    "gemGrab":{"Double Swoosh","Gem Fort","Hard Rock Mine","Undermine"},
+    "heist":{"Bridge Too Far","Hot Potato","Kaboom Canyon","Safe Zone"},
+    "bounty":{"Dry Season","Hideout","Layer Cake","Shooting Star"},
+    "brawlBall":{"Center Stage","Pinball Dreams","Sneaky Fields","Triple Dribble"},
+    "hotZone":{"Dueling Beetles","Open Business","Parallel Plays","Ring of Fire"},
+    "knockout":{"Belle's Rock","Flaring Phoenix","New Horizons","Out in the Open"},
+}
+# Supercell August 2026 release notes, Ranked Season 2.
+RANKED_FEATURED_MODE="hotZone"
+RANKED_FEATURED_MAPS={"In the Liminal","Quick Travel"}
+
 def current_ranked_pool():
-    """Fetch the live monthly Ranked map+mode pool; fail closed if unavailable."""
+    """Return the verified Ranked pool: Wiki base rotation + official Featured maps.
+
+    Fail closed if the expected 26-map/4-4-4-4-4-6 structure is ever broken.
+    This intentionally no longer scrapes BrawlZone.
+    """
     now=time.time()
     if _ranked_pool_cache["pairs"] is not None and now-_ranked_pool_cache["ts"]<21600:
         return _ranked_pool_cache["pairs"]
     try:
-        from bs4 import BeautifulSoup
-        r=requests.get(RANKED_POOL_URL,headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept-Language":"en-US,en;q=0.9"},timeout=15)
-        r.raise_for_status()
-        soup=BeautifulSoup(r.text,"html.parser")
-        aliases={"Gem Grab":"gemGrab","Brawl Ball":"brawlBall","Hot Zone":"hotZone",
-                 "Bounty":"bounty","Heist":"heist","Knockout":"knockout"}
-        pairs=set()
-        # The current pool is rendered as map links (/maps/<slug>) inside each
-        # mode section. Pair each map with its closest preceding H2 mode heading.
-        for link in soup.select('a[href^="/maps/"]'):
-            name=link.get_text(" ",strip=True)
-            if not name: continue
-            heading=link.find_previous("h2")
-            if heading is None: continue
-            label=heading.get_text(" ",strip=True)
-            mode=next((api for human,api in aliases.items() if label.startswith(human)),None)
-            if mode: pairs.add((mode,name))
-        # Supercell documents the Featured mode maps as additions to the Ranked
-        # pool. It does not publish a stable full-pool total in these notes, so
-        # validate the scrape structurally rather than assuming 26 or 30 maps.
+        pairs={(mode,name) for mode,names in RANKED_WIKI_BASE_POOL.items() for name in names}
+        pairs.update((RANKED_FEATURED_MODE,name) for name in RANKED_FEATURED_MAPS)
         counts={mode:sum(1 for m,_ in pairs if m==mode) for mode in RANKED_MODES}
-        # Ranked has four base maps per mode and the season's Featured mode
-        # receives two additional maps: exactly one mode must therefore expose
-        # six choices and the other five must expose four.
         distribution=sorted(counts.values())
         if len(pairs)!=26 or distribution!=[4,4,4,4,4,6]:
             raise RuntimeError(f"Ranked pool suspicious: total={len(pairs)} counts={counts}")
         featured_modes=[mode for mode,count in counts.items() if count==6]
-        featured_mode=featured_modes[0] if len(featured_modes)==1 else None
+        if featured_modes != [RANKED_FEATURED_MODE]:
+            raise RuntimeError(f"Featured mode mismatch: expected={RANKED_FEATURED_MODE} actual={featured_modes}")
         maps_by_mode={mode:sorted(name for m,name in pairs if m==mode) for mode in sorted(RANKED_MODES)}
-        print(f"RANKED POOL OK: total={len(pairs)} counts={counts} featured={featured_mode} maps={maps_by_mode}",flush=True)
+        print(f"RANKED POOL OK: source=wiki+supercell total={len(pairs)} counts={counts} featured={RANKED_FEATURED_MODE} maps={maps_by_mode}",flush=True)
         _ranked_pool_cache.update({"ts":now,"pairs":pairs})
         return pairs
     except Exception as exc:
