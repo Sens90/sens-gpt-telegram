@@ -72,20 +72,17 @@ def census_telegram_member(message):
     user = message.from_user
     display = " ".join(x for x in [user.first_name, user.last_name] if x).strip()
     try:
-        r = requests.post(
-            SUPABASE_URL + "/rest/v1/telegram_group_members",
-            headers={**_supabase_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
-            params={"on_conflict": "chat_id,telegram_user_id"},
-            json={
-                "chat_id": int(message.chat_id),
-                "telegram_user_id": int(user.id),
-                "telegram_username": user.username,
-                "display_name": display or user.full_name,
-                "last_seen_at": datetime.now(timezone.utc).isoformat(),
-                "is_active": True,
-            },
-            timeout=10,
-        )
+        now = datetime.now(timezone.utc).isoformat()
+        lookup = requests.get(
+            SUPABASE_URL + "/rest/v1/telegram_group_members", headers=_supabase_headers(),
+            params={"select":"id","chat_id":"eq."+str(message.chat_id),"telegram_user_id":"eq."+str(user.id),"limit":"1"}, timeout=10,
+        ); lookup.raise_for_status()
+        payload = {"telegram_user_id":int(user.id),"telegram_username":user.username,"display_name":display or user.full_name,"last_seen_at":now,"is_active":True}
+        if lookup.json():
+            r = requests.patch(SUPABASE_URL + "/rest/v1/telegram_group_members", headers={**_supabase_headers(),"Prefer":"return=minimal"}, params={"id":"eq."+str(lookup.json()[0]["id"])}, json=payload, timeout=10)
+        else:
+            payload["chat_id"] = int(message.chat_id)
+            r = requests.post(SUPABASE_URL + "/rest/v1/telegram_group_members", headers={**_supabase_headers(),"Prefer":"return=minimal"}, json=payload, timeout=10)
         r.raise_for_status()
     except Exception as exc:
         print("TELEGRAM CENSUS ERROR:", repr(exc), flush=True)
