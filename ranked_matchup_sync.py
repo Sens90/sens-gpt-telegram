@@ -50,9 +50,14 @@ def current_ranked_pool():
         distribution=sorted(counts.values())
         if len(pairs)!=26 or distribution!=[4,4,4,4,4,6]:
             raise RuntimeError(f"Ranked pool suspicious: total={len(pairs)} counts={counts}")
+        featured_modes=[mode for mode,count in counts.items() if count==6]
+        featured_mode=featured_modes[0] if len(featured_modes)==1 else None
+        maps_by_mode={mode:sorted(name for m,name in pairs if m==mode) for mode in sorted(RANKED_MODES)}
+        print(f"RANKED POOL OK: total={len(pairs)} counts={counts} featured={featured_mode} maps={maps_by_mode}",flush=True)
         _ranked_pool_cache.update({"ts":now,"pairs":pairs})
         return pairs
-    except Exception:
+    except Exception as exc:
+        print(f"RANKED POOL ERROR: {type(exc).__name__}: {exc}",flush=True)
         return set()
 
 
