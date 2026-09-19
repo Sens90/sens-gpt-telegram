@@ -1756,6 +1756,11 @@ class CommunityFeatures:
 
         draft_start = re.fullmatch(r"(?:draft\s+ranked|ranked\s+draft|classificata\s+draft|draft\s+classificata)", q, re.I)
         if draft_start:
+            if getattr(message.chat, "type", None) != "private":
+                await message.reply_text(
+                    "La Draft Ranked funziona solo nella chat privata con Sens GPT."
+                )
+                return True
             context.user_data.pop("ranked_draft", None)
             context.user_data.pop("ranked_draft_elo", None)
             context.user_data["ranked_draft_setup"] = {"stage": "map"}
