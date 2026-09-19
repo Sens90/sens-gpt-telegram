@@ -2801,7 +2801,12 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     admin_q = re.sub(r"[^a-z0-9à-ÿ ]+", " ", question.casefold())
     admin_q = re.sub(r"\\s+", " ", admin_q).strip()
-    if admin_q in {"non registrati", "nonregistrati", "utenti non registrati"}:
+    # Allow an administrator to seed the census and request the result in the
+    # same message: "@user1 @user2 ... @SensGPT... non registrati".
+    admin_command_q = re.sub(r"(?<!\\w)@[A-Za-z0-9_]{5,32}\\b", " ", question, flags=re.IGNORECASE)
+    admin_command_q = re.sub(r"[^a-z0-9à-ÿ ]+", " ", admin_command_q.casefold())
+    admin_command_q = re.sub(r"\\s+", " ", admin_command_q).strip()
+    if admin_q in {"non registrati", "nonregistrati", "utenti non registrati"} or admin_command_q in {"non registrati", "nonregistrati", "utenti non registrati"}:
         member = await context.bot.get_chat_member(message.chat_id, message.from_user.id)
         if member.status not in {"administrator", "creator"}:
             await message.reply_text("Questo comando è riservato agli amministratori.")
