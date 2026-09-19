@@ -316,9 +316,19 @@ def collect(seed_tags,max_players=250,sleep_s=.08,max_seconds=900):
                 for other,_ in team:
                     if other not in seen_players and other not in queue:
                         discovered.append(other)
-            for other in discovered:
-                if len(queue)>=max_players*3:break
-                queue.append(other)
+            # Players found on maps that still lack advanced evidence are
+            # explored first. This does not change the verified seasonal pool;
+            # it only changes crawl order so scarce maps can accumulate enough
+            # samples for counter/synergy rows.
+            scarce = m["map"] not in {"Sneaky Fields", "Triple Dribble", "In the Liminal"}
+            if scarce:
+                room=max(0,max_players*3-len(queue))
+                for other in reversed(discovered[:room]):
+                    queue.insert(0,other)
+            else:
+                for other in discovered:
+                    if len(queue)>=max_players*3:break
+                    queue.append(other)
         time.sleep(sleep_s)
     diagnostics["players_seen"]=len(seen_players)
     diagnostics["elapsed_seconds"]=round(time.monotonic()-started,1)
