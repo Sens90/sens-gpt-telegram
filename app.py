@@ -2802,6 +2802,31 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await community.handle_command(message, context, _raw_command)
         return
 
+    # "leggi" is a local TTS command, not a community/Gemini command.
+    # Route it before the global deterministic router so replying to ANY
+    # Telegram text/caption reads that exact content aloud.
+    _early_q = re.sub(r"[^a-z0-9à-ÿ ]+", " ", _raw_command.casefold())
+    _early_q = re.sub(r"\\s+", " ", _early_q).strip()
+    if _early_q in {"leggi", "leggilo", "leggi questo", "leggi a voce"}:
+        selected = message.reply_to_message
+        if not selected:
+            await message.reply_text(
+                "Rispondi al messaggio che vuoi farmi leggere e scrivi: leggi."
+            )
+            return
+        selected_text = (selected.text or selected.caption or "").strip()
+        if not selected_text:
+            await message.reply_text(
+                "Il messaggio selezionato non contiene testo da leggere."
+            )
+            return
+        ok = await send_voice_reply(context, message.chat_id, selected_text)
+        if not ok:
+            await message.reply_text(
+                "Non riesco a generare il vocale in questo momento. Riprova tra poco."
+            )
+        return
+
     # Global deterministic command router. Every recognized community command
     # is offered to deterministic handlers before any Gemini/AI path.
     # Unknown/free-form messages continue through the normal assistant flow.
