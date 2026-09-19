@@ -63,6 +63,58 @@ def _supabase_headers():
     }
 
 
+def census_telegram_member(message):
+    """Remember group members observed by the bot, independently of Brawl registration."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY or not message or not message.from_user:
+        return
+    if getattr(message.chat, "type", None) not in {"group", "supergroup"}:
+        return
+    user = message.from_user
+    display = " ".join(x for x in [user.first_name, user.last_name] if x).strip()
+    try:
+        r = requests.post(
+            SUPABASE_URL + "/rest/v1/telegram_group_members",
+            headers={**_supabase_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+            params={"on_conflict": "chat_id,telegram_user_id"},
+            json={
+                "chat_id": int(message.chat_id),
+                "telegram_user_id": int(user.id),
+                "telegram_username": user.username,
+                "display_name": display or user.full_name,
+                "last_seen_at": datetime.now(timezone.utc).isoformat(),
+                "is_active": True,
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+    except Exception as exc:
+        print("TELEGRAM CENSUS ERROR:", repr(exc), flush=True)
+
+
+def unregistered_telegram_users(chat_id):
+    """Return observed group usernames that do not have an active Brawl registration."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return []
+    try:
+        r = requests.get(
+            SUPABASE_URL + "/rest/v1/telegram_group_members",
+            headers=_supabase_headers(),
+            params={"select": "telegram_user_id,telegram_username,display_name", "chat_id": "eq." + str(chat_id), "is_active": "eq.true"},
+            timeout=10,
+        ); r.raise_for_status(); observed = r.json()
+        rr = requests.get(
+            SUPABASE_URL + "/rest/v1/community_members",
+            headers=_supabase_headers(),
+            params={"select": "telegram_user_id,player_tag", "is_active": "eq.true"},
+            timeout=10,
+        ); rr.raise_for_status()
+        registered = {int(x["telegram_user_id"]) for x in rr.json() if x.get("telegram_user_id") is not None and str(x.get("player_tag") or "").strip()}
+        return [x for x in observed if int(x["telegram_user_id"]) not in registered]
+    except Exception as exc:
+        print("UNREGISTERED LIST ERROR:", repr(exc), flush=True)
+        return []
+
+
 def get_voice_mode(chat_id, telegram_user_id):
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         return "text"
@@ -2621,6 +2673,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("_request_voice_mode", None)
 
     community.track_activity(message)
+    await asyncio.to_thread(census_telegram_member, message)
 
     # Resolve the sender once from Telegram identity so every downstream
     # feature can immediately know the registered Brawl Stars account.
@@ -2699,6 +2752,30 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text(
                 "Non riesco a generare il vocale in questo momento. Riprova tra poco."
             )
+        return
+
+    admin_q = re.sub(r"[^a-z0-9à-ÿ ]+", " ", question.casefold())
+    admin_q = re.sub(r"\\s+", " ", admin_q).strip()
+    if admin_q in {"non registrati", "nonregistrati", "utenti non registrati"}:
+        member = await context.bot.get_chat_member(message.chat_id, message.from_user.id)
+        if member.status not in {"administrator", "creator"}:
+            await message.reply_text("Questo comando è riservato agli amministratori.")
+            return
+        rows = await asyncio.to_thread(unregistered_telegram_users, message.chat_id)
+        if not rows:
+            await message.reply_text("UTENTI NON REGISTRATI\n\nNessun utente non registrato tra quelli censiti dal bot.\n\nTotale: 0")
+            return
+        tags = []
+        for row in rows:
+            username = str(row.get("telegram_username") or "").strip().lstrip("@")
+            if username:
+                tags.append("@" + username)
+        tags = sorted(set(tags), key=str.casefold)
+        if not tags:
+            await message.reply_text("Tra gli utenti non registrati censiti non risultano username Telegram disponibili.")
+            return
+        body = "UTENTI NON REGISTRATI\n\n" + "\n".join(tags) + "\n\nTotale: " + str(len(tags))
+        await message.reply_text(body)
         return
 
     # Deterministic Skin Account shortcut: personal collection queries must
