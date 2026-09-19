@@ -1928,71 +1928,64 @@ class CommunityFeatures:
                             by_id[bid]=label
                             for key in (x.get("name_en"),x.get("name_it")):
                                 if key: aliases[str(key).strip().casefold()]=bid
-                        counter_score={x.casefold():0.0 for x in ranked_picks}
-                        counter_hits={x.casefold():0 for x in ranked_picks}
+                        evidence={x.casefold():{"map":0.0,"counter":0.0,"synergy":0.0,"samples":0} for x in ranked_picks}
+                        base_index={x.casefold():i for i,x in enumerate(ranked_picks)}
+                        candidate_ids={aliases.get(x.casefold()):x.casefold() for x in ranked_picks if aliases.get(x.casefold()) is not None}
+                        # Exact-map individual performance.
+                        map_rows=self._get("ranked_draft_stats",{
+                            "select":"brawler_id,win_rate,games","stat_scope":"eq.map_pick",
+                            "mode":"eq.brawlBall","map_name":"eq."+str(draft_state.get("map") or ""),"limit":"500"
+                        }) or []
+                        for row in map_rows:
+                            bid=row.get("brawler_id")
+                            if bid is None or int(bid) not in candidate_ids:continue
+                            key=candidate_ids[int(bid)]
+                            try: wr=float(row.get("win_rate") or 0); games=int(row.get("games") or 0)
+                            except (TypeError,ValueError):continue
+                            confidence=min(1.0,games/500.0)
+                            evidence[key]["map"]=wr*confidence;evidence[key]["samples"]+=games
+                        # All enemy picks: exact-map head-to-head evidence.
                         for enemy in (draft_state.get("enemy_picks") or []):
                             enemy_id=aliases.get(str(enemy).strip().casefold())
-                            if enemy_id is None: continue
-                            rows=self._get("brawler_counters",{
-                                "select":"counter_brawler_id,score,sample_size",
-                                "brawler_id":f"eq.{enemy_id}",
-                                "mode":"eq.brawlBall",
-                                "map_name":"in.(*,"+str(draft_state.get("map") or "")+")",
-                                "order":"map_name.desc,score.desc.nullslast",
-                                "limit":"50",
+                            if enemy_id is None:continue
+                            rows=self._get("ranked_draft_stats",{
+                                "select":"brawler_id,win_rate,games","stat_scope":"eq.counter",
+                                "other_brawler_id":f"eq.{enemy_id}","mode":"eq.brawlBall",
+                                "map_name":"eq."+str(draft_state.get("map") or ""),"limit":"500"
                             }) or []
                             for row in rows:
-                                cid=row.get("counter_brawler_id")
-                                if cid is None: continue
-                                label=by_id.get(int(cid))
-                                key=str(label or "").casefold()
-                                if key not in counter_score: continue
-                                try: edge=float(row.get("score") or 0)
-                                except (TypeError,ValueError): edge=0.0
-                                try: sample=int(row.get("sample_size") or 0)
-                                except (TypeError,ValueError): sample=0
-                                # Sample confidence is bounded: it supports a verified
-                                # matchup but can never make a weak map pick eligible.
-                                confidence=min(1.0,sample/500.0) if sample else 0.5
-                                counter_score[key]+=edge*confidence
-                                counter_hits[key]+=1
-                        base_index={x.casefold():i for i,x in enumerate(ranked_picks)}
-                        recommendations=sorted(
-                            ranked_picks,
-                            key=lambda x:(counter_hits[x.casefold()],counter_score[x.casefold()],-base_index[x.casefold()]),
-                            reverse=True,
-                        )
+                                bid=row.get("brawler_id")
+                                if bid is None or int(bid) not in candidate_ids:continue
+                                key=candidate_ids[int(bid)]
+                                try: wr=float(row.get("win_rate") or 0);games=int(row.get("games") or 0)
+                                except (TypeError,ValueError):continue
+                                confidence=min(1.0,games/250.0)
+                                evidence[key]["counter"]+=wr*confidence;evidence[key]["samples"]+=games
+                        # All our locked picks: exact-map teammate synergy.
+                        for mate in (draft_state.get("my_picks") or []):
+                            mate_id=aliases.get(str(mate).strip().casefold())
+                            if mate_id is None:continue
+                            rows=self._get("ranked_draft_stats",{
+                                "select":"brawler_id,win_rate,games","stat_scope":"eq.synergy",
+                                "other_brawler_id":f"eq.{mate_id}","mode":"eq.brawlBall",
+                                "map_name":"eq."+str(draft_state.get("map") or ""),"limit":"500"
+                            }) or []
+                            for row in rows:
+                                bid=row.get("brawler_id")
+                                if bid is None or int(bid) not in candidate_ids:continue
+                                key=candidate_ids[int(bid)]
+                                try: wr=float(row.get("win_rate") or 0);games=int(row.get("games") or 0)
+                                except (TypeError,ValueError):continue
+                                confidence=min(1.0,games/250.0)
+                                evidence[key]["synergy"]+=wr*confidence;evidence[key]["samples"]+=games
+                        # Verified evidence dominates; existing Ranked map order remains
+                        # the safe fallback while the multidimensional catalog fills.
+                        recommendations=sorted(ranked_picks,key=lambda x:(
+                            evidence[x.casefold()]["counter"]+evidence[x.casefold()]["synergy"]+evidence[x.casefold()]["map"],
+                            evidence[x.casefold()]["samples"],-base_index[x.casefold()]
+                        ),reverse=True)
                     except Exception as exc:
-                        LOG.warning("DRAFT multi-enemy counter ranking unavailable: %s",type(exc).__name__)
-                    # Team synergy: use verified BrawlTrack final comps only as
-                    # a tie-breaker among candidates already valid for this Ranked map.
-                    try:
-                        from live_maps import brawltrack_pro_map_stats
-                        stats=brawltrack_pro_map_stats(draft_state.get("map")) or {}
-                        comps=stats.get("final_comps") or []
-                        my_keys={str(x).strip().casefold() for x in (draft_state.get("my_picks") or []) if x}
-                        synergy={x.casefold():0.0 for x in recommendations}
-                        for comp in comps if isinstance(comps,list) else []:
-                            if not isinstance(comp,dict): continue
-                            team={str(x).strip().casefold() for x in (comp.get("team") or []) if x}
-                            if not my_keys.intersection(team): continue
-                            try: wr=float(comp.get("win_rate") or 0)
-                            except (TypeError,ValueError): wr=0.0
-                            try: sets=int(comp.get("sets") or 0)
-                            except (TypeError,ValueError): sets=0
-                            confidence=min(1.0,sets/100.0) if sets else 0.0
-                            for candidate in recommendations:
-                                key=candidate.casefold()
-                                if key in team:
-                                    synergy[key]=max(synergy[key],wr*confidence)
-                        current_index={x.casefold():i for i,x in enumerate(recommendations)}
-                        recommendations=sorted(
-                            recommendations,
-                            key=lambda x:(synergy[x.casefold()],-current_index[x.casefold()]),
-                            reverse=True,
-                        )
-                    except Exception as exc:
-                        LOG.warning("DRAFT team synergy ranking unavailable: %s",type(exc).__name__)
+                        LOG.warning("DRAFT multidimensional ranking unavailable: %s",type(exc).__name__)
                     body+="\nPick consigliati: "+", ".join(recommendations[:3])
             comp=self.draft_comp_advice_text(draft_state)
             if comp: body+="\n"+comp
