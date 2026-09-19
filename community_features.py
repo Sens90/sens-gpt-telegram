@@ -902,32 +902,23 @@ class CommunityFeatures:
             return None
 
     def _member_current_trophies(self, member):
+        # Leaderboards must be instant. The background trophy monitor already
+        # refreshes official Supercell snapshots; never perform one live network
+        # request per member while a Telegram command is waiting.
         tag = member.get("player_tag")
         if not tag:
             return None
-        player = self.player_fetcher(tag)
-        if player and player.get("trophies") is not None:
-            try:
-                trophies = int(player["trophies"])
-                if self.snapshot_saver:
-                    try:
-                        self.snapshot_saver(
-                            player.get("tag") or tag,
-                            player.get("name") or member.get("player_name") or tag,
-                            trophies,
-                        )
-                    except Exception as exc:
-                        print("ERRORE SNAPSHOT LIVE:", repr(exc), flush=True)
-                return trophies
-            except Exception:
-                pass
         history = self.history_fetcher(tag, days=120)
         if history:
             try:
                 return int(history[-1]["trophies"])
             except Exception:
                 pass
-        return None
+        cached = member.get("trophies")
+        try:
+            return int(cached) if cached is not None else None
+        except (TypeError, ValueError):
+            return None
 
     def ranking(self, chat_id, days=7):
         rows = []
