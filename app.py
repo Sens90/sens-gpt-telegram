@@ -4220,6 +4220,22 @@ async def transcribe_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     media = message.voice or message.audio
     if not media:
         return
+
+    # In groups, voice messages follow exactly the same activation rule as text:
+    # the bot must be mentioned in the voice caption/text context or the voice
+    # must reply to a message sent by Sens GPT. A bare group voice is ignored.
+    if getattr(message.chat, "type", None) in {"group", "supergroup"}:
+        bot_username = (context.bot.username or "").casefold()
+        caption = (getattr(message, "caption", None) or "")
+        mentioned = bool(bot_username and ("@" + bot_username) in caption.casefold())
+        replied = message.reply_to_message
+        is_reply = bool(
+            replied
+            and replied.from_user
+            and replied.from_user.id == context.bot.id
+        )
+        if not mentioned and not is_reply:
+            return
     try:
         await context.bot.send_chat_action(chat_id=message.chat_id, action="typing")
         tg_file = await context.bot.get_file(media.file_id)
