@@ -13,6 +13,7 @@ import requests
 
 API="https://api.brawlstars.com/v1"
 RANKED_TYPES={"ranked","soloranked","teamranked"}
+RANKED_MODES={"gemGrab","brawlBall","hotZone","bounty","heist","knockout"}
 
 def _headers():
     token=(os.getenv("BRAWL_STARS_API_TOKEN") or os.getenv("BRAWL_API_TOKEN") or "").strip()
@@ -41,6 +42,8 @@ def battlelog(tag):
 def normalize_match(row):
     event=row.get("event") or {}; battle=row.get("battle") or {}
     if str(battle.get("type") or "").casefold() not in RANKED_TYPES:return None
+    mode=event.get("mode") or battle.get("mode")
+    if mode not in RANKED_MODES:return None
     teams=battle.get("teams")
     if not isinstance(teams,list) or len(teams)!=2 or any(len(t)!=3 for t in teams):return None
     def side(team):
@@ -52,7 +55,7 @@ def normalize_match(row):
     result=str(battle.get("result") or "").casefold()
     # Result belongs to the harvested player. Locate that player outside this
     # function before assigning a winner.
-    return {"key":key,"time":row.get("battleTime"),"mode":event.get("mode") or battle.get("mode"),
+    return {"key":key,"time":row.get("battleTime"),"mode":mode,
             "map":event.get("map"),"teams":[a,b],"result":result}
 
 def collect(seed_tags,max_players=250,sleep_s=.08):
