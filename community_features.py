@@ -1891,31 +1891,56 @@ class CommunityFeatures:
                 next_side=self._draft_pick_order(draft_state["first_pick"])[len(seq)]
                 if next_side == "my":
                     recommendations=list(ranked_picks)
-                    # If verified matchup rows exist, promote counters that are ALSO
-                    # strong on this Ranked map. Never replace map fit with a global counter.
-                    if side == "enemy":
-                        try:
-                            catalog=self._get("brawlers_catalog",{"select":"brawler_id,name_en,name_it"}) or []
-                            wanted=str(brawler).strip().casefold()
-                            target=next((x for x in catalog if wanted in {str(x.get("name_en") or "").casefold(),str(x.get("name_it") or "").casefold()}),None)
-                            if target:
-                                rows=self._get("brawler_counters",{
-                                    "select":"counter_brawler_id,score,sample_size",
-                                    "brawler_id":f"eq.{target['brawler_id']}",
-                                    "mode":"eq.brawlBall",
-                                    "map_name":f"eq.{draft_state.get('map')}",
-                                    "order":"score.desc.nullslast",
-                                    "limit":"30",
-                                }) or []
-                                by_id={int(x["brawler_id"]):str(x.get("name_it") or x.get("name_en") or "") for x in catalog if x.get("brawler_id") is not None}
-                                counter_labels=[by_id.get(int(x["counter_brawler_id"])) for x in rows if x.get("counter_brawler_id") is not None]
-                                counter_order={str(x).casefold():i for i,x in enumerate(counter_labels) if x}
-                                matched=[x for x in ranked_picks if x.casefold() in counter_order]
-                                matched.sort(key=lambda x:counter_order[x.casefold()])
-                                if matched:
-                                    recommendations=matched+[x for x in ranked_picks if x not in matched]
-                        except Exception as exc:
-                            LOG.warning("DRAFT counter ranking unavailable: %s",type(exc).__name__)
+                    # Score against ALL enemy picks already locked, not only the
+                    # latest one. Counter evidence is map+mode scoped and can only
+                    # promote candidates that already pass this map's Ranked filter.
+                    try:
+                        catalog=self._get("brawlers_catalog",{"select":"brawler_id,name_en,name_it"}) or []
+                        aliases={}
+                        by_id={}
+                        for x in catalog:
+                            if x.get("brawler_id") is None: continue
+                            bid=int(x["brawler_id"])
+                            label=str(x.get("name_it") or x.get("name_en") or "")
+                            by_id[bid]=label
+                            for key in (x.get("name_en"),x.get("name_it")):
+                                if key: aliases[str(key).strip().casefold()]=bid
+                        counter_score={x.casefold():0.0 for x in ranked_picks}
+                        counter_hits={x.casefold():0 for x in ranked_picks}
+                        for enemy in (draft_state.get("enemy_picks") or []):
+                            enemy_id=aliases.get(str(enemy).strip().casefold())
+                            if enemy_id is None: continue
+                            rows=self._get("brawler_counters",{
+                                "select":"counter_brawler_id,score,sample_size",
+                                "brawler_id":f"eq.{enemy_id}",
+                                "mode":"eq.brawlBall",
+                                "map_name":f"eq.{draft_state.get('map')}",
+                                "order":"score.desc.nullslast",
+                                "limit":"50",
+                            }) or []
+                            for row in rows:
+                                cid=row.get("counter_brawler_id")
+                                if cid is None: continue
+                                label=by_id.get(int(cid))
+                                key=str(label or "").casefold()
+                                if key not in counter_score: continue
+                                try: edge=float(row.get("score") or 0)
+                                except (TypeError,ValueError): edge=0.0
+                                try: sample=int(row.get("sample_size") or 0)
+                                except (TypeError,ValueError): sample=0
+                                # Sample confidence is bounded: it supports a verified
+                                # matchup but can never make a weak map pick eligible.
+                                confidence=min(1.0,sample/500.0) if sample else 0.5
+                                counter_score[key]+=edge*confidence
+                                counter_hits[key]+=1
+                        base_index={x.casefold():i for i,x in enumerate(ranked_picks)}
+                        recommendations=sorted(
+                            ranked_picks,
+                            key=lambda x:(counter_hits[x.casefold()],counter_score[x.casefold()],-base_index[x.casefold()]),
+                            reverse=True,
+                        )
+                    except Exception as exc:
+                        LOG.warning("DRAFT multi-enemy counter ranking unavailable: %s",type(exc).__name__)
                     body+="\nPick consigliati: "+", ".join(recommendations[:3])
             comp=self.draft_comp_advice_text(draft_state)
             if comp: body+="\n"+comp
