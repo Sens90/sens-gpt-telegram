@@ -1795,7 +1795,7 @@ class CommunityFeatures:
                     await message.reply_text(f"Mappa: {chosen.get('map_it') or chosen.get('map_en')}.\\nIndica il Ranked da simulare, per esempio 'Mito I' o 'Mito 2'.")
                     return True
         if setup.get("stage") == "map":
-            combined_q = re.sub(r"\bmiti(?=\s+(?:i{1,3}|[1-3])\b)", "mito", q, flags=re.I)
+            combined_q = re.sub(r"\b(?:miti|mitico|mitico|mythic)(?=\s+(?:i{1,3}|[1-3])\b)", "mito", q, flags=re.I)
             combined_q = re.sub(r"\bdiamnte(?=\s+(?:i{1,3}|[1-3])\b)", "diamante", combined_q, flags=re.I)
             combined_q = re.sub(r"\bleggendrio(?=\s+(?:i{1,3}|[1-3])\b)", "leggendario", combined_q, flags=re.I)
             combined = re.fullmatch(r"(.+?)\s+(bronzo|argento|oro|diamante|mito|mitico|mythic|leggendario)\s+(i{1,3}|[1-3])$", combined_q, re.I)
@@ -1871,7 +1871,7 @@ class CommunityFeatures:
                 "leggendario 1":"Leggendario I","leggendario 2":"Leggendario II","leggendario 3":"Leggendario III",
             })
             raw_rank = re.sub(r"\s+", " ", q.casefold()).strip()
-            raw_rank = re.sub(r"^(?:miti|mitico|mythic)(?=\s)", "mito", raw_rank)
+            raw_rank = re.sub(r"^(?:miti|mitico|mitico|mythic)(?=\s)", "mito", raw_rank)
             raw_rank = re.sub(r"^diamnte(?=\s)", "diamante", raw_rank)
             raw_rank = re.sub(r"^legg(?:end)?rio(?=\s)", "leggendario", raw_rank)
             me = context.user_data.get("_registered_user") or {}
