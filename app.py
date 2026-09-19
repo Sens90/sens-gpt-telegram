@@ -4185,6 +4185,20 @@ def _startup_ranked_pool_smoke():
 
 _startup_ranked_pool_smoke()
 
+def _startup_brawlvalue_meta_smoke():
+    """One-shot production verification of the optional Brawl Value adapter."""
+    try:
+        from live_maps import brawlvalue_meta_state
+        data=brawlvalue_meta_state("italy",ttl=0)
+        rows=(data or {}).get("rows") or (data or {}).get("brawlers") or []
+        print("BRAWL VALUE META SMOKE: ok=%s rows=%s keys=%s" % (
+            bool(data),len(rows),sorted((data or {}).keys())
+        ),flush=True)
+    except Exception as exc:
+        print("BRAWL VALUE META SMOKE ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
+
+_startup_brawlvalue_meta_smoke()
+
 def _startup_official_skins_smoke():
     """One-shot safe probe of the proxy's official /v1/skins route."""
     proxy_url=(os.environ.get("BRAWL_OFFICIAL_PROXY_URL") or "").strip()
