@@ -2806,20 +2806,28 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             flags=re.IGNORECASE,
         ).strip()
 
-    # Hard-route registration before every premium/AI path. This command owns
-    # its full success/error flow and must never reach generative AI.
+    # Hard-route registration before every premium/AI path. Telegram/Brawl
+    # tags may contain invisible Unicode formatting characters introduced by
+    # copy/paste; normalize those before matching the deterministic command.
+    _registration_question = re.sub(
+        r"[\\u200b-\\u200f\\u202a-\\u202e\\u2060\\ufeff]",
+        "",
+        question,
+    )
+    _registration_question = re.sub(r"\\s+", " ", _registration_question).strip()
     _registration_match = re.fullmatch(
         r"(?:registrami|tegistrami)\\s*#?([A-Z0-9]{3,15})",
-        question,
+        _registration_question,
         re.I,
     )
     if _registration_match:
-        await community.handle_command(message, context, question)
+        print("REGISTRATION HARD ROUTE:", _registration_match.group(1).upper(), flush=True)
+        await community.handle_command(message, context, _registration_question)
         return
 
     # Even malformed registration attempts are deterministic: keep them out of
     # AI and return the command's validation syntax instead.
-    if re.match(r"^(?:registrami|tegistrami)\\b", question, re.I):
+    if re.match(r"^(?:registrami|tegistrami)\\b", _registration_question, re.I):
         await message.reply_text(
             "Tag Brawl Stars non valido. Usa: registrami #TAG. "
             "Attenzione: nei tag Brawl Stars la lettera O non è valida; potrebbe essere uno zero (0)."
