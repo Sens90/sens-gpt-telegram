@@ -1188,16 +1188,27 @@ class CommunityFeatures:
         scope=club_name or "COMMUNITY"
         if not rows: return f"Nessun dato disponibile per {label} in {scope}."
         lines=[f"CLASSIFICA {scope} - {label.upper()}",""]
-        for i,row in enumerate(rows[:60],1):
-            value = self.number_formatter(row['value'])
-            if stat_key == "trofei":
+        if stat_key == "trofei":
+            for row in rows:
                 history = self.history_fetcher(row["tag"], days=10)
                 changes = self.change_calculator(history, row["value"])
                 delta = changes.get("today")
+                row["_daily_delta"] = int(delta) if delta is not None else None
+            rows.sort(
+                key=lambda row: (
+                    row["_daily_delta"] is not None,
+                    row["_daily_delta"] if row["_daily_delta"] is not None else 0,
+                    row["value"],
+                ),
+                reverse=True,
+            )
+        for i,row in enumerate(rows[:60],1):
+            value = self.number_formatter(row['value'])
+            if stat_key == "trofei":
+                delta = row.get("_daily_delta")
                 if delta is None:
                     delta_text = "storico di oggi non disponibile"
                 else:
-                    delta = int(delta)
                     delta_text = f"{'+' if delta > 0 else ''}{delta}"
                 value = f"{value} ({delta_text})"
             elif stat_key.startswith("classificata") and row.get("display_value"):
