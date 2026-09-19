@@ -168,13 +168,20 @@ class CommunityFeatures:
         # contains maps active now and must never limit Draft map recognition.
         ranked_catalog=safe_get("pl-results.json.gz") or {}
         mode_aliases={
-            "gem grab":"Gem Grab","arraffagemme":"Gem Grab",
-            "brawl ball":"Brawl Ball","footbrawl":"Brawl Ball",
-            "hot zone":"Hot Zone","zona rovente":"Hot Zone",
+            "gem grab":"Gem Grab","gemgrab":"Gem Grab","arraffagemme":"Gem Grab",
+            "brawl ball":"Brawl Ball","brawlball":"Brawl Ball","brawl_ball":"Brawl Ball","footbrawl":"Brawl Ball",
+            "hot zone":"Hot Zone","hotzone":"Hot Zone","zona rovente":"Hot Zone",
             "bounty":"Bounty","ricercati":"Bounty",
             "heist":"Heist","rapina":"Heist",
             "knockout":"Knockout","k.o.":"Knockout","ko":"Knockout",
             "wipeout":"Wipeout","annientamento":"Wipeout",
+            "basket brawl":"Basket Brawl","basketbrawl":"Basket Brawl",
+            "air hockey":"Air Hockey","airhockey":"Air Hockey",
+        }
+        api_modes={
+            "gem grab":"gemGrab","brawl ball":"brawlBall","hot zone":"hotZone",
+            "bounty":"bounty","heist":"heist","knockout":"knockout","wipeout":"wipeout",
+            "basket brawl":"basketBrawl","air hockey":"airHockey",
         }
         # First retain exact mode information from the current rotation when present.
         candidates=[]
@@ -244,7 +251,7 @@ class CommunityFeatures:
             accepted={raw_event_mode.casefold(),str(en_mode).casefold(),str(it_mode).casefold()}-{""}
             accepted.update(k for k,v in mode_aliases.items() if en_mode and v.casefold()==str(en_mode).casefold())
             if wanted_mode and accepted and wanted_mode not in accepted:return None
-            return {"map_en":en,"map_it":it,"map_id":stats.get("map_id"),"mode_en":en_mode or None,"mode_it":it_mode or None,"catalog_key":canonical_key}
+            return {"map_en":en,"map_it":it,"map_id":stats.get("map_id"),"mode_en":en_mode or None,"mode_it":it_mode or None,"mode_api":api_modes.get(str(en_mode).casefold()),"catalog_key":canonical_key}
         return None
 
     @staticmethod
@@ -1587,7 +1594,7 @@ class CommunityFeatures:
             if not identity:
                 await message.reply_text("Mappa non riconosciuta. Inserisci una mappa Ranked valida.")
                 return True
-            setup.update({"stage": "rank", "map": identity.get("map_en"), "map_it": identity.get("map_it"), "map_id": identity.get("map_id"), "mode": identity.get("mode_en"), "mode_it": identity.get("mode_it")})
+            setup.update({"stage": "rank", "map": identity.get("map_en"), "map_it": identity.get("map_it"), "map_id": identity.get("map_id"), "mode": identity.get("mode_en"), "mode_it": identity.get("mode_it"), "mode_api": identity.get("mode_api")})
             context.user_data["ranked_draft_setup"] = setup
             me = context.user_data.get("_registered_user") or {}
             current = me.get("ranked_current")
@@ -1640,7 +1647,7 @@ class CommunityFeatures:
                 map_label = setup.get("map_it") or setup.get("map") or map_name
                 response = f"RANKED - {str(map_label).upper()}\nFascia Ranked: {rank_name}"
             draft_format = self._ranked_draft_format(rank_name)
-            context.user_data["ranked_draft"] = {"map": setup.get("map"), "map_it": setup.get("map_it"), "map_id": setup.get("map_id"), "mode": setup.get("mode"), "mode_it": setup.get("mode_it"), "rank": rank_name, "elo": elo, "draft_format": draft_format, "first_pick": None, "pick_sequence": [], "my_picks": [], "enemy_picks": [], "bans": []}
+            context.user_data["ranked_draft"] = {"map": setup.get("map"), "map_it": setup.get("map_it"), "map_id": setup.get("map_id"), "mode": setup.get("mode"), "mode_it": setup.get("mode_it"), "mode_api": setup.get("mode_api"), "rank": rank_name, "elo": elo, "draft_format": draft_format, "first_pick": None, "pick_sequence": [], "my_picks": [], "enemy_picks": [], "bans": []}
             context.user_data.pop("ranked_draft_setup", None)
             if draft_format == "all_pick":
                 response += "\nFormato: selezione normale, senza ban. Puoi iniziare con i pick."
@@ -1934,7 +1941,7 @@ class CommunityFeatures:
                         # Exact-map individual performance.
                         map_rows=self._get("ranked_draft_stats",{
                             "select":"brawler_id,win_rate,games","stat_scope":"eq.map_pick",
-                            "mode":"eq.brawlBall","map_name":"eq."+str(draft_state.get("map") or ""),"limit":"500"
+                            "mode":"eq."+str(draft_state.get("mode_api") or ""),"map_name":"eq."+str(draft_state.get("map") or ""),"limit":"500"
                         }) or []
                         for row in map_rows:
                             bid=row.get("brawler_id")
@@ -1950,7 +1957,7 @@ class CommunityFeatures:
                             if enemy_id is None:continue
                             rows=self._get("ranked_draft_stats",{
                                 "select":"brawler_id,win_rate,games","stat_scope":"eq.counter",
-                                "other_brawler_id":f"eq.{enemy_id}","mode":"eq.brawlBall",
+                                "other_brawler_id":f"eq.{enemy_id}","mode":"eq."+str(draft_state.get("mode_api") or ""),
                                 "map_name":"eq."+str(draft_state.get("map") or ""),"limit":"500"
                             }) or []
                             for row in rows:
@@ -1967,7 +1974,7 @@ class CommunityFeatures:
                             if mate_id is None:continue
                             rows=self._get("ranked_draft_stats",{
                                 "select":"brawler_id,win_rate,games","stat_scope":"eq.synergy",
-                                "other_brawler_id":f"eq.{mate_id}","mode":"eq.brawlBall",
+                                "other_brawler_id":f"eq.{mate_id}","mode":"eq."+str(draft_state.get("mode_api") or ""),
                                 "map_name":"eq."+str(draft_state.get("map") or ""),"limit":"500"
                             }) or []
                             for row in rows:
