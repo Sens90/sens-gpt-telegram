@@ -28,33 +28,64 @@ _WIKI_MODE_CATEGORIES={
 }
 
 def _wiki_active_map_names():
-    """Read the current Ranked map names from MediaWiki parse output."""
+    """Read only the current season's Ranked map block from the Wiki Maps section."""
     from bs4 import BeautifulSoup
     common={"action":"parse","page":"Ranked","format":"json","origin":"*"}
     headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"application/json"}
-    r=requests.get(RANKED_WIKI_API,params={**common,"prop":"text"},headers=headers,timeout=20)
+    # The API exposes Maps as a top-level section. Active maps is rendered
+    # inside that section, so it does not appear in prop=sections.
+    r=requests.get(RANKED_WIKI_API,params={**common,"prop":"sections"},headers=headers,timeout=20)
+    r.raise_for_status()
+    sections=((r.json().get("parse") or {}).get("sections") or [])
+    maps_section=next((x for x in sections if str(x.get("line") or "").strip().casefold()=="maps"),None)
+    if not maps_section or maps_section.get("index") is None:
+        raise RuntimeError("Wiki Maps section not found")
+    r=requests.get(RANKED_WIKI_API,params={**common,"prop":"text","section":str(maps_section["index"])},headers=headers,timeout=20)
     r.raise_for_status()
     html=(((r.json().get("parse") or {}).get("text") or {}).get("*") or "")
     if not html:
-        raise RuntimeError("Wiki API returned no Ranked HTML")
+        raise RuntimeError("Wiki Maps section empty")
     soup=BeautifulSoup(html,"html.parser")
-    # Fandom's rendered section markup changes often. Instead of relying on a
-    # particular heading/id, collect map links from the Ranked page and let
-    # _wiki_map_mode validate each candidate through its Wiki categories.
-    candidates=[]
-    for node in soup.find_all("a"):
+
+    # Locate the rendered Active maps / Season heading inside Maps, then keep
+    # links only until the next same-or-higher-level heading.
+    heading=None
+    for h in soup.find_all(re.compile(r"^h[1-6]$")):
+        label=h.get_text(" ",strip=True)
+        folded=label.casefold()
+        if "active maps" in folded or re.search(r"\bseason\s*\d+\b",folded):
+            heading=h
+            break
+    if heading is None:
+        # Fandom sometimes renders subheadings as div/span labels.
+        for node in soup.find_all(["div","span","b","strong"]):
+            label=node.get_text(" ",strip=True)
+            if "active maps" in label.casefold() and len(label)<120:
+                heading=node
+                break
+    if heading is None:
+        raise RuntimeError("Wiki current-season map block not found inside Maps")
+
+    names=[]
+    start_level=int(heading.name[1]) if re.fullmatch(r"h[1-6]",str(heading.name)) else None
+    for node in heading.find_all_next():
+        if start_level is not None and re.fullmatch(r"h[1-6]",str(node.name)):
+            if int(node.name[1])<=start_level:
+                break
+        if node.name!="a":
+            continue
         href=str(node.get("href") or "")
         name=node.get_text(" ",strip=True)
-        if not name or name in candidates:
+        if not name or name in names:
             continue
         if not (href.startswith("/wiki/") or "brawlstars.fandom.com/wiki/" in href):
             continue
         if any(x in href for x in ("/File:","/Category:","/Help:","/Ranked")):
             continue
-        candidates.append(name)
-    if len(candidates)<24:
-        raise RuntimeError(f"Wiki Ranked candidates suspicious count={len(candidates)}")
-    return candidates
+        names.append(name)
+    if len(names)<24 or len(names)>40:
+        raise RuntimeError(f"Wiki current-season candidates suspicious count={len(names)} names={names}")
+    return names
 
 
 def _wiki_map_mode(name):
