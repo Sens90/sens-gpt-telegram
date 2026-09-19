@@ -40,10 +40,12 @@ def current_ranked_pool():
             label=heading.get_text(" ",strip=True)
             mode=next((api for human,api in aliases.items() if label.startswith(human)),None)
             if mode: pairs.add((mode,name))
-        # Supercell documents seasonal Featured maps separately; do not assume a fixed total pool count.
-        # Refuse suspicious or partial HTML before using the pool for Draft evidence.
-        if len(pairs)<24 or len(pairs)>30:
-            raise RuntimeError(f"Ranked pool suspicious size: {len(pairs)}")
+        # Supercell documents the Featured mode maps as additions to the Ranked
+        # pool. It does not publish a stable full-pool total in these notes, so
+        # validate the scrape structurally rather than assuming 26 or 30 maps.
+        counts={mode:sum(1 for m,_ in pairs if m==mode) for mode in RANKED_MODES}
+        if len(pairs)<18 or any(counts.get(mode,0)<2 for mode in RANKED_MODES):
+            raise RuntimeError(f"Ranked pool suspicious: total={len(pairs)} counts={counts}")
         _ranked_pool_cache.update({"ts":now,"pairs":pairs})
         return pairs
     except Exception:
