@@ -1190,7 +1190,17 @@ class CommunityFeatures:
         lines=[f"CLASSIFICA {scope} - {label.upper()}",""]
         for i,row in enumerate(rows[:60],1):
             value = self.number_formatter(row['value'])
-            if stat_key.startswith("classificata") and row.get("display_value"):
+            if stat_key == "trofei":
+                history = self.history_fetcher(row["tag"], days=10)
+                changes = self.change_calculator(history, row["value"])
+                delta = changes.get("today")
+                if delta is None:
+                    delta_text = "storico di oggi non disponibile"
+                else:
+                    delta = int(delta)
+                    delta_text = f"{'+' if delta > 0 else ''}{delta}"
+                value = f"{value} ({delta_text})"
+            elif stat_key.startswith("classificata") and row.get("display_value"):
                 value = f"{value} ELO - {row['display_value']}"
             lines.append(f"{i}. {row['name']} - {value}")
         return "\n".join(lines)
