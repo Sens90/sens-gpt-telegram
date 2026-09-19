@@ -37,62 +37,37 @@ _WIKI_MODE_CATEGORIES={
 }
 
 def _wiki_active_map_names():
-    """Read only the newest Ranked season block from the Wiki Maps section.
+    """Read the current Ranked Active maps block from the Wiki.
 
-    The season number is discovered from the page every refresh; it is never
-    hard-coded, so the pool rolls forward automatically each month.
+    Parse the full Ranked page because Fandom exposes "Active maps (Season N)"
+    in the article body rather than as a child heading of the Maps section.
+    The season number is discovered dynamically.
     """
     from bs4 import BeautifulSoup
-    common={"action":"parse","page":"Ranked","format":"json","origin":"*"}
+    common={"action":"parse","page":"Ranked","format":"json","origin":"*","prop":"text"}
     headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"application/json"}
-    # The API exposes Maps as a top-level section. Active maps is rendered
-    # inside that section, so it does not appear in prop=sections.
-    r=requests.get(RANKED_WIKI_API,params={**common,"prop":"sections"},headers=headers,timeout=20)
-    r.raise_for_status()
-    sections=((r.json().get("parse") or {}).get("sections") or [])
-    maps_section=next((x for x in sections if str(x.get("line") or "").strip().casefold()=="maps"),None)
-    if not maps_section or maps_section.get("index") is None:
-        raise RuntimeError("Wiki Maps section not found")
-    r=requests.get(RANKED_WIKI_API,params={**common,"prop":"text","section":str(maps_section["index"])},headers=headers,timeout=20)
+    r=requests.get(RANKED_WIKI_API,params=common,headers=headers,timeout=20)
     r.raise_for_status()
     html=(((r.json().get("parse") or {}).get("text") or {}).get("*") or "")
     if not html:
-        raise RuntimeError("Wiki Maps section empty")
+        raise RuntimeError("Wiki Ranked page empty")
     soup=BeautifulSoup(html,"html.parser")
 
-    # Prefer the numerically newest explicit Season N heading.  Falling back
-    # to Active maps keeps compatibility if the Wiki changes its presentation.
-    season_headings=[]
+    candidates=[]
     for h in soup.find_all(re.compile(r"^h[1-6]$")):
         label=h.get_text(" ",strip=True)
-        match=re.search(r"\bseason\s*(\d+)\b",label,re.I)
+        match=re.search(r"active\\s+maps(?:\\s*\\(\\s*season\\s*(\\d+)\\s*\\))?",label,re.I)
         if match:
-            season_headings.append((int(match.group(1)),h))
-    season=None
-    heading=None
-    if season_headings:
-        season,heading=max(season_headings,key=lambda x:x[0])
-    if heading is None:
-        for h in soup.find_all(re.compile(r"^h[1-6]$")):
-            if "active maps" in h.get_text(" ",strip=True).casefold():
-                heading=h
-                break
-    if heading is None:
-        # Fandom sometimes renders subheadings as div/span labels.
-        for node in soup.find_all(["div","span","b","strong"]):
-            label=node.get_text(" ",strip=True)
-            if "active maps" in label.casefold() and len(label)<120:
-                heading=node
-                break
-    if heading is None:
-        raise RuntimeError("Wiki current-season map block not found inside Maps")
+            candidates.append((int(match.group(1)) if match.group(1) else -1,h,label))
+    if not candidates:
+        raise RuntimeError("Wiki Active maps heading not found on Ranked page")
+    season,heading,label=max(candidates,key=lambda x:x[0])
 
     names=[]
-    start_level=int(heading.name[1]) if re.fullmatch(r"h[1-6]",str(heading.name)) else None
+    start_level=int(heading.name[1])
     for node in heading.find_all_next():
-        if start_level is not None and re.fullmatch(r"h[1-6]",str(node.name)):
-            if int(node.name[1])<=start_level:
-                break
+        if re.fullmatch(r"h[1-6]",str(node.name)) and int(node.name[1])<=start_level:
+            break
         if node.name!="a":
             continue
         href=str(node.get("href") or "")
@@ -105,8 +80,8 @@ def _wiki_active_map_names():
             continue
         names.append(name)
     if len(names)<24 or len(names)>40:
-        raise RuntimeError(f"Wiki current-season candidates suspicious count={len(names)} names={names}")
-    return names,season
+        raise RuntimeError(f"Wiki Active maps suspicious season={season} count={len(names)} names={names}")
+    return names,(season if season>=0 else None)
 
 
 def _wiki_map_mode(name):
