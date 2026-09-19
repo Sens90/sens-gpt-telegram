@@ -301,9 +301,17 @@ def collect(seed_tags,max_players=250,sleep_s=.08):
                         else:m["winner"]=None
                         break
                 matches[m["key"]]=m
+            # Expand first through players from under-covered current-season maps.
+            # This keeps the crawl inside the verified Ranked pool while helping
+            # counter/synergy evidence converge across all seasonal maps.
+            discovered=[]
             for team in m["teams"]:
                 for other,_ in team:
-                    if other not in seen_players and other not in queue and len(queue)<max_players*3:queue.append(other)
+                    if other not in seen_players and other not in queue:
+                        discovered.append(other)
+            for other in discovered:
+                if len(queue)>=max_players*3:break
+                queue.append(other)
         time.sleep(sleep_s)
     return list(matches.values()),dict(diagnostics)
 
