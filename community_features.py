@@ -1548,6 +1548,32 @@ class CommunityFeatures:
             return True
 
         setup = context.user_data.get("ranked_draft_setup") or {}
+        if setup.get("stage") == "map_choice":
+            choices=setup.get("map_choices") or []
+            chosen=None
+            raw_choice=q.strip()
+            if re.fullmatch(r"[1-9]\\d*",raw_choice):
+                idx=int(raw_choice)-1
+                if 0<=idx<len(choices): chosen=choices[idx]
+            if chosen is None:
+                for item in choices:
+                    if raw_choice.casefold() in {str(item.get("map_en") or "").casefold(),str(item.get("map_it") or "").casefold()}:
+                        chosen=item;break
+            if chosen is None:
+                await message.reply_text("Scelta non riconosciuta. Rispondi con il numero oppure con il nome della mappa.")
+                return True
+            setup.update({"stage":"rank","map":chosen.get("map_en"),"map_it":chosen.get("map_it"),"map_id":chosen.get("map_id"),"mode":chosen.get("mode_en"),"mode_it":chosen.get("mode_it"),"mode_api":chosen.get("mode_api")})
+            context.user_data["ranked_draft_setup"]=setup
+            if setup.get("pending_rank"):
+                q=setup.pop("pending_rank")
+            else:
+                me=context.user_data.get("_registered_user") or {}
+                current=me.get("ranked_current")
+                if current not in (None,"Non classificato","Unranked"):
+                    q=str(current)
+                else:
+                    await message.reply_text(f"Mappa: {chosen.get('map_it') or chosen.get('map_en')}.\\nIndica il Ranked da simulare, per esempio 'Mito I' o 'Mito 2'.")
+                    return True
         if setup.get("stage") == "map":
             combined_q = re.sub(r"\bmiti(?=\s+(?:i{1,3}|[1-3])\b)", "mito", q, flags=re.I)
             combined_q = re.sub(r"\bdiamnte(?=\s+(?:i{1,3}|[1-3])\b)", "diamante", combined_q, flags=re.I)
@@ -1559,7 +1585,38 @@ class CommunityFeatures:
                 map_query = combined.group(1).strip()
                 level = combined.group(3).upper()
                 level = {"1":"I","2":"II","3":"III"}.get(level, level)
-                pending_rank = f"{combined.group(2).title()} {level}"
+                rank_base=combined.group(2).casefold()
+                rank_base={"mitico":"mito","mythic":"mito"}.get(rank_base,rank_base)
+                pending_rank = f"{rank_base.title()} {level}"
+            # The user may enter a Ranked mode instead of a map. Show the
+            # current seasonal maps for that mode and accept number or map name.
+            mode_input=map_query.casefold().strip()
+            mode_lookup={"footbrawl":"brawlBall","brawl ball":"brawlBall","brawlball":"brawlBall",
+                         "arraffagemme":"gemGrab","gem grab":"gemGrab","gemgrab":"gemGrab",
+                         "dominio":"hotZone","hot zone":"hotZone","hotzone":"hotZone","zona rovente":"hotZone",
+                         "ricercati":"bounty","bounty":"bounty","rapina":"heist","heist":"heist",
+                         "k.o.":"knockout","ko":"knockout","knockout":"knockout"}
+            mode_api=mode_lookup.get(mode_input)
+            if mode_api:
+                from ranked_matchup_sync import current_ranked_pool
+                pool=current_ranked_pool()
+                choices=[]
+                for pool_mode,pool_map in sorted(pool,key=lambda x:x[1].casefold()):
+                    if pool_mode!=mode_api: continue
+                    ident=self._draft_identity(pool_map)
+                    if ident: choices.append(ident)
+                if not choices:
+                    await message.reply_text("Nessuna mappa Ranked corrente disponibile per questa modalità.")
+                    return True
+                setup.update({"stage":"map_choice","map_choices":choices,"pending_rank":pending_rank})
+                context.user_data["ranked_draft_setup"]=setup
+                mode_label=choices[0].get("mode_it") or choices[0].get("mode_en") or map_query
+                lines=[f"{str(mode_label).upper()} — MAPPE RANKED"]
+                if pending_rank: lines.append(f"Fascia Ranked: {pending_rank}")
+                lines.extend(f"{i}. {x.get('map_it') or x.get('map_en')}" for i,x in enumerate(choices,1))
+                lines.append("Rispondi con il numero oppure con il nome della mappa.")
+                await message.reply_text("\\n".join(lines))
+                return True
             identity = self._draft_identity(map_query)
             if not identity:
                 await message.reply_text("Mappa non presente in Ranked.")
