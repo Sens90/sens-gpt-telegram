@@ -27,22 +27,23 @@ def current_ranked_pool():
         r=requests.get(RANKED_POOL_URL,headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept-Language":"en-US,en;q=0.9"},timeout=15)
         r.raise_for_status()
         soup=BeautifulSoup(r.text,"html.parser")
-        text=soup.get_text("\n",strip=True)
-        # Use the site's own map cards/links when available; map labels are paired
-        # to their nearest Ranked mode heading. Unknown modes are never accepted.
         aliases={"Gem Grab":"gemGrab","Brawl Ball":"brawlBall","Hot Zone":"hotZone",
                  "Bounty":"bounty","Heist":"heist","Knockout":"knockout"}
         pairs=set()
-        current_mode=None
-        for line in (x.strip() for x in text.splitlines() if x.strip()):
-            if line in aliases:
-                current_mode=aliases[line];continue
-            if current_mode and 2<=len(line)<=80:
-                # Final validation happens against observed battlelog event map names;
-                # navigation/UI labels are excluded conservatively.
-                if line.casefold() not in {"ranked","maps","brawlers","leaderboard","home"}:
-                    pairs.add((current_mode,line))
-        if not pairs: raise RuntimeError("Ranked pool parsed empty")
+        # The current pool is rendered as map links (/maps/<slug>) inside each
+        # mode section. Pair each map with its closest preceding H2 mode heading.
+        for link in soup.select('a[href^="/maps/"]'):
+            name=link.get_text(" ",strip=True)
+            if not name: continue
+            heading=link.find_previous("h2")
+            if heading is None: continue
+            label=heading.get_text(" ",strip=True)
+            mode=next((api for human,api in aliases.items() if label.startswith(human)),None)
+            if mode: pairs.add((mode,name))
+        # Season 49 has 26 maps. Refuse suspicious/partial HTML rather than
+        # accepting a malformed pool and contaminating Draft evidence.
+        if len(pairs)<24 or len(pairs)>30:
+            raise RuntimeError(f"Ranked pool suspicious size: {len(pairs)}")
         _ranked_pool_cache.update({"ts":now,"pairs":pairs})
         return pairs
     except Exception:
