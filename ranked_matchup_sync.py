@@ -14,16 +14,40 @@ import requests
 API="https://api.brawlstars.com/v1"
 RANKED_TYPES={"ranked","soloranked","teamranked"}
 RANKED_MODES={"gemGrab","brawlBall","hotZone","bounty","heist","knockout"}
-# Current Ranked pool: 24 base maps + the 2 maps of the current featured mode.
-# Keep mode+map paired so historical battlelogs cannot contaminate current Draft evidence.
-CURRENT_RANKED_POOL={
-    "gemGrab":{"Double Swoosh","Gem Fort","Hard Rock Mine","Undermine"},
-    "heist":{"Bridge Too Far","Hot Potato","Kaboom Canyon","Safe Zone"},
-    "bounty":{"Dry Season","Hideout","Layer Cake","Shooting Star"},
-    "brawlBall":{"Center Stage","Pinball Dreams","Sneaky Fields","Triple Dribble"},
-    "hotZone":{"Dueling Beetles","In the Liminal","Open Business","Quick Travel","Parallel Plays","Ring of Fire"},
-    "knockout":{"Belle's Rock","Flaring Phoenix","New Horizons","Out in the Open"},
-}
+RANKED_POOL_URL=os.getenv("RANKED_POOL_URL","https://brawlzone.net/ranked")
+_ranked_pool_cache={"ts":0.0,"pairs":None}
+
+def current_ranked_pool():
+    """Fetch the live monthly Ranked map+mode pool; fail closed if unavailable."""
+    now=time.time()
+    if _ranked_pool_cache["pairs"] is not None and now-_ranked_pool_cache["ts"]<21600:
+        return _ranked_pool_cache["pairs"]
+    try:
+        from bs4 import BeautifulSoup
+        r=requests.get(RANKED_POOL_URL,headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept-Language":"en-US,en;q=0.9"},timeout=15)
+        r.raise_for_status()
+        soup=BeautifulSoup(r.text,"html.parser")
+        text=soup.get_text("\n",strip=True)
+        # Use the site's own map cards/links when available; map labels are paired
+        # to their nearest Ranked mode heading. Unknown modes are never accepted.
+        aliases={"Gem Grab":"gemGrab","Brawl Ball":"brawlBall","Hot Zone":"hotZone",
+                 "Bounty":"bounty","Heist":"heist","Knockout":"knockout"}
+        pairs=set()
+        current_mode=None
+        for line in (x.strip() for x in text.splitlines() if x.strip()):
+            if line in aliases:
+                current_mode=aliases[line];continue
+            if current_mode and 2<=len(line)<=80:
+                # Final validation happens against observed battlelog event map names;
+                # navigation/UI labels are excluded conservatively.
+                if line.casefold() not in {"ranked","maps","brawlers","leaderboard","home"}:
+                    pairs.add((current_mode,line))
+        if not pairs: raise RuntimeError("Ranked pool parsed empty")
+        _ranked_pool_cache.update({"ts":now,"pairs":pairs})
+        return pairs
+    except Exception:
+        return set()
+
 
 def _headers():
     token=(os.getenv("BRAWL_STARS_API_TOKEN") or os.getenv("BRAWL_API_TOKEN") or "").strip()
@@ -55,7 +79,8 @@ def normalize_match(row):
     mode=event.get("mode") or battle.get("mode")
     if mode not in RANKED_MODES:return None
     map_name=str(event.get("map") or "").strip()
-    if not map_name or map_name not in CURRENT_RANKED_POOL.get(mode,set()):return None
+    pool=current_ranked_pool()
+    if not pool or (mode,map_name) not in pool:return None
     teams=battle.get("teams")
     if not isinstance(teams,list) or len(teams)!=2 or any(len(t)!=3 for t in teams):return None
     def side(team):
