@@ -1915,7 +1915,7 @@ class CommunityFeatures:
                                 "brawler_id":f"eq.{enemy_id}",
                                 "mode":"eq.brawlBall",
                                 "map_name":"in.(*,"+str(draft_state.get("map") or "")+")",
-                                "order":"score.desc.nullslast",
+                                "order":"map_name.desc,score.desc.nullslast",
                                 "limit":"50",
                             }) or []
                             for row in rows:
