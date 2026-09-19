@@ -138,17 +138,17 @@ def _fetch_brawlzone_ranked_pool():
         print(f"RANKED SECONDARY DEBUG: status={r.status_code} url={r.url} bytes={len(r.content)} text={page_text[:1200]!r}",flush=True)
     season=None
     # Prefer the season attached to Full map pool; page may also mention next/current seasons.
-    m=re.search(r"Full\\s+map\\s+pool\\s*\\(\\s*season\\s*(\\d+)\\s*\\)",page_text,re.I)
+    m=re.search(r"Full\s+map\s+pool\s*\(\s*season\s*(\d+)\s*\)",page_text,re.I)
     if m: season=int(m.group(1))
     advertised=None
-    m=re.search(r"(\\d+)\\s+maps\\s+in\\s+the\\s+pool",page_text,re.I)
+    m=re.search(r"(\d+)\s+maps\s+in\s+the\s+pool",page_text,re.I)
     if m: advertised=int(m.group(1))
 
-    marker=re.search(r"Full\\s+map\\s+pool(?:\\s*\\(\\s*season\\s*\\d+\\s*\\))?",page_text,re.I)
+    marker=re.search(r"Full\s+map\s+pool(?:\s*\(\s*season\s*\d+\s*\))?",page_text,re.I)
     if not marker:
         raise RuntimeError("secondary Full map pool marker not found")
     tail=page_text[marker.end():]
-    stop=re.search(r"How\\s+these\\s+picks\\s+are\\s+chosen",tail,re.I)
+    stop=re.search(r"How\s+these\s+picks\s+are\s+chosen",tail,re.I)
     pool_text=tail[:stop.start()] if stop else tail
 
     # Parse mode-delimited text. Mode labels are stable and map names occupy the
@@ -178,7 +178,7 @@ def _fetch_brawlzone_ranked_pool():
             if nm: ends.append(nm.start())
         chunk=rest[:min(ends)] if ends else rest
         for name in anchors:
-            if re.search(r"(?<!\\w)"+re.escape(name)+r"(?!\\w)",chunk,re.I):
+            if re.search(r"(?<!\w)"+re.escape(name)+r"(?!\w)",chunk,re.I):
                 pairs.add((api,name))
 
     counts={mode:sum(1 for m,_ in pairs if m==mode) for mode in RANKED_MODES}
