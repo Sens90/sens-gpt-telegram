@@ -1651,7 +1651,7 @@ class CommunityFeatures:
                 "leggendario 1":"Leggendario I","leggendario 2":"Leggendario II","leggendario 3":"Leggendario III",
             })
             raw_rank = re.sub(r"\s+", " ", q.casefold()).strip()
-            raw_rank = re.sub(r"^miti(?=\s)", "mito", raw_rank)
+            raw_rank = re.sub(r"^(?:miti|mitico|mythic)(?=\s)", "mito", raw_rank)
             raw_rank = re.sub(r"^diamnte(?=\s)", "diamante", raw_rank)
             raw_rank = re.sub(r"^legg(?:end)?rio(?=\s)", "leggendario", raw_rank)
             me = context.user_data.get("_registered_user") or {}
