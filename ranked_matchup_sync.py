@@ -70,23 +70,39 @@ def collect(seed_tags,max_players=250,sleep_s=.08):
     return list(matches.values())
 
 def aggregate(matches,min_sample=20):
-    # For each exact map/mode pair, measure candidate win rate when facing target.
-    stats=defaultdict(lambda:[0,0])
+    """Build every variable observable from final Ranked battle logs.
+
+    Scopes:
+      map_pick: Brawler performance on exact map/mode.
+      synergy: pair performance when two Brawlers are teammates.
+      counter: candidate performance while facing an opponent Brawler.
+    Ban/order/tier are deliberately not fabricated because battle logs do not
+    expose them reliably.
+    """
+    pick=defaultdict(lambda:[0,0]); synergy=defaultdict(lambda:[0,0]); counter=defaultdict(lambda:[0,0])
     for m in matches:
         if m.get("winner") is None or not m.get("map") or not m.get("mode"):continue
+        mode,map_name=str(m["mode"]),str(m["map"])
         for side in (0,1):
-            enemy=1-side
-            won=1 if m["winner"]==side else 0
-            for _,candidate in m["teams"][side]:
-                for _,target in m["teams"][enemy]:
-                    rec=stats[(target,candidate,str(m["mode"]),str(m["map"]))]
-                    rec[0]+=won;rec[1]+=1
+            enemy=1-side; won=1 if m["winner"]==side else 0
+            team_ids=[bid for _,bid in m["teams"][side]]
+            enemy_ids=[bid for _,bid in m["teams"][enemy]]
+            for candidate in team_ids:
+                p=pick[(mode,map_name,candidate)];p[0]+=won;p[1]+=1
+                for mate in team_ids:
+                    if mate==candidate:continue
+                    s=synergy[(mode,map_name,candidate,mate)];s[0]+=won;s[1]+=1
+                for target in enemy_ids:
+                    x=counter[(mode,map_name,candidate,target)];x[0]+=won;x[1]+=1
     rows=[]
-    for (target,candidate,mode,map_name),(wins,n) in stats.items():
-        if n<min_sample:continue
-        # score is empirical head-to-head win rate. Keep sample_size alongside it.
-        rows.append({"brawler_id":target,"counter_brawler_id":candidate,"mode":mode,"map_name":map_name,
-                     "score":round(100*wins/n,3),"sample_size":n,"source":"Supercell Ranked battlelog"})
+    def add(scope,mode,map_name,bid,other,wins,n):
+        if n<min_sample:return
+        rows.append({"stat_scope":scope,"mode":mode,"map_name":map_name,"brawler_id":bid,
+                     "other_brawler_id":other,"games":n,"wins":wins,"losses":n-wins,
+                     "win_rate":round(100*wins/n,3),"source":"Supercell Ranked battlelog"})
+    for (mode,map_name,bid),(wins,n) in pick.items():add("map_pick",mode,map_name,bid,0,wins,n)
+    for (mode,map_name,bid,mate),(wins,n) in synergy.items():add("synergy",mode,map_name,bid,mate,wins,n)
+    for (mode,map_name,bid,target),(wins,n) in counter.items():add("counter",mode,map_name,bid,target,wins,n)
     return rows
 
 def upsert(rows):
@@ -94,9 +110,9 @@ def upsert(rows):
     key=(os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY") or "").strip()
     if not url or not key:raise RuntimeError("Supabase credentials missing")
     h={"apikey":key,"Authorization":"Bearer "+key,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates"}
-    # Requires a unique constraint on (brawler_id,counter_brawler_id,mode,map_name).
+    # Primary key makes repeated syncs idempotent for each exact evidence cell.
     for i in range(0,len(rows),500):
-        r=requests.post(url+"/rest/v1/brawler_counters?on_conflict=brawler_id,counter_brawler_id,mode,map_name",
+        r=requests.post(url+"/rest/v1/ranked_draft_stats?on_conflict=stat_scope,mode,map_name,brawler_id,other_brawler_id",
                         headers=h,json=rows[i:i+500],timeout=30);r.raise_for_status()
 
 if __name__=="__main__":
