@@ -2694,6 +2694,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _without_mentions = re.sub(r"(?<!\\w)@[A-Za-z0-9_]{5,32}\\b", " ", _raw_admin, flags=re.IGNORECASE)
     _admin_cmd = re.sub(r"[^a-z0-9à-ÿ ]+", " ", _without_mentions.casefold())
     _admin_cmd = re.sub(r"\\s+", " ", _admin_cmd).strip()
+    _is_non_registrati = ("non registrati" in _raw_admin.casefold() or "nonregistrati" in _raw_admin.casefold() or "utenti non registrati" in _raw_admin.casefold())
     if _is_non_registrati:
         if getattr(message.chat, "type", None) not in {"group", "supergroup"}:
             await message.reply_text("Usa questo comando nel gruppo della community.")
