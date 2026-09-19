@@ -1149,15 +1149,26 @@ class CommunityFeatures:
         for member in self.members(chat_id):
             tag=member.get("player_tag")
             if not tag: continue
-            player=self.player_fetcher(tag)
-            if not player: continue
-            normalized_tag=str(player.get("tag") or tag).upper().replace("#", "")
-            if normalized_tag == "2VQYLG0RU8":
-                player["club"]="TALENTI ABUSIVI"
-                player["club_name"]="TALENTI ABUSIVI"
-            actual_club=self._club_name_from_player(player)
-            if club_name and (actual_club or "").casefold()!=club_name.casefold(): continue
-            value=player.get(field)
+            # Trophy leaderboards use the official Supercell snapshots refreshed
+            # by the background monitor; do not make one live HTTP request/member.
+            if stat_key == "trofei":
+                actual_club = member.get("club_name")
+                if club_name and (actual_club or "").casefold() != club_name.casefold():
+                    continue
+                value = self._member_current_trophies(member)
+                if value is None:
+                    continue
+                player = {"name": member.get("player_name"), "tag": tag}
+            else:
+                player=self.player_fetcher(tag)
+                if not player: continue
+                normalized_tag=str(player.get("tag") or tag).upper().replace("#", "")
+                if normalized_tag == "2VQYLG0RU8":
+                    player["club"]="TALENTI ABUSIVI"
+                    player["club_name"]="TALENTI ABUSIVI"
+                actual_club=self._club_name_from_player(player)
+                if club_name and (actual_club or "").casefold()!=club_name.casefold(): continue
+                value=player.get(field)
             if value is None: continue
             try: value=int(value)
             except (TypeError,ValueError): continue
@@ -1601,7 +1612,7 @@ class CommunityFeatures:
         # before Skin Account/user registration lookups so they cannot be delayed
         # by unrelated per-user database work.
         if re.fullmatch(r"classifica(?:\\s+(?:della\\s+community))?(?:\\s+di)?\\s+oggi", q0, re.I):
-            await message.reply_text(self.ranking_text(message.chat_id, 0))
+            await context.bot.send_message(chat_id=message.chat_id, text=self.ranking_text(message.chat_id, 0))
             return True
         _club_default_fast = re.fullmatch(
             r"classific(?:a|he)\\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)",
@@ -1609,7 +1620,7 @@ class CommunityFeatures:
         )
         if _club_default_fast:
             _club_name = self.CLUB_ALIASES[_club_default_fast.group(1).lower()]
-            await message.reply_text(self.stat_ranking_text(message.chat_id, "trofei", _club_name))
+            await context.bot.send_message(chat_id=message.chat_id, text=self.stat_ranking_text(message.chat_id, "trofei", _club_name))
             return True
 
         registered = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
