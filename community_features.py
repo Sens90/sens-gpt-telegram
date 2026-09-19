@@ -25,7 +25,7 @@ FAQ_TEXT = (
 HELP_TEXT = """COMANDI SENS GPT - SOCI
 
 ACCOUNT E PROFILO
-- registrami #TAG — collega il tuo account Brawl Stars
+- registrami #TAG — collega il tuo account Brawl Stars principale\n- aggiungi account #TAG — collega un account secondario/terziario\n- i miei account — mostra tutti i tuoi account collegati
 - profilo #TAG / stats #TAG — scheda completa del giocatore
 - ranked #TAG — Classificata attuale e record
 - storico ranked #TAG — ultime variazioni della Classificata
@@ -761,6 +761,48 @@ class CommunityFeatures:
             except Exception as exc:
                 print("ERRORE SNAPSHOT REGISTRAZIONE:", repr(exc), flush=True)
         return player
+
+    def additional_accounts(self, telegram_user_id):
+        try:
+            return self._get("community_member_accounts",{"select":"*","telegram_user_id":f"eq.{int(telegram_user_id)}","is_active":"eq.true","order":"account_order.asc"}) or []
+        except Exception as exc:
+            print("ERRORE ACCOUNT AGGIUNTIVI:",repr(exc),flush=True)
+            return []
+
+    def add_additional_account(self, message, player_tag):
+        user=message.from_user
+        primary=self.get_registered_user(user.id)
+        if not primary:
+            return {"_needs_primary":True}
+        tag=str(player_tag or "").upper().replace("#","").strip()
+        primary_tag=str(primary.get("player_tag") or "").upper().replace("#","").strip()
+        if tag == primary_tag:
+            return {"_duplicate":True,"tag":"#"+tag}
+        primary_owner=self._get("community_members",{"select":"telegram_user_id","player_tag":f"eq.{tag}","limit":"1"})
+        extra_owner=self._get("community_member_accounts",{"select":"telegram_user_id","player_tag":f"eq.{tag}","is_active":"eq.true","limit":"1"})
+        if primary_owner or extra_owner:
+            return {"_tag_in_use":True,"tag":"#"+tag}
+        player=self.player_fetcher(tag)
+        if not player:
+            return None
+        existing=self.additional_accounts(user.id)
+        order=max([int(x.get("account_order") or 1) for x in existing] or [1])+1
+        self._post("community_member_accounts",{"telegram_user_id":int(user.id),"player_tag":str(player["tag"]).replace("#","").upper(),"player_name":player.get("name"),"account_order":order,"is_active":True,"updated_at":self._now_iso()},prefer="return=minimal")
+        if self.snapshot_saver and player.get("trophies") is not None:
+            try: self.snapshot_saver(player["tag"],player["name"],player["trophies"])
+            except Exception as exc: print("ERRORE SNAPSHOT ACCOUNT AGGIUNTIVO:",repr(exc),flush=True)
+        player["_account_order"]=order
+        return player
+
+    def my_accounts_text(self, telegram_user_id):
+        primary=self.get_registered_user(telegram_user_id)
+        if not primary:
+            return "Non hai ancora un account principale registrato. Usa: registrami #TAG"
+        lines=["I TUOI ACCOUNT","",f"PRINCIPALE - {primary.get('player_name') or 'Account'} #{primary.get('player_tag')}"]
+        for row in self.additional_accounts(telegram_user_id):
+            n=max(1,int(row.get("account_order") or 2)-1)
+            lines.append(f"SECONDARIO {n} - {row.get('player_name') or 'Account'} #{row.get('player_tag')}")
+        return "\n".join(lines)
 
     def update_member_ranked(self, chat_id, user_id, ranked_current=None, ranked_peak=None):
         payload = {}
@@ -2241,6 +2283,34 @@ class CommunityFeatures:
                 "https://discord.gg/uwrUfsEaBc\n\n"
                 "Usiamo Discord per le vocali della community."
             )
+            return True
+
+        extra_match = re.fullmatch(r"(?:aggiungi\\s+account|aggiungi\\s+profilo)\\s*#?([A-Z0-9]{3,15})", q, re.I)
+        if extra_match:
+            raw_tag=extra_match.group(1).upper()
+            if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}",raw_tag):
+                await message.reply_text("Tag Brawl Stars non valido. Controllalo e riprova con: aggiungi account #TAG.")
+                return True
+            try:
+                player=self.add_additional_account(message,raw_tag)
+                if not player:
+                    await message.reply_text("Non riesco a trovare quel giocatore. Controlla il tag.")
+                elif player.get("_needs_primary"):
+                    await message.reply_text("Prima registra il tuo account principale con: registrami #TAG")
+                elif player.get("_duplicate"):
+                    await message.reply_text("Questo è già il tuo account principale.")
+                elif player.get("_tag_in_use"):
+                    await message.reply_text("Questo tag Brawl Stars è già registrato e non può essere collegato a un altro utente.")
+                else:
+                    n=max(1,int(player.get("_account_order") or 2)-1)
+                    await message.reply_text(f"Account secondario {n} collegato: {player['name']} {player['tag']} - {self.number_formatter(player.get('trophies') or 0)} trofei.")
+            except Exception as exc:
+                print("ERRORE AGGIUNTA ACCOUNT:",repr(exc),flush=True)
+                await message.reply_text("Non riesco ad aggiungere questo account in questo momento.")
+            return True
+
+        if ql in ("i miei account","miei account","account collegati"):
+            await message.reply_text(self.my_accounts_text(message.from_user.id))
             return True
 
         match = re.fullmatch(r"(?:registrami|tegistrami)\s*#?([A-Z0-9]{3,15})", q, re.I)
