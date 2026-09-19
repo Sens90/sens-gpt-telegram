@@ -71,7 +71,8 @@ GRAFICI
 - grafico tornadi 7|15|30|90
 - grafico talenti 7|15|30|90
 
-DRAFT RANKED
+DRAFT RANKED — SOLO IN CHAT PRIVATA
+- La Draft Ranked funziona esclusivamente in privato con Sens GPT e non nel gruppo.
 - Draft Ranked — avvia la Draft guidata
 - puoi indicare mappa e fascia Ranked, oppure una modalità per scegliere tra le mappe Ranked correnti
 - durante la Draft: ban, primo pick nostro/avversario e pick vengono gestiti passo per passo
