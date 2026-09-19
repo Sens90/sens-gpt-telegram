@@ -229,13 +229,19 @@ class CommunityFeatures:
             matched_en=it_to_en.get(wanted)
             if wanted not in {en.casefold(),str(it).casefold()} and not (matched_en and matched_en.casefold()==en.casefold()):continue
             en_mode=mode_aliases.get(raw_event_mode.casefold(), raw_event_mode)
+            stats=brawltrack_pro_map_stats(en) or {}
+            if not en_mode:
+                meta_mode=str(stats.get("mode") or stats.get("game_mode") or "").strip()
+                if meta_mode.casefold() in ("brawlball","brawl_ball"):
+                    en_mode="Brawl Ball"
+                else:
+                    en_mode=mode_aliases.get(meta_mode.casefold(),meta_mode)
             it_mode=localized(names,"modes",en_mode) if en_mode else ""
             if str(en_mode).casefold()=="brawl ball" and (not it_mode or str(it_mode).casefold() in ("brawl ball","brawlball")):
                 it_mode="Footbrawl"
             accepted={raw_event_mode.casefold(),str(en_mode).casefold(),str(it_mode).casefold()}-{""}
             accepted.update(k for k,v in mode_aliases.items() if en_mode and v.casefold()==str(en_mode).casefold())
             if wanted_mode and accepted and wanted_mode not in accepted:return None
-            stats=brawltrack_pro_map_stats(en) or {}
             return {"map_en":en,"map_it":it,"map_id":stats.get("map_id"),"mode_en":en_mode or None,"mode_it":it_mode or None,"catalog_key":canonical_key}
         return None
 
