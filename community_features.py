@@ -212,9 +212,10 @@ class CommunityFeatures:
         except Exception as exc:
             LOG.warning("DRAFT current Ranked pool unavailable: %s",type(exc).__name__)
         if not ranked_pool:
-            # Safe fallback: do not break Draft if the seasonal source is temporarily
-            # unavailable. The complete analyzer catalog is used only in this case.
-            ranked_pool={str(k).casefold() for k in map_names.keys()}
+            # Accuracy first: never fall back to the historical map catalog, because
+            # that could make an old Ranked map valid in the current monthly season.
+            LOG.warning("DRAFT current Ranked pool empty; failing closed")
+            return None
         # Resolve only maps present in the current seasonal Ranked pool.
         map_it_by_en={str(k).casefold():str(v) for k,v in map_names.items() if v}
         it_to_en={str(v).casefold():str(k) for k,v in map_names.items() if v}
