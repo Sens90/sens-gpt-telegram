@@ -28,41 +28,34 @@ _WIKI_MODE_CATEGORIES={
 }
 
 def _wiki_active_map_names():
-    """Read the Ranked Active maps section through MediaWiki API section indexes."""
+    """Read the current Ranked map names from MediaWiki parse output."""
     from bs4 import BeautifulSoup
     common={"action":"parse","page":"Ranked","format":"json","origin":"*"}
     headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"application/json"}
-    r=requests.get(RANKED_WIKI_API,params={**common,"prop":"sections"},headers=headers,timeout=20)
-    r.raise_for_status()
-    sections=((r.json().get("parse") or {}).get("sections") or [])
-    active=next((x for x in sections if "active maps" in str(x.get("line") or "").casefold()),None)
-    if not active or active.get("index") is None:
-        available=[str(x.get("line") or "") for x in sections]
-        raise RuntimeError(f"Wiki Active maps section not found; sections={available}")
-    r=requests.get(
-        RANKED_WIKI_API,
-        params={**common,"prop":"text","section":str(active["index"])},
-        headers=headers,timeout=20,
-    )
+    r=requests.get(RANKED_WIKI_API,params={**common,"prop":"text"},headers=headers,timeout=20)
     r.raise_for_status()
     html=(((r.json().get("parse") or {}).get("text") or {}).get("*") or "")
     if not html:
-        raise RuntimeError("Wiki API returned empty Active maps section")
+        raise RuntimeError("Wiki API returned no Ranked HTML")
     soup=BeautifulSoup(html,"html.parser")
-    names=[]
+    # Fandom's rendered section markup changes often. Instead of relying on a
+    # particular heading/id, collect map links from the Ranked page and let
+    # _wiki_map_mode validate each candidate through its Wiki categories.
+    candidates=[]
     for node in soup.find_all("a"):
         href=str(node.get("href") or "")
         name=node.get_text(" ",strip=True)
-        if not name or name in names:
+        if not name or name in candidates:
             continue
         if not (href.startswith("/wiki/") or "brawlstars.fandom.com/wiki/" in href):
             continue
-        if any(x in href for x in ("/File:","/Category:","/Help:")):
+        if any(x in href for x in ("/File:","/Category:","/Help:","/Ranked")):
             continue
-        names.append(name)
-    if len(names)<24 or len(names)>40:
-        raise RuntimeError(f"Wiki Active maps suspicious count={len(names)} names={names}")
-    return names
+        candidates.append(name)
+    if len(candidates)<24:
+        raise RuntimeError(f"Wiki Ranked candidates suspicious count={len(candidates)}")
+    return candidates
+
 
 def _wiki_map_mode(name):
     """Resolve one Ranked map to its game mode using Wiki page categories."""
@@ -83,19 +76,22 @@ def _wiki_map_mode(name):
     return next(iter(modes))
 
 def _fetch_wiki_ranked_pool():
-    names=_wiki_active_map_names()
-    pairs={(_wiki_map_mode(name),name) for name in names}
-    if len(pairs)!=len(names):
-        raise RuntimeError(f"Wiki Ranked pool duplicate/classification mismatch names={len(names)} pairs={len(pairs)}")
+    candidates=_wiki_active_map_names()
+    pairs=set()
+    for name in candidates:
+        try:
+            pairs.add((_wiki_map_mode(name),name))
+        except Exception:
+            continue
     counts={mode:sum(1 for m,_ in pairs if m==mode) for mode in RANKED_MODES}
+    # The current Ranked format has at least four maps per supported mode.
+    # Reject incomplete/stale parsing instead of feeding a partial pool.
     if set(counts)!=RANKED_MODES or any(counts[m]<4 for m in RANKED_MODES):
         raise RuntimeError(f"Wiki Ranked pool structurally suspicious: total={len(pairs)} counts={counts}")
-    # Featured/additional maps can change the total and distribution by season.
-    # Do not force a historical 26-map assumption: Wiki's Active maps section
-    # is authoritative for membership, while this guard only rejects incomplete data.
     if len(pairs)<24 or len(pairs)>40:
         raise RuntimeError(f"Wiki Ranked pool suspicious total={len(pairs)} counts={counts}")
     return pairs,counts
+
 
 def current_ranked_pool():
     """Fetch the live Ranked map pool from Brawl Stars Wiki; fail closed on bad data."""
