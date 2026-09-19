@@ -350,7 +350,7 @@ class CommunityFeatures:
             return None
         matches.sort(key=lambda x:(x[1],x[0]),reverse=True)
         wr,sets,remaining=matches[0]
-        return "Comp BrawlTrack compatibile: "+", ".join(remaining)+f" — {sets} set, {wr:g}% WR"
+        return "Comp compatibile: "+", ".join(remaining)+f" — {sets} set, {wr:g}% WR"
 
     def brawler_counter_text(self, brawler_name, mode=None, map_name=None):
         """Return verified counter data stored server-side; never invent matchups."""
@@ -1941,6 +1941,35 @@ class CommunityFeatures:
                         )
                     except Exception as exc:
                         LOG.warning("DRAFT multi-enemy counter ranking unavailable: %s",type(exc).__name__)
+                    # Team synergy: use verified BrawlTrack final comps only as
+                    # a tie-breaker among candidates already valid for this Ranked map.
+                    try:
+                        from live_maps import brawltrack_pro_map_stats
+                        stats=brawltrack_pro_map_stats(draft_state.get("map")) or {}
+                        comps=stats.get("final_comps") or []
+                        my_keys={str(x).strip().casefold() for x in (draft_state.get("my_picks") or []) if x}
+                        synergy={x.casefold():0.0 for x in recommendations}
+                        for comp in comps if isinstance(comps,list) else []:
+                            if not isinstance(comp,dict): continue
+                            team={str(x).strip().casefold() for x in (comp.get("team") or []) if x}
+                            if not my_keys.intersection(team): continue
+                            try: wr=float(comp.get("win_rate") or 0)
+                            except (TypeError,ValueError): wr=0.0
+                            try: sets=int(comp.get("sets") or 0)
+                            except (TypeError,ValueError): sets=0
+                            confidence=min(1.0,sets/100.0) if sets else 0.0
+                            for candidate in recommendations:
+                                key=candidate.casefold()
+                                if key in team:
+                                    synergy[key]=max(synergy[key],wr*confidence)
+                        current_index={x.casefold():i for i,x in enumerate(recommendations)}
+                        recommendations=sorted(
+                            recommendations,
+                            key=lambda x:(synergy[x.casefold()],-current_index[x.casefold()]),
+                            reverse=True,
+                        )
+                    except Exception as exc:
+                        LOG.warning("DRAFT team synergy ranking unavailable: %s",type(exc).__name__)
                     body+="\nPick consigliati: "+", ".join(recommendations[:3])
             comp=self.draft_comp_advice_text(draft_state)
             if comp: body+="\n"+comp
