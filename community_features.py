@@ -1975,7 +1975,7 @@ class CommunityFeatures:
             if response:
                 identity=self._draft_identity(map_name)
                 draft_format=self._ranked_draft_format(rank_name)
-                context.user_data["ranked_draft"] = {"map": identity.get("map_en") if identity else map_name, "map_it": identity.get("map_it") if identity else map_name, "map_id": identity.get("map_id") if identity else None, "mode": identity.get("mode_en") if identity else None, "mode_it": identity.get("mode_it") if identity else None, "rank": rank_name, "elo": context.user_data.pop("ranked_draft_elo", None), "draft_format": draft_format, "first_pick": None, "pick_sequence": [], "my_picks": [], "enemy_picks": [], "bans": []}
+                context.user_data["ranked_draft"] = {"map": identity.get("map_en") if identity else map_name, "map_it": identity.get("map_it") if identity else map_name, "map_id": identity.get("map_id") if identity else None, "mode": identity.get("mode_en") if identity else None, "mode_it": identity.get("mode_it") if identity else None, "mode_api": identity.get("mode_api") if identity else None, "rank": rank_name, "elo": context.user_data.pop("ranked_draft_elo", None), "draft_format": draft_format, "first_pick": None, "pick_sequence": [], "my_picks": [], "enemy_picks": [], "bans": []}
                 if draft_format == "all_pick":
                     response += "\nFormato: selezione normale, senza ban."
                 elif draft_format == "ban_all_pick":
