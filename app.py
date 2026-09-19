@@ -2675,6 +2675,32 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ""
         ).strip()
 
+    # Reply-to-message reader: when a member replies to a Telegram message
+    # with "@SensGPT_TitaniAbusiviBot leggi" (or a small alias), read the
+    # selected message verbatim through the existing TTS path. Do not send it
+    # through Gemini: this feature is text-to-speech, not interpretation.
+    read_q = re.sub(r"[^a-z0-9à-ÿ ]+", " ", question.casefold())
+    read_q = re.sub(r"\\s+", " ", read_q).strip()
+    if read_q in {"leggi", "leggilo", "leggi questo", "leggi a voce"}:
+        selected = message.reply_to_message
+        if not selected:
+            await message.reply_text(
+                "Rispondi al messaggio che vuoi farmi leggere e scrivi: leggi."
+            )
+            return
+        selected_text = (selected.text or selected.caption or "").strip()
+        if not selected_text:
+            await message.reply_text(
+                "Il messaggio selezionato non contiene testo da leggere."
+            )
+            return
+        ok = await send_voice_reply(context, message.chat_id, selected_text)
+        if not ok:
+            await message.reply_text(
+                "Non riesco a generare il vocale in questo momento. Riprova tra poco."
+            )
+        return
+
     # Deterministic Skin Account shortcut: personal collection queries must
     # never fall through to the generic AI response.
     skin_q = re.sub(r"[^a-z0-9à-ÿ ]+", " ", question.casefold())
