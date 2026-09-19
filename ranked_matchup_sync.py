@@ -105,6 +105,16 @@ def aggregate(matches,min_sample=20):
     for (mode,map_name,bid,target),(wins,n) in counter.items():add("counter",mode,map_name,bid,target,wins,n)
     return rows
 
+def registered_seeds():
+    """Use registered community accounts as safe automatic crawl seeds."""
+    url=(os.getenv("SUPABASE_URL") or "").rstrip("/")
+    key=(os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY") or "").strip()
+    if not url or not key:return []
+    h={"apikey":key,"Authorization":"Bearer "+key,"Accept":"application/json"}
+    r=requests.get(url+"/rest/v1/community_members?select=player_tag&is_active=eq.true&player_tag=not.is.null&limit=1000",
+                   headers=h,timeout=20);r.raise_for_status()
+    return [str(x.get("player_tag") or "").strip().lstrip("#") for x in r.json() if x.get("player_tag")]
+
 def upsert(rows):
     url=(os.getenv("SUPABASE_URL") or "").rstrip("/")
     key=(os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY") or "").strip()
@@ -117,7 +127,8 @@ def upsert(rows):
 
 if __name__=="__main__":
     seeds=[x for x in (os.getenv("RANKED_SYNC_SEEDS") or "").replace(" ","").split(",") if x]
-    if not seeds:raise SystemExit("RANKED_SYNC_SEEDS is empty")
+    seeds=list(dict.fromkeys(seeds+registered_seeds()))
+    if not seeds:raise SystemExit("No Ranked sync seeds available")
     matches=collect(seeds,max_players=int(os.getenv("RANKED_SYNC_MAX_PLAYERS","250")))
     rows=aggregate(matches,min_sample=int(os.getenv("RANKED_SYNC_MIN_SAMPLE","20")))
     upsert(rows)
