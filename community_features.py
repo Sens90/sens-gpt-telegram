@@ -1877,9 +1877,8 @@ class CommunityFeatures:
             body=("Pick registrato per la NOSTRA SQUADRA: " if side == "my" else "Pick registrato per l'AVVERSARIO: ")+brawler+"."
             nxt=self._draft_next_turn_text(draft_state)
             if nxt: body+="\n"+nxt
-            if side == "enemy":
-                counter=self.brawler_counter_text(brawler,map_name=draft_state.get("map")) or self.brawler_counter_text(brawler)
-                if counter: body+="\n"+counter
+            # Recommendations are driven by the map-specific Ranked meta below.
+            # Do not expose the internal "counter unavailable" diagnostic in the guided Draft.
             excluded=(draft_state.get("bans") or [])+(draft_state.get("my_picks") or [])+(draft_state.get("enemy_picks") or [])
             ranked_picks=self._draft_ranked_map_picks(draft_state.get("map"),excluded=excluded,limit=3)
             if ranked_picks and len(seq) < 6:
