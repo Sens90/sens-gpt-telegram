@@ -134,6 +134,8 @@ def _fetch_brawlzone_ranked_pool():
     r.raise_for_status()
     soup=BeautifulSoup(r.text,"html.parser")
     page_text=" ".join(soup.stripped_strings)
+    if os.getenv("RANKED_POOL_DEBUG","").strip()=="1":
+        print(f"RANKED SECONDARY DEBUG: status={r.status_code} url={r.url} bytes={len(r.content)} text={page_text[:1200]!r}",flush=True)
     season=None
     # Prefer the season attached to Full map pool; page may also mention next/current seasons.
     m=re.search(r"Full\\s+map\\s+pool\\s*\\(\\s*season\\s*(\\d+)\\s*\\)",page_text,re.I)
