@@ -237,7 +237,9 @@ class CommunityFeatures:
                 else:
                     en_mode=mode_aliases.get(meta_mode.casefold(),meta_mode)
             it_mode=localized(names,"modes",en_mode) if en_mode else ""
-            if str(en_mode).casefold()=="brawl ball" and (not it_mode or str(it_mode).casefold() in ("brawl ball","brawlball")):
+            # Some upstream catalogs expose the API key rather than the English label.
+            if str(en_mode).casefold() in ("brawl ball","brawlball","brawl_ball"):
+                en_mode="Brawl Ball"
                 it_mode="Footbrawl"
             accepted={raw_event_mode.casefold(),str(en_mode).casefold(),str(it_mode).casefold()}-{""}
             accepted.update(k for k,v in mode_aliases.items() if en_mode and v.casefold()==str(en_mode).casefold())
@@ -1862,6 +1864,20 @@ class CommunityFeatures:
             if wanted_pick=="mr p": plain_pick_q="Mr. P"
             elif wanted_pick=="grey": plain_pick_q="Gray"
             elif wanted_pick=="pocho": plain_pick_q="Poco"
+            # Conservative typo recovery: accept only a unique catalog name at
+            # edit distance 1, so obvious slips such as Jackie/Edgat are corrected
+            # without guessing between ambiguous Brawlers.
+            if not plain_pick_q and wanted_pick:
+                import difflib
+                fuzzy=[]
+                for row in catalog_rows:
+                    en=str(row.get("name_en") or "").strip(); it=str(row.get("name_it") or en).strip()
+                    for alias in {en,it}:
+                        key=re.sub(r"[^a-z0-9]+"," ",alias.casefold()).strip()
+                        if key and difflib.SequenceMatcher(None,wanted_pick,key).ratio() >= 0.80:
+                            fuzzy.append((key,it or en))
+                exactish={label for key,label in fuzzy if abs(len(key)-len(wanted_pick))<=1}
+                if len(exactish)==1: plain_pick_q=next(iter(exactish))
 
         auto_pick_q = re.fullmatch(r"(?:pick|scelto|prende)\s+(.+)", q, re.I)
         if plain_pick_q and not auto_pick_q:
@@ -1875,6 +1891,13 @@ class CommunityFeatures:
                 await message.reply_text("I 6 pick della Draft sono già completi.")
                 return True
             brawler=auto_pick_q.group(1).strip()
+            # Never allow a banned or already selected Brawler to enter the Draft.
+            used=(draft_state.get("bans") or [])+(draft_state.get("my_picks") or [])+(draft_state.get("enemy_picks") or [])
+            used_keys={re.sub(r"[^a-z0-9]+"," ",str(x).casefold()).strip() for x in used if x}
+            brawler_key=re.sub(r"[^a-z0-9]+"," ",brawler.casefold()).strip()
+            if brawler_key in used_keys:
+                await message.reply_text(f"{brawler} è già bannato o selezionato. Indica un altro Brawler.")
+                return True
             side=self._draft_pick_order(draft_state["first_pick"])[len(seq)]
             seq.append({"side":side,"brawler":brawler})
             target="my_picks" if side == "my" else "enemy_picks"
