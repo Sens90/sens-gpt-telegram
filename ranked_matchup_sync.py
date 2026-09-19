@@ -16,7 +16,7 @@ RANKED_TYPES={"ranked","soloranked","teamranked"}
 RANKED_MODES={"gemGrab","brawlBall","hotZone","bounty","heist","knockout"}
 RANKED_WIKI_URL=os.getenv("RANKED_WIKI_URL","https://brawlstars.fandom.com/wiki/Ranked")
 RANKED_WIKI_API=os.getenv("RANKED_WIKI_API","https://brawlstars.fandom.com/api.php")
-_ranked_pool_cache={"ts":0.0,"pairs":None}
+_ranked_pool_cache={"ts":0.0,"pairs":None,"season":None}
 _KNOWN_GOOD_RANKED_POOL={
     ("bounty","Dry Season"),("bounty","Hideout"),("bounty","Layer Cake"),("bounty","Shooting Star"),
     ("brawlBall","Center Stage"),("brawlBall","Pinball Dreams"),("brawlBall","Sneaky Fields"),("brawlBall","Triple Dribble"),
@@ -37,7 +37,11 @@ _WIKI_MODE_CATEGORIES={
 }
 
 def _wiki_active_map_names():
-    """Read only the current season's Ranked map block from the Wiki Maps section."""
+    """Read only the newest Ranked season block from the Wiki Maps section.
+
+    The season number is discovered from the page every refresh; it is never
+    hard-coded, so the pool rolls forward automatically each month.
+    """
     from bs4 import BeautifulSoup
     common={"action":"parse","page":"Ranked","format":"json","origin":"*"}
     headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"application/json"}
@@ -56,15 +60,23 @@ def _wiki_active_map_names():
         raise RuntimeError("Wiki Maps section empty")
     soup=BeautifulSoup(html,"html.parser")
 
-    # Locate the rendered Active maps / Season heading inside Maps, then keep
-    # links only until the next same-or-higher-level heading.
-    heading=None
+    # Prefer the numerically newest explicit Season N heading.  Falling back
+    # to Active maps keeps compatibility if the Wiki changes its presentation.
+    season_headings=[]
     for h in soup.find_all(re.compile(r"^h[1-6]$")):
         label=h.get_text(" ",strip=True)
-        folded=label.casefold()
-        if "active maps" in folded or re.search(r"\bseason\s*\d+\b",folded):
-            heading=h
-            break
+        match=re.search(r"\bseason\s*(\d+)\b",label,re.I)
+        if match:
+            season_headings.append((int(match.group(1)),h))
+    season=None
+    heading=None
+    if season_headings:
+        season,heading=max(season_headings,key=lambda x:x[0])
+    if heading is None:
+        for h in soup.find_all(re.compile(r"^h[1-6]$")):
+            if "active maps" in h.get_text(" ",strip=True).casefold():
+                heading=h
+                break
     if heading is None:
         # Fandom sometimes renders subheadings as div/span labels.
         for node in soup.find_all(["div","span","b","strong"]):
@@ -94,7 +106,7 @@ def _wiki_active_map_names():
         names.append(name)
     if len(names)<24 or len(names)>40:
         raise RuntimeError(f"Wiki current-season candidates suspicious count={len(names)} names={names}")
-    return names
+    return names,season
 
 
 def _wiki_map_mode(name):
@@ -116,7 +128,7 @@ def _wiki_map_mode(name):
     return next(iter(modes))
 
 def _fetch_wiki_ranked_pool():
-    candidates=_wiki_active_map_names()
+    candidates,season=_wiki_active_map_names()
     pairs=set()
     for name in candidates:
         try:
@@ -130,7 +142,7 @@ def _fetch_wiki_ranked_pool():
         raise RuntimeError(f"Wiki Ranked pool structurally suspicious: total={len(pairs)} counts={counts}")
     if len(pairs)<24 or len(pairs)>40:
         raise RuntimeError(f"Wiki Ranked pool suspicious total={len(pairs)} counts={counts}")
-    return pairs,counts
+    return pairs,counts,season
 
 
 _BRAWLZONE_MODE_LABELS={
@@ -175,11 +187,16 @@ def current_ranked_pool():
     errors=[]
     for source,fetcher in (("wiki-live",_fetch_wiki_ranked_pool),("secondary-live",_fetch_brawlzone_ranked_pool)):
         try:
-            pairs,counts=fetcher()
+            fetched=fetcher()
+            if len(fetched)==3:
+                pairs,counts,season=fetched
+            else:
+                pairs,counts=fetched; season=None
             maps_by_mode={mode:sorted(name for m,name in pairs if m==mode) for mode in sorted(RANKED_MODES)}
             expanded=[mode for mode,count in counts.items() if count>4]
-            print(f"RANKED POOL OK: source={source} total={len(pairs)} counts={counts} expanded={expanded} maps={maps_by_mode}",flush=True)
-            _ranked_pool_cache.update({"ts":now,"pairs":pairs})
+            season_label=f" season={season}" if season is not None else ""
+            print(f"RANKED POOL OK: source={source}{season_label} total={len(pairs)} counts={counts} expanded={expanded} maps={maps_by_mode}",flush=True)
+            _ranked_pool_cache.update({"ts":now,"pairs":pairs,"season":season})
             _ranked_pool_failure_until=0.0
             return pairs
         except Exception as exc:
