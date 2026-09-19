@@ -1989,6 +1989,8 @@ class CommunityFeatures:
             body=("Pick registrato per la NOSTRA SQUADRA: " if side == "my" else "Pick registrato per l'AVVERSARIO: ")+brawler+"."
             nxt=self._draft_next_turn_text(draft_state)
             if nxt: body+="\n"+nxt
+            # On an enemy turn we only record the enemy pick and wait for the next input.
+            # Recommendations are emitted exclusively when the next legal turn belongs to us.
             # Recommendations are driven by the map-specific Ranked meta below.
             # Do not expose the internal "counter unavailable" diagnostic in the guided Draft.
             excluded=(draft_state.get("bans") or [])+(draft_state.get("my_picks") or [])+(draft_state.get("enemy_picks") or [])
@@ -2090,8 +2092,13 @@ class CommunityFeatures:
                     except Exception as exc:
                         LOG.warning("DRAFT multidimensional ranking unavailable: %s",type(exc).__name__)
                     body+="\nPick consigliati: "+", ".join(recommendations[:3])
-            comp=self.draft_comp_advice_text(draft_state)
-            if comp: body+="\n"+comp
+            # Team-comp advice is actionable only when our side is about to pick (or once the draft is complete).
+            next_side=None
+            if len(seq) < 6:
+                next_side=self._draft_pick_order(draft_state["first_pick"])[len(seq)]
+            if next_side in ("my",None):
+                comp=self.draft_comp_advice_text(draft_state)
+                if comp: body+="\n"+comp
             await message.reply_text(body)
             return True
 
