@@ -715,10 +715,22 @@ class CommunityFeatures:
             return []
 
     def register_member(self, message, player_tag):
-        player = self.player_fetcher(player_tag)
+        user = message.from_user
+        requested_tag=str(player_tag or "").upper().replace("#","").strip()
+        # Registration is permanent for members: re-running registrami may refresh
+        # the same account, but it must never replace it with another player tag.
+        existing=self.get_registered_user(user.id)
+        if existing:
+            current_tag=str(existing.get("player_tag") or "").upper().replace("#","").strip()
+            if current_tag and current_tag != requested_tag:
+                return {
+                    "_registration_locked": True,
+                    "tag": "#"+current_tag,
+                    "name": existing.get("player_name") or existing.get("display_name") or "Account registrato",
+                }
+        player = self.player_fetcher(requested_tag)
         if not player:
             return None
-        user = message.from_user
         payload = {
             "chat_id": int(message.chat_id),
             "telegram_user_id": int(user.id),
@@ -2244,6 +2256,12 @@ class CommunityFeatures:
                 player = self.register_member(message, raw_tag)
                 if not player:
                     await message.reply_text("Non riesco a trovare quel giocatore. Controlla il tag.")
+                elif player.get("_registration_locked"):
+                    await message.reply_text(
+                        f"Registrazione già attiva: {player.get('name')} {player.get('tag')}.\\n"
+                        "Non puoi sostituire o cancellare autonomamente il tag registrato. "
+                        "Il ripristino della registrazione può essere effettuato solo dall'amministratore."
+                    )
                 else:
                     ranked_current = player.get("ranked_current")
                     ranked_peak = player.get("ranked_peak")
