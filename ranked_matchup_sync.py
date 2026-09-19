@@ -220,8 +220,11 @@ def normalize_match(row):
     mode=event.get("mode") or battle.get("mode")
     if mode not in RANKED_MODES:return None
     map_name=str(event.get("map") or "").strip()
-    pool=current_ranked_pool()
-    if not pool or (mode,map_name) not in pool:return None
+    # Do not discard valid official Ranked battles merely because an external
+    # seasonal-pool page has not published a newly introduced map yet.  The
+    # official battle log itself is authoritative evidence that this map/mode
+    # was played in Ranked.  current_ranked_pool() remains the Draft discovery
+    # catalog, while the collector learns every official Ranked map it sees.
     teams=battle.get("teams")
     if not isinstance(teams,list) or len(teams)!=2 or any(len(t)!=3 for t in teams):return None
     def side(team):
