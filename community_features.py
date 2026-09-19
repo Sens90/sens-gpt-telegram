@@ -25,10 +25,22 @@ FAQ_TEXT = (
 HELP_TEXT = """COMANDI SENS GPT - SOCI
 
 ACCOUNT E PROFILO
-- registrami #TAG — collega il tuo account Brawl Stars principale\n- aggiungi account #TAG — collega un account secondario/terziario\n- i miei account — mostra tutti i tuoi account collegati
+- registrami #TAG — collega il tuo account Brawl Stars principale
+- aggiungi account #TAG — collega un account secondario/terziario
+- i miei account — mostra tutti i tuoi account collegati
 - profilo #TAG / stats #TAG — scheda completa del giocatore
 - ranked #TAG — Classificata attuale e record
 - storico ranked #TAG — ultime variazioni della Classificata
+
+SKIN ACCOUNT
+- skin / quante skin ho — riepilogo delle skin possedute
+- skin account NOME_BRAWLER — situazione skin di un Brawler
+- quante skin ho di NOME_BRAWLER
+- quali skin di NOME_BRAWLER ho / mi mancano
+- quante skin RARITÀ ho — filtro per categoria/rarità
+- quali skin RARITÀ ho / mi mancano
+- grafico skin [RARITÀ] [7|15|30|60|90|180|365] — storico Skin Account
+- mostrami la skin NOME_SKIN di NOME_BRAWLER — immagine della skin
 
 CLASSIFICHE COMMUNITY
 - classifica — mostra i periodi disponibili
@@ -40,14 +52,15 @@ CLASSIFICHE COMMUNITY
 - classifica 3v3
 - classifica solo
 - classifica duo
-- classifica classificata / classifica ranked — Classificata attuale\n- classifica ranked oggi / 7 / 15 / 30 — variazione ELO nel periodo
+- classifica classificata / classifica ranked — Classificata attuale
+- classifica ranked oggi / 7 / 15 / 30 — variazione ELO nel periodo
 - classifica classificata stagione / classifica ranked stagione — record stagione
 - classifica classificata carriera / classifica ranked carriera — record carriera
 - statistiche / tutte le classifiche — riepilogo statistiche
 
 CLASSIFICHE DEI 4 CLUB
-Aggiungi titani, tamarri, tornadi o talenti alla classifica.
-Esempi: classifica titani 3v3; classifica tamarri trofei; classifica tornadi prestigio; classifica talenti duo.
+Aggiungi titani, tamarri, tornadi o talenti alla classifica; puoi scrivere anche il nome completo con "abusivi".
+Esempi: classifica titani 3v3; classifica tamarri trofei; classifica tornadi abusivi prestigio; classifica talenti duo.
 - statistiche titani / tamarri / tornadi / talenti — riepilogo del club
 
 GRAFICI
@@ -58,6 +71,14 @@ GRAFICI
 - grafico tornadi 7|15|30|90
 - grafico talenti 7|15|30|90
 
+DRAFT RANKED
+- Draft Ranked — avvia la Draft guidata
+- puoi indicare mappa e fascia Ranked, oppure una modalità per scegliere tra le mappe Ranked correnti
+- durante la Draft: ban, primo pick nostro/avversario e pick vengono gestiti passo per passo
+- draft stato / draft riepilogo — mostra la situazione della Draft
+- draft reset — chiude e azzera la Draft
+- counter NOME_BRAWLER — mostra counter verificati disponibili
+
 COMMUNITY
 - club — riepilogo community
 - elenco registrati — account collegati
@@ -65,6 +86,8 @@ COMMUNITY
 - assenza N — segnala N giorni di assenza
 - eventi — eventi aperti
 - partecipo ID — conferma partecipazione
+- report — report operativo
+- reclutamento — avvia una candidatura
 - regole / faq — regolamento
 - sito — sito ufficiale
 - discord — server Discord
