@@ -173,9 +173,13 @@ def _fetch_brawlzone_ranked_pool():
         if not mm: continue
         rest=pool_text[mm.end():]
         ends=[]
-        for next_label,_ in mode_order[i+1:]:
+        for next_label,_ in mode_order:
+            if next_label == label:
+                continue
             nm=re.search(re.escape(next_label)+r"(?:\\s+Featured)?",rest,re.I)
             if nm: ends.append(nm.start())
+        end_marker=re.search(r"How\\s+these\\s+picks\\s+are\\s+chosen",rest,re.I)
+        if end_marker: ends.append(end_marker.start())
         chunk=rest[:min(ends)] if ends else rest
         for name in anchors:
             if re.search(r"(?<!\w)"+re.escape(name)+r"(?!\w)",chunk,re.I):
