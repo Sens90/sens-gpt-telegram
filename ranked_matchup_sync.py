@@ -40,8 +40,8 @@ def current_ranked_pool():
             label=heading.get_text(" ",strip=True)
             mode=next((api for human,api in aliases.items() if label.startswith(human)),None)
             if mode: pairs.add((mode,name))
-        # Season 49 has 26 maps. Refuse suspicious/partial HTML rather than
-        # accepting a malformed pool and contaminating Draft evidence.
+        # Supercell documents seasonal Featured maps separately; do not assume a fixed total pool count.
+        # Refuse suspicious or partial HTML before using the pool for Draft evidence.
         if len(pairs)<24 or len(pairs)>30:
             raise RuntimeError(f"Ranked pool suspicious size: {len(pairs)}")
         _ranked_pool_cache.update({"ts":now,"pairs":pairs})
