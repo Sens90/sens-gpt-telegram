@@ -1532,6 +1532,17 @@ class CommunityFeatures:
 
     async def handle_command(self, message, context, question):
         q_skin = question.strip()
+        # Deterministic community commands must be handled before Skin/AI-like parsing.
+        q0 = re.sub(r"\\s+", " ", question.strip())
+        q0l = q0.casefold()
+        if q0l in ("elenco registrati", "registrati", "membri registrati", "account registrati"):
+            await message.reply_text(self.registered_members_text(message.chat_id))
+            return True
+        if re.fullmatch(r"(?:registrami|tegistrami)\\s*#?[A-Z0-9]{3,15}", q0, re.I):
+            # Registration is handled later in this method; keeping this explicit
+            # guard documents that it must never fall through to the generic AI.
+            pass
+
         registered = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
 
         # Skin Account: totals, category queries, owned/missing lists and per-Brawler details.
