@@ -1578,7 +1578,7 @@ class CommunityFeatures:
             combined_q = re.sub(r"\bmiti(?=\s+(?:i{1,3}|[1-3])\b)", "mito", q, flags=re.I)
             combined_q = re.sub(r"\bdiamnte(?=\s+(?:i{1,3}|[1-3])\b)", "diamante", combined_q, flags=re.I)
             combined_q = re.sub(r"\bleggendrio(?=\s+(?:i{1,3}|[1-3])\b)", "leggendario", combined_q, flags=re.I)
-            combined = re.fullmatch(r"(.+?)\s+(bronzo|argento|oro|diamante|mito|leggendario)\s+(i{1,3}|[1-3])$", combined_q, re.I)
+            combined = re.fullmatch(r"(.+?)\s+(bronzo|argento|oro|diamante|mito|mitico|mythic|leggendario)\s+(i{1,3}|[1-3])$", combined_q, re.I)
             pending_rank = None
             map_query = q
             if combined:
