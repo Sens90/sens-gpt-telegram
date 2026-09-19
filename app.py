@@ -2806,6 +2806,26 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             flags=re.IGNORECASE,
         ).strip()
 
+    # Hard-route registration before every premium/AI path. This command owns
+    # its full success/error flow and must never reach generative AI.
+    _registration_match = re.fullmatch(
+        r"(?:registrami|tegistrami)\\s*#?([A-Z0-9]{3,15})",
+        question,
+        re.I,
+    )
+    if _registration_match:
+        await community.handle_command(message, context, question)
+        return
+
+    # Even malformed registration attempts are deterministic: keep them out of
+    # AI and return the command's validation syntax instead.
+    if re.match(r"^(?:registrami|tegistrami)\\b", question, re.I):
+        await message.reply_text(
+            "Tag Brawl Stars non valido. Usa: registrami #TAG. "
+            "Attenzione: nei tag Brawl Stars la lettera O non è valida; potrebbe essere uno zero (0)."
+        )
+        return
+
     # Reply-to-message reader: when a member replies to a Telegram message
     # with "@SensGPT_TitaniAbusiviBot leggi" (or a small alias), read the
     # selected message verbatim through the existing TTS path. Do not send it
