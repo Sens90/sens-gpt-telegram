@@ -4072,6 +4072,15 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def ranked_catalog_job(context):
+    """Refresh multidimensional Ranked evidence without blocking Telegram."""
+    try:
+        from ranked_matchup_sync import sync_once
+        result=await asyncio.to_thread(sync_once)
+        print("RANKED CATALOG SYNC:",result,flush=True)
+    except Exception as exc:
+        print("RANKED CATALOG SYNC ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
+
 async def generazioni_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.from_user:
@@ -4091,6 +4100,12 @@ def main():
             interval=3600,
             first=45,
             name="community_jobs"
+        )
+        application.job_queue.run_repeating(
+            ranked_catalog_job,
+            interval=21600,
+            first=180,
+            name="ranked_catalog_sync"
         )
 
     application.add_handler(
