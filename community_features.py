@@ -302,10 +302,21 @@ class CommunityFeatures:
             raw=str(row.get("brawler") or "").strip()
             label=localized(names,"brawlers",raw)
             if raw and allowed(raw,label):
-                pro_rows.append((int(row.get("rank") or 999),-float(row.get("win_rate") or 0),str(label)))
+                # BrawlTrack exposes both priority rank and exact-map competitive
+                # win/use rates. Blend them instead of copying its displayed order:
+                # this keeps current meta evidence primary while preferring picks
+                # that are actually strong and established on this map.
+                try:
+                    rank=max(1,int(row.get("rank") or 999))
+                    wr=float(row.get("win_rate") or 0)
+                    ur=float(row.get("use_rate") or 0)
+                except (TypeError,ValueError):
+                    continue
+                meta_score=wr + min(ur,30.0)*0.18 + max(0.0,16.0-rank)*0.22
+                pro_rows.append((meta_score,wr,ur,-rank,str(label)))
         if pro_rows:
-            pro_rows.sort()
-            return [x[2] for x in pro_rows[:limit]]
+            pro_rows.sort(reverse=True)
+            return [x[4] for x in pro_rows[:limit]]
         # 2) Fallback: our exact-map Ranked battlelog aggregation in Supabase.
         try:
             rows=self._get("ranked_draft_stats",{
