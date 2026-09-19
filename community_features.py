@@ -256,29 +256,60 @@ class CommunityFeatures:
         return f"Pick {index+1}/6: {'NOSTRA SQUADRA' if side == 'my' else 'AVVERSARIO'}."
 
     def _draft_ranked_map_picks(self, map_name, excluded=None, limit=5):
-        """Map-specific Ranked picks from the Ranked dataset; never mix Ladder/Pro scope."""
-        from live_maps import safe_get, localized, valid_rows
+        """Exact-map Ranked picks: BrawlTrack Pro first, collected Ranked battlelogs second, legacy Ranked dataset last."""
+        from live_maps import safe_get, localized, valid_rows, brawltrack_pro_map_stats
         identity=self._draft_identity(map_name)
         if not identity:return []
+        names=safe_get("i18n/names.it.json.gz") or {}
+        blocked={str(x).strip().casefold() for x in (excluded or []) if x}
+        def allowed(raw,label):
+            return str(raw or "").strip().casefold() not in blocked and str(label or "").strip().casefold() not in blocked
+        # 1) Primary: BrawlTrack exact competitive map evidence.
+        pro=brawltrack_pro_map_stats(identity["map_en"]) or {}
+        pro_rows=[]
+        for row in (pro.get("priority_picks") or []):
+            raw=str(row.get("brawler") or "").strip()
+            label=localized(names,"brawlers",raw)
+            if raw and allowed(raw,label):
+                pro_rows.append((int(row.get("rank") or 999),-float(row.get("win_rate") or 0),str(label)))
+        if pro_rows:
+            pro_rows.sort()
+            return [x[2] for x in pro_rows[:limit]]
+        # 2) Fallback: our exact-map Ranked battlelog aggregation in Supabase.
+        try:
+            rows=self._get("ranked_draft_stats",{
+                "select":"brawler_id,games,win_rate",
+                "stat_scope":"eq.map_pick","mode":"eq."+identity["mode_api"],
+                "map_name":"eq."+identity["map_en"],"order":"games.desc","limit":"100",
+            })
+            catalog=self._get("brawlers_catalog",{"select":"brawler_id,name_en,name_it"})
+            by_id={int(x["brawler_id"]):x for x in (catalog or []) if x.get("brawler_id") is not None}
+            ranked=[]
+            for row in rows or []:
+                b=by_id.get(int(row.get("brawler_id") or 0))
+                if not b:continue
+                raw=str(b.get("name_en") or "").strip();label=str(b.get("name_it") or raw).strip()
+                if not allowed(raw,label):continue
+                games=int(row.get("games") or 0);wr=float(row.get("win_rate") or 0)
+                ranked.append((games,wr,label))
+            if ranked:
+                ranked.sort(key=lambda x:(x[0],x[1]),reverse=True)
+                return [x[2] for x in ranked[:limit]]
+        except Exception as exc:
+            LOG.warning("DRAFT Ranked battlelog fallback unavailable map=%s error=%s",identity["map_en"],type(exc).__name__)
+        # 3) Last verified fallback: existing Ranked analyzer dataset, never Ladder.
         ranked=safe_get("pl-results.json.gz") or {}
         raw=ranked.get(identity.get("catalog_key"),{}) if isinstance(ranked,dict) else {}
         rows=valid_rows(raw.get("individual")) if isinstance(raw,dict) else []
-        names=safe_get("i18n/names.it.json.gz") or {}
-        blocked={str(x).strip().casefold() for x in (excluded or []) if x}
         eligible=[]
         for row in rows:
             brawler=str(row.get("brawler") or row.get("brawler_name") or "").strip()
             if not brawler:continue
             label=localized(names,"brawlers",brawler)
-            if brawler.casefold() in blocked or str(label).casefold() in blocked:continue
-            wr=float(row.get("wr",row.get("win_rate",0)) or 0)
-            ur=float(row.get("ur",row.get("use_rate",0)) or 0)
-            sr=float(row.get("sr",row.get("starplayer_rate",0)) or 0)
-            # Avoid tiny-sample gimmicks: require meaningful Ranked presence, then
-            # rank by performance with use/star-player as supporting signals.
+            if not allowed(brawler,label):continue
+            wr=float(row.get("wr",row.get("win_rate",0)) or 0);ur=float(row.get("ur",row.get("use_rate",0)) or 0);sr=float(row.get("sr",row.get("starplayer_rate",0)) or 0)
             if ur < 0.5:continue
-            score=wr + min(ur,25)*0.08 + min(sr,30)*0.03
-            eligible.append((score,wr,ur,str(label)))
+            eligible.append((wr+min(ur,25)*0.08+min(sr,30)*0.03,wr,ur,str(label)))
         eligible.sort(key=lambda x:(x[0],x[1],x[2]),reverse=True)
         return [x[3] for x in eligible[:limit]]
 
