@@ -14,8 +14,8 @@ import requests
 API="https://api.brawlstars.com/v1"
 RANKED_TYPES={"ranked","soloranked","teamranked"}
 RANKED_MODES={"gemGrab","brawlBall","hotZone","bounty","heist","knockout"}
-# Ranked season 49 current pool (Sep 2026). Keep mode+map paired so historical
-# Ranked battlelog entries cannot contaminate the current Draft evidence.
+# Current Ranked pool: 24 base maps + the 2 maps of the current featured mode.
+# Keep mode+map paired so historical battlelogs cannot contaminate current Draft evidence.
 CURRENT_RANKED_POOL={
     "gemGrab":{"Double Swoosh","Gem Fort","Hard Rock Mine","Undermine"},
     "heist":{"Bridge Too Far","Hot Potato","Kaboom Canyon","Safe Zone"},
