@@ -137,8 +137,8 @@ def _fetch_brawlzone_ranked_pool():
     if os.getenv("RANKED_POOL_DEBUG","").strip()=="1":
         print(f"RANKED SECONDARY DEBUG: status={r.status_code} url={r.url} bytes={len(r.content)} text={page_text[:1200]!r}",flush=True)
     season=None
-    # Prefer the season attached to Full map pool; page may also mention next/current seasons.
-    m=re.search(r"Full\s+map\s+pool\s*\(\s*season\s*(\d+)\s*\)",page_text,re.I)
+    # Current season is published in the page summary (for example: "Ranked season 49").
+    m=re.search(r"Ranked\s+season\s+(\d+)",page_text,re.I)
     if m: season=int(m.group(1))
     advertised=None
     m=re.search(r"(\d+)\s+maps\s+in\s+the\s+pool",page_text,re.I)
