@@ -81,8 +81,26 @@ def census_telegram_member(message):
         if lookup.json():
             r = requests.patch(SUPABASE_URL + "/rest/v1/telegram_group_members", headers={**_supabase_headers(),"Prefer":"return=minimal"}, params={"id":"eq."+str(lookup.json()[0]["id"])}, json=payload, timeout=10)
         else:
-            payload["chat_id"] = int(message.chat_id)
-            r = requests.post(SUPABASE_URL + "/rest/v1/telegram_group_members", headers={**_supabase_headers(),"Prefer":"return=minimal"}, json=payload, timeout=10)
+            # A username-only census row may already exist because an admin mentioned
+            # this member before Telegram exposed their numeric user ID. Merge that
+            # row instead of inserting a duplicate that violates chat+username.
+            username_row = []
+            if user.username:
+                by_username = requests.get(
+                    SUPABASE_URL + "/rest/v1/telegram_group_members", headers=_supabase_headers(),
+                    params={"select":"id","chat_id":"eq."+str(message.chat_id),"telegram_username":"ilike."+user.username,"limit":"1"}, timeout=10,
+                )
+                by_username.raise_for_status()
+                username_row = by_username.json()
+            if username_row:
+                r = requests.patch(
+                    SUPABASE_URL + "/rest/v1/telegram_group_members",
+                    headers={**_supabase_headers(),"Prefer":"return=minimal"},
+                    params={"id":"eq."+str(username_row[0]["id"])}, json=payload, timeout=10,
+                )
+            else:
+                payload["chat_id"] = int(message.chat_id)
+                r = requests.post(SUPABASE_URL + "/rest/v1/telegram_group_members", headers={**_supabase_headers(),"Prefer":"return=minimal"}, json=payload, timeout=10)
         r.raise_for_status()
     except Exception as exc:
         print("TELEGRAM CENSUS ERROR:", repr(exc), flush=True)
