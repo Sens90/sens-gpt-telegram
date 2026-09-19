@@ -133,30 +133,61 @@ def _fetch_wiki_ranked_pool():
     return pairs,counts
 
 
+_BRAWLZONE_MODE_LABELS={
+    "gem grab":"gemGrab","brawl ball":"brawlBall","hot zone":"hotZone",
+    "bounty":"bounty","heist":"heist","knockout":"knockout",
+}
+
+def _fetch_brawlzone_ranked_pool():
+    """Secondary live pool source when Fandom's API omits the rendered current block."""
+    from bs4 import BeautifulSoup
+    url=os.getenv("RANKED_SECONDARY_URL","https://brawlzone.net/ranked")
+    r=requests.get(url,headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"text/html"},timeout=20)
+    r.raise_for_status()
+    soup=BeautifulSoup(r.text,"html.parser")
+    pairs=set(); current_mode=None
+    for node in soup.find_all(re.compile(r"^h[1-4]$")):
+        label=" ".join(node.get_text(" ",strip=True).split())
+        folded=label.casefold()
+        # Mode headings may include a Featured suffix.
+        matched=next((api for human,api in _BRAWLZONE_MODE_LABELS.items() if folded==human or folded.startswith(human+" ")),None)
+        if matched:
+            current_mode=matched
+            continue
+        if current_mode and node.name in ("h3","h4") and label:
+            if folded not in ("how these picks are chosen","current season","ranked maps"):
+                pairs.add((current_mode,label))
+    counts={mode:sum(1 for m,_ in pairs if m==mode) for mode in RANKED_MODES}
+    if any(counts[m]<4 or counts[m]>6 for m in RANKED_MODES):
+        raise RuntimeError(f"secondary Ranked pool structurally suspicious total={len(pairs)} counts={counts}")
+    if len(pairs)<24 or len(pairs)>36:
+        raise RuntimeError(f"secondary Ranked pool suspicious total={len(pairs)} counts={counts}")
+    return pairs,counts
+
 def current_ranked_pool():
-    """Use validated live Wiki data; retain last known-good pool on source/parser failure."""
+    """Prefer validated Wiki data, then a validated live secondary pool, then known-good safety data."""
     global _ranked_pool_failure_until
     now=time.time()
     if _ranked_pool_cache["pairs"] is not None and now-_ranked_pool_cache["ts"]<21600:
         return _ranked_pool_cache["pairs"]
     if now < _ranked_pool_failure_until:
         return _KNOWN_GOOD_RANKED_POOL
-    try:
-        pairs,counts=_fetch_wiki_ranked_pool()
-        max_count=max(counts.values())
-        featured=[mode for mode,count in counts.items() if count==max_count and count>4]
-        maps_by_mode={mode:sorted(name for m,name in pairs if m==mode) for mode in sorted(RANKED_MODES)}
-        print(f"RANKED POOL OK: source=wiki-live total={len(pairs)} counts={counts} expanded={featured} maps={maps_by_mode}",flush=True)
-        _ranked_pool_cache.update({"ts":now,"pairs":pairs})
-        _ranked_pool_failure_until=0.0
-        return pairs
-    except Exception as exc:
-        # Do not hammer Fandom on every battle while its rendered structure is
-        # incompatible. Keep production functional with the last verified pool.
-        _ranked_pool_failure_until=now+3600
-        counts={mode:sum(1 for m,_ in _KNOWN_GOOD_RANKED_POOL if m==mode) for mode in RANKED_MODES}
-        print(f"RANKED POOL FALLBACK: source=known-good total={len(_KNOWN_GOOD_RANKED_POOL)} counts={counts} reason={type(exc).__name__}: {exc}",flush=True)
-        return _KNOWN_GOOD_RANKED_POOL
+    errors=[]
+    for source,fetcher in (("wiki-live",_fetch_wiki_ranked_pool),("secondary-live",_fetch_brawlzone_ranked_pool)):
+        try:
+            pairs,counts=fetcher()
+            maps_by_mode={mode:sorted(name for m,name in pairs if m==mode) for mode in sorted(RANKED_MODES)}
+            expanded=[mode for mode,count in counts.items() if count>4]
+            print(f"RANKED POOL OK: source={source} total={len(pairs)} counts={counts} expanded={expanded} maps={maps_by_mode}",flush=True)
+            _ranked_pool_cache.update({"ts":now,"pairs":pairs})
+            _ranked_pool_failure_until=0.0
+            return pairs
+        except Exception as exc:
+            errors.append(f"{source}={type(exc).__name__}: {exc}")
+    _ranked_pool_failure_until=now+3600
+    counts={mode:sum(1 for m,_ in _KNOWN_GOOD_RANKED_POOL if m==mode) for mode in RANKED_MODES}
+    print(f"RANKED POOL FALLBACK: source=known-good total={len(_KNOWN_GOOD_RANKED_POOL)} counts={counts} reason={' | '.join(errors)}",flush=True)
+    return _KNOWN_GOOD_RANKED_POOL
 
 
 def _headers():
