@@ -2719,7 +2719,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Absolute deterministic firewall for registration. Run this on the raw
     # Telegram text, before activity tracking, premium handlers or any Gemini
     # path. Remove bot/user mentions and invisible Unicode formatting first.
-    _raw_command = re.sub(r"[\\u200b-\\u200f\\u202a-\\u202e\\u2060\\ufeff]", "", message.text or "")
+    _raw_command = (message.text or "").translate(dict.fromkeys([0x200B,0x200C,0x200D,0x200E,0x200F,0x202A,0x202B,0x202C,0x202D,0x202E,0x2060,0xFEFF]))
     _raw_command = re.sub(r"(?<!\\w)@[A-Za-z0-9_]{5,32}\\b", " ", _raw_command, flags=re.IGNORECASE)
     _raw_command = re.sub(
         r"\\s+(?:rispondi|rspondi|rispomdi|rispndi|rispodi)\\s+(?:a\\s+voce|voce|(?:a\\s+)?testo|testo\\s*(?:\\+|e)?\\s*voce|voce\\s*(?:\\+|e)\\s*testo)\\s*$",
@@ -2833,11 +2833,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Hard-route registration before every premium/AI path. Telegram/Brawl
     # tags may contain invisible Unicode formatting characters introduced by
     # copy/paste; normalize those before matching the deterministic command.
-    _registration_question = re.sub(
-        r"[\\u200b-\\u200f\\u202a-\\u202e\\u2060\\ufeff]",
-        "",
-        question,
-    )
+    _registration_question = question.translate(dict.fromkeys([0x200B,0x200C,0x200D,0x200E,0x200F,0x202A,0x202B,0x202C,0x202D,0x202E,0x2060,0xFEFF]))
     _registration_question = re.sub(r"\\s+", " ", _registration_question).strip()
     _registration_match = re.fullmatch(
         r"(?:registrami|tegistrami)\\s*#?([A-Z0-9]{3,15})",
