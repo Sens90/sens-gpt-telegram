@@ -2716,6 +2716,30 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text("UTENTI NON REGISTRATI\n\n" + "\n".join(tags) + "\n\nTotale: " + str(len(tags)))
         return
 
+    # Absolute deterministic firewall for registration. Run this on the raw
+    # Telegram text, before activity tracking, premium handlers or any Gemini
+    # path. Remove bot/user mentions and invisible Unicode formatting first.
+    _raw_command = re.sub(r"[\\u200b-\\u200f\\u202a-\\u202e\\u2060\\ufeff]", "", message.text or "")
+    _raw_command = re.sub(r"(?<!\\w)@[A-Za-z0-9_]{5,32}\\b", " ", _raw_command, flags=re.IGNORECASE)
+    _raw_command = re.sub(
+        r"\\s+(?:rispondi|rspondi|rispomdi|rispndi|rispodi)\\s+(?:a\\s+voce|voce|(?:a\\s+)?testo|testo\\s*(?:\\+|e)?\\s*voce|voce\\s*(?:\\+|e)\\s*testo)\\s*$",
+        "",
+        _raw_command,
+        flags=re.I,
+    )
+    _raw_command = re.sub(r"\\s+", " ", _raw_command).strip()
+    if re.match(r"^(?:registrami|tegistrami)\\b", _raw_command, re.I):
+        _valid_registration = re.fullmatch(r"(?:registrami|tegistrami)\\s*#?([A-Z0-9]{3,15})", _raw_command, re.I)
+        if not _valid_registration:
+            await message.reply_text(
+                "Tag Brawl Stars non valido. Usa: registrami #TAG. "
+                "Attenzione: nei tag Brawl Stars la lettera O non è valida; potrebbe essere uno zero (0)."
+            )
+            return
+        print("REGISTRATION ABSOLUTE ROUTE:", _valid_registration.group(1).upper(), flush=True)
+        await community.handle_command(message, context, _raw_command)
+        return
+
     # Explicit mode on the current request always wins. Otherwise, replying
     # directly to a voice/audio message sent by Sens GPT inherits voice mode.
     explicit_mode = request_voice_mode(message.text)
