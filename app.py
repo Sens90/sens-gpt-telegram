@@ -4221,6 +4221,19 @@ def _startup_brawltrack_draft_meta_smoke():
 
 _startup_brawltrack_draft_meta_smoke()
 
+def _startup_draft_fallback_smoke():
+    try:
+        checks=[]
+        for map_name in ("Double Swoosh","In the Liminal","Parallel Plays","Quick Travel","Flaring Phoenix"):
+            source,count=community._draft_ranked_pick_source(map_name)
+            picks=community._draft_ranked_map_picks(map_name,limit=6)
+            checks.append("%s:%s:n%s:p%s" % (map_name,source,count,len(picks)))
+        print("DRAFT FALLBACK SMOKE: "+" | ".join(checks),flush=True)
+    except Exception as exc:
+        print("DRAFT FALLBACK SMOKE ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
+
+_startup_draft_fallback_smoke()
+
 def _startup_ranked_pool_smoke():
     """One-shot production verification of the live Ranked Wiki pool."""
     try:
