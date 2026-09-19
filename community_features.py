@@ -828,6 +828,45 @@ class CommunityFeatures:
             lines.append(f"SECONDARIO {n} - {row.get('player_name') or 'Account'} #{row.get('player_tag')}")
         return "\n".join(lines)
 
+    def admin_reset_primary_registration(self, telegram_user_id):
+        rows=self._get("community_members",{"select":"*","telegram_user_id":f"eq.{int(telegram_user_id)}","limit":"1"}) or []
+        if not rows:
+            return None
+        row=rows[0]
+        self._patch("community_members",{
+            "player_tag":None,"player_name":None,"trophies":None,"club_name":None,
+            "ranked_current":None,"ranked_peak":None,"ranked_season_peak":None,
+            "ranked_current_elo":None,"ranked_peak_elo":None,"ranked_season_peak_elo":None,
+            "ranked_career_peak":None,"ranked_career_peak_elo":None,
+            "player_last_updated_at":None,
+        },params={"telegram_user_id":f"eq.{int(telegram_user_id)}"})
+        return row
+
+    def admin_secondary_accounts_text(self, telegram_user_id):
+        rows=self.additional_accounts(telegram_user_id)
+        if not rows:
+            return "Nessun account secondario attivo per questo utente."
+        lines=["ACCOUNT SECONDARI DA RIPRISTINARE",""]
+        for row in rows:
+            n=max(1,int(row.get("account_order") or 2)-1)
+            lines.append(f"{n}. {row.get('player_name') or 'Account'} #{row.get('player_tag')}")
+        lines.append("")
+        lines.append("Usa: ripristina registrazione secondario @utente N")
+        return "\n".join(lines)
+
+    def admin_reset_secondary_registration(self, telegram_user_id, secondary_number):
+        rows=self.additional_accounts(telegram_user_id)
+        target=None
+        for row in rows:
+            n=max(1,int(row.get("account_order") or 2)-1)
+            if n == int(secondary_number):
+                target=row
+                break
+        if not target:
+            return None
+        self._patch("community_member_accounts",{"is_active":False,"updated_at":self._now_iso()},params={"telegram_user_id":f"eq.{int(telegram_user_id)}","player_tag":f"eq.{target.get('player_tag')}"})
+        return target
+
     def update_member_ranked(self, chat_id, user_id, ranked_current=None, ranked_peak=None):
         payload = {}
         if ranked_current is not None:
@@ -2318,6 +2357,35 @@ class CommunityFeatures:
                 "https://discord.gg/uwrUfsEaBc\n\n"
                 "Usiamo Discord per le vocali della community."
             )
+            return True
+
+        owner_id = 437136453
+        reset_primary = re.fullmatch(r"ripristina\\s+registrazione\\s+primario\\s+@([A-Za-z0-9_]{3,32})", q, re.I)
+        reset_secondary = re.fullmatch(r"ripristina\\s+registrazione\\s+secondario\\s+@([A-Za-z0-9_]{3,32})(?:\\s+(\\d+))?", q, re.I)
+        if reset_primary or reset_secondary:
+            if int(message.from_user.id) != owner_id:
+                await message.reply_text("Comando riservato al proprietario del bot.")
+                return True
+            username=(reset_primary or reset_secondary).group(1)
+            target_rows=self._get("community_members",{"select":"*","telegram_username":f"ilike.{username}","limit":"1"}) or []
+            if not target_rows:
+                await message.reply_text(f"Utente @{username} non trovato tra i registrati.")
+                return True
+            target=target_rows[0]
+            target_id=int(target.get("telegram_user_id"))
+            if reset_primary:
+                old=self.admin_reset_primary_registration(target_id)
+                await message.reply_text(f"Registrazione primaria ripristinata per @{username}. Il collegamento Telegram e i dati community sono stati mantenuti; ora può registrare un nuovo account principale.")
+                return True
+            number=reset_secondary.group(2)
+            if not number:
+                await message.reply_text(self.admin_secondary_accounts_text(target_id))
+                return True
+            old=self.admin_reset_secondary_registration(target_id,int(number))
+            if not old:
+                await message.reply_text(f"Account secondario {number} non trovato per @{username}.")
+            else:
+                await message.reply_text(f"Account secondario {number} ripristinato per @{username}: {old.get('player_name') or 'Account'} #{old.get('player_tag')}. L'account principale non è stato modificato.")
             return True
 
         extra_match = re.fullmatch(r"(?:aggiungi\\s+account|aggiungi\\s+profilo)\\s*#?([A-Z0-9]{3,15})", q, re.I)
