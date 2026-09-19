@@ -78,32 +78,36 @@ def normalize_official_events(rows):
     return out
 
 def brawlvalue_meta_state(state="italy",ttl=900):
-    """Optional Brawl Value cross-check for regional meta; raw published rates only."""
+    """Optional Brawl Value cross-check. BrawlTrack remains primary."""
     from urllib.parse import quote
     region=re.sub(r"[^a-z0-9-]+","-",str(state or "italy").strip().casefold()).strip("-") or "italy"
-    url=f"https://brawlvalue.com/en/meta/state/{quote(region,safe='-')}"
+    urls=[
+        f"https://brawlvalue.com/en/meta/state/{quote(region,safe='-')}",
+        "https://brawlvalue.com/en/meta",
+    ]
     key="brawlvalue:meta:"+region
     cached=_CACHE.get(key)
     if cached and time.monotonic()-cached[0]<ttl:return cached[1]
     try:
         from bs4 import BeautifulSoup
-        response=requests.get(url,headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"text/html"},timeout=15)
-        response.raise_for_status()
-        text=BeautifulSoup(response.text,"html.parser").get_text(" ",strip=True)
-        # Current page renders compact rows such as:
-        # "#1 WENDY 375,075 battles S 76.27% 2.47% 9.58%".
-        # Restrict names to the token span immediately before the battle count;
-        # do not consume the page prose preceding the table.
         pat=re.compile(r"#\s*\d+\s+([A-Z][A-Z0-9 .&'-]{0,35}?)\s*([\d,]+)\s*battles\s+[A-S]\s+(\d+(?:\.\d+)?)%\s*(\d+(?:\.\d+)?)%\s*(\d+(?:\.\d+)?)%",re.I)
-        rows=[];seen=set()
-        for m in pat.finditer(text):
-            name=re.sub(r"\s+"," ",m.group(1)).strip().upper()
-            if not name or name in seen:continue
-            seen.add(name)
-            rows.append({"brawler":name,"battles":int(m.group(2).replace(",","")),"win_rate":float(m.group(3)),"pick_rate":float(m.group(4)),"star_player_rate":float(m.group(5))})
-        if len(rows)<50:
-            raise ValueError(f"Brawl Value meta schema not recognized rows={len(rows)}")
-        result={"source":"Brawl Value","scope":"regional_meta","region":region,"source_url":url,"brawlers":rows}
+        best=[];used_url=None
+        for url in urls:
+            response=requests.get(url,headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"text/html"},timeout=15)
+            response.raise_for_status()
+            page=BeautifulSoup(response.text,"html.parser").get_text(" ",strip=True)
+            rows=[];seen=set()
+            for m in pat.finditer(page):
+                name=re.sub(r"\s+"," ",m.group(1)).strip().upper()
+                if not name or name in seen:continue
+                seen.add(name)
+                rows.append({"brawler":name,"battles":int(m.group(2).replace(",","")),"win_rate":float(m.group(3)),"pick_rate":float(m.group(4)),"star_player_rate":float(m.group(5))})
+            if len(rows)>len(best):best,used_url=rows,url
+            if len(rows)>=50:break
+        if len(best)<50:
+            raise ValueError(f"Brawl Value meta schema not recognized rows={len(best)}")
+        scope="regional_meta" if "/state/" in (used_url or "") else "global_meta"
+        result={"source":"Brawl Value","scope":scope,"region":region if scope=="regional_meta" else None,"source_url":used_url,"brawlers":best}
         _CACHE[key]=(time.monotonic(),result)
         return result
     except Exception as error:
