@@ -2,7 +2,7 @@ import json
 import io
 import asyncio
 import html
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time as dt_time
 from zoneinfo import ZoneInfo
 
 import matplotlib
@@ -4112,6 +4112,27 @@ async def ranked_catalog_job(context):
     except Exception as exc:
         print("RANKED CATALOG SYNC ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
 
+async def automatic_today_ranking_job(context):
+    """Send the current-day trophy ranking to every configured community chat."""
+    try:
+        settings_rows = await asyncio.to_thread(community._get, "community_settings", {"select": "chat_id"})
+    except Exception as exc:
+        print("CLASSIFICA OGGI AUTO SETTINGS ERROR:", repr(exc), flush=True)
+        return
+    sent = 0
+    for row in settings_rows or []:
+        try:
+            chat_id = int(row["chat_id"])
+            text = await asyncio.to_thread(community.ranking_text, chat_id, 0)
+            await context.bot.send_message(chat_id=chat_id, text=text)
+            sent += 1
+        except Exception as exc:
+            print("CLASSIFICA OGGI AUTO SEND ERROR:", row.get("chat_id"), repr(exc), flush=True)
+    print("CLASSIFICA OGGI AUTO: sent=%s local=%s" % (
+        sent, datetime.now(ROME).strftime("%Y-%m-%d %H:%M:%S")
+    ), flush=True)
+
+
 async def generazioni_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.from_user:
@@ -4138,6 +4159,14 @@ def main():
             first=30,
             name="ranked_catalog_sync"
         )
+        # Exact Rome-local delivery times requested for the automatic "classifica oggi".
+        # Separate daily jobs preserve 23:59 exactly instead of approximating a 6-hour interval.
+        for hour, minute in ((6, 0), (12, 0), (18, 0), (23, 59)):
+            application.job_queue.run_daily(
+                automatic_today_ranking_job,
+                time=dt_time(hour=hour, minute=minute, tzinfo=ROME),
+                name=f"classifica_oggi_{hour:02d}{minute:02d}"
+            )
 
     application.add_handler(
         CommandHandler("start", start_command)
