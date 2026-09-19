@@ -4489,7 +4489,8 @@ def _startup_brawltrack_map_smoke():
     except Exception as exc:
         print("BRAWLTRACK MAP SMOKE ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
 
-_startup_brawltrack_map_smoke()
+# Disabled at import/startup: external smoke/sync checks must not block Render port binding.
+# _startup_brawltrack_map_smoke()
 
 def _startup_brawltrack_draft_meta_smoke():
     """Verify BrawlTrack competitive picks/comps on every current Ranked map."""
@@ -4513,7 +4514,8 @@ def _startup_brawltrack_draft_meta_smoke():
     except Exception as exc:
         print("BRAWLTRACK DRAFT META SMOKE ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
 
-_startup_brawltrack_draft_meta_smoke()
+# Disabled at import/startup: external smoke/sync checks must not block Render port binding.
+# _startup_brawltrack_draft_meta_smoke()
 
 def _startup_draft_fallback_smoke():
     try:
@@ -4526,7 +4528,8 @@ def _startup_draft_fallback_smoke():
     except Exception as exc:
         print("DRAFT FALLBACK SMOKE ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
 
-_startup_draft_fallback_smoke()
+# Disabled at import/startup: external smoke/sync checks must not block Render port binding.
+# _startup_draft_fallback_smoke()
 
 def _startup_ranked_pool_smoke():
     """One-shot production verification of the live Ranked Wiki pool."""
@@ -4540,7 +4543,8 @@ def _startup_ranked_pool_smoke():
     except Exception as exc:
         print("RANKED POOL STARTUP SMOKE ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
 
-_startup_ranked_pool_smoke()
+# Disabled at import/startup: external smoke/sync checks must not block Render port binding.
+# _startup_ranked_pool_smoke()
 
 def _startup_brawlvalue_meta_smoke():
     """One-shot production verification of the optional Brawl Value adapter."""
@@ -4554,7 +4558,8 @@ def _startup_brawlvalue_meta_smoke():
     except Exception as exc:
         print("BRAWL VALUE META SMOKE ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
 
-_startup_brawlvalue_meta_smoke()
+# Disabled at import/startup: external smoke/sync checks must not block Render port binding.
+# _startup_brawlvalue_meta_smoke()
 
 def _startup_official_skins_smoke():
     """One-shot safe probe of the proxy's official /v1/skins route."""
@@ -4576,7 +4581,8 @@ def _startup_official_skins_smoke():
     except Exception as exc:
         print("OFFICIAL SKINS SMOKE ERROR: %s" % type(exc).__name__,flush=True)
 
-_startup_official_skins_smoke()
+# Disabled at import/startup: external smoke/sync checks must not block Render port binding.
+# _startup_official_skins_smoke()
 
 def _startup_structured_meta_smoke():
     try:
@@ -4611,7 +4617,8 @@ def _startup_brawler_it_sync():
     except Exception as exc:
         print("BRAWLER IT SYNC ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
 
-_startup_brawler_it_sync()
+# Disabled at import/startup: external smoke/sync checks must not block Render port binding.
+# _startup_brawler_it_sync()
 
 def _startup_brawltrack_meta_sync_once():
     """Refresh BrawlTrack meta after parser changes; safe upsert by brawler_id."""
