@@ -313,6 +313,24 @@ class CommunityFeatures:
         eligible.sort(key=lambda x:(x[0],x[1],x[2]),reverse=True)
         return [x[3] for x in eligible[:limit]]
 
+    def _draft_ranked_pick_source(self, map_name):
+        """Diagnostic only: identify which verified source supplies exact-map Ranked picks."""
+        from live_maps import brawltrack_pro_map_stats
+        identity=self._draft_identity(map_name)
+        if not identity:return "invalid",0
+        pro=brawltrack_pro_map_stats(identity["map_en"]) or {}
+        if pro.get("priority_picks"):return "brawltrack",len(pro["priority_picks"])
+        try:
+            rows=self._get("ranked_draft_stats",{
+                "select":"brawler_id,games,win_rate","stat_scope":"eq.map_pick",
+                "mode":"eq."+identity["mode_api"],"map_name":"eq."+identity["map_en"],
+                "order":"games.desc","limit":"100",
+            })
+            if rows:return "battlelog",len(rows)
+        except Exception:
+            pass
+        return "legacy",len(self._draft_ranked_map_picks(identity["map_en"],limit=100))
+
     def draft_map_advice_text(self, map_name, rank_name=None, mode=None):
         """Ranked opener: map-specific Ranked data only."""
         identity=self._draft_identity(map_name,mode)
