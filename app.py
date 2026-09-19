@@ -2314,6 +2314,27 @@ def automatic_trophy_monitor():
                         )
                         save_player_tracking(player)
 
+                        # Keep the registered member's club synchronized from the
+                        # same official Supercell response used by the monitor.
+                        # This lets club leaderboards stay instant and DB-only.
+                        try:
+                            official_club = player.get("club_name") or player.get("club")
+                            if isinstance(official_club, dict):
+                                official_club = official_club.get("name")
+                            official_club = str(official_club or "").strip()
+                            if official_club in community.CLUB_ALIASES.values():
+                                community._patch(
+                                    "community_members",
+                                    {
+                                        "club_name": official_club,
+                                        "player_name": player.get("name"),
+                                        "player_last_updated_at": datetime.now(timezone.utc).isoformat(),
+                                    },
+                                    params={"player_tag": f"eq.{str(player['tag']).replace('#', '')}"},
+                                )
+                        except Exception as club_exc:
+                            print("ERRORE SYNC CLUB MEMBER:", repr(club_exc), flush=True)
+
                         print(
                             f"TROFEI AGGIORNATI: {player["name"]} "
                             f"{player["trophies"]}",
