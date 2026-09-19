@@ -21,9 +21,22 @@ def _headers():
 
 def battlelog(tag):
     clean=str(tag).strip().lstrip("#")
-    r=requests.get(f"{API}/players/%23{clean}/battlelog",headers=_headers(),timeout=15)
+    proxy_url=(os.getenv("BRAWL_OFFICIAL_PROXY_URL") or "").strip()
+    proxy_key=(os.getenv("BRAWL_OFFICIAL_PROXY_KEY") or "").strip()
+    if proxy_url and proxy_key:
+        r=requests.get(
+            proxy_url,
+            params={"action":"battlelog","tag":clean},
+            headers={"X-Sens-Key":proxy_key,"Accept":"application/json","User-Agent":"SensGPT-TitaniAbusivi/1.0"},
+            timeout=20,
+        )
+    else:
+        r=requests.get(f"{API}/players/%23{clean}/battlelog",headers=_headers(),timeout=15)
     r.raise_for_status()
-    return r.json().get("items") or []
+    data=r.json()
+    if isinstance(data,dict) and isinstance(data.get("items"),list):
+        return data["items"]
+    raise RuntimeError("Battlelog response missing items")
 
 def normalize_match(row):
     event=row.get("event") or {}; battle=row.get("battle") or {}
