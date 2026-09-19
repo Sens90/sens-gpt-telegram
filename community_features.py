@@ -270,42 +270,45 @@ class CommunityFeatures:
         side=self._draft_pick_order(first)[index]
         return f"Pick {index+1}/6: {'NOSTRA SQUADRA' if side == 'my' else 'AVVERSARIO'}."
 
+    def _draft_ranked_map_picks(self, map_name, excluded=None, limit=5):
+        """Map-specific Ranked picks from the Ranked dataset; never mix Ladder/Pro scope."""
+        from live_maps import safe_get, localized, valid_rows
+        identity=self._draft_identity(map_name)
+        if not identity:return []
+        ranked=safe_get("pl-results.json.gz") or {}
+        raw=ranked.get(identity.get("catalog_key"),{}) if isinstance(ranked,dict) else {}
+        rows=valid_rows(raw.get("individual")) if isinstance(raw,dict) else []
+        names=safe_get("i18n/names.it.json.gz") or {}
+        blocked={str(x).strip().casefold() for x in (excluded or []) if x}
+        eligible=[]
+        for row in rows:
+            brawler=str(row.get("brawler") or row.get("brawler_name") or "").strip()
+            if not brawler:continue
+            label=localized(names,"brawlers",brawler)
+            if brawler.casefold() in blocked or str(label).casefold() in blocked:continue
+            wr=float(row.get("wr",row.get("win_rate",0)) or 0)
+            ur=float(row.get("ur",row.get("use_rate",0)) or 0)
+            sr=float(row.get("sr",row.get("starplayer_rate",0)) or 0)
+            # Avoid tiny-sample gimmicks: require meaningful Ranked presence, then
+            # rank by performance with use/star-player as supporting signals.
+            if ur < 0.5:continue
+            score=wr + min(ur,25)*0.08 + min(sr,30)*0.03
+            eligible.append((score,wr,ur,str(label)))
+        eligible.sort(key=lambda x:(x[0],x[1],x[2]),reverse=True)
+        return [x[3] for x in eligible[:limit]]
+
     def draft_map_advice_text(self, map_name, rank_name=None, mode=None):
-        """Fast Ranked draft opener using canonical IT/EN identity and verified competitive map data."""
+        """Ranked opener: map-specific Ranked data only."""
         identity=self._draft_identity(map_name,mode)
         if not identity:return None
-        from live_maps import brawltrack_pro_map_stats
-        stats=brawltrack_pro_map_stats(identity["map_en"]) or {}
-        picks=stats.get("priority_picks") or stats.get("picks") or []
-        avoid=stats.get("avoid") or stats.get("avoid_these") or []
-        try:
-            catalog=self._get("brawlers_catalog",{"select":"name_en,name_it"})
-        except Exception as exc:
-            LOG.warning("DRAFT brawler localization unavailable: %s", type(exc).__name__)
-            catalog=[]
-        it_by_en={str(x.get("name_en") or "").casefold():str(x.get("name_it") or x.get("name_en") or "") for x in catalog or []}
-        def local_brawler(value):
-            return it_by_en.get(str(value or "").casefold(),str(value or "").title())
-        pick_names=[]
-        for item in picks if isinstance(picks,list) else []:
-            name=item.get("brawler") if isinstance(item,dict) else item
-            if name and local_brawler(name) not in pick_names:pick_names.append(local_brawler(name))
-            if len(pick_names)>=6:break
-        avoid_names=[]
-        for item in avoid if isinstance(avoid,list) else []:
-            name=item.get("brawler") if isinstance(item,dict) else item
-            if name and local_brawler(name) not in avoid_names:avoid_names.append(local_brawler(name))
-            if len(avoid_names)>=5:break
+        pick_names=self._draft_ranked_map_picks(identity["map_en"],limit=6)
         title=f'RANKED - {identity["map_it"].upper()}'
         lines=[title]
         if identity.get("mode_it"):
             lines.append(f'Modalità: {identity["mode_it"]}')
         if rank_name:lines.append(f'Fascia Ranked: {rank_name}')
-        if avoid_names:lines.append("Ban/evita: "+", ".join(avoid_names))
-        if pick_names:
-            lines.append("Pick competitivi BrawlTrack: "+", ".join(pick_names))
-        if not avoid_names and not pick_names:
-            lines.append("La mappa è riconosciuta, ma non ho ancora pick/ban verificati da mostrare.")
+        if pick_names:lines.append("Migliori pick: "+", ".join(pick_names))
+        else:lines.append("La mappa è riconosciuta, ma non ho ancora dati Ranked verificati da mostrare.")
         return "\n".join(lines)
 
     def draft_comp_advice_text(self, draft_state):
@@ -1877,6 +1880,12 @@ class CommunityFeatures:
             if side == "enemy":
                 counter=self.brawler_counter_text(brawler,map_name=draft_state.get("map")) or self.brawler_counter_text(brawler)
                 if counter: body+="\n"+counter
+            excluded=(draft_state.get("bans") or [])+(draft_state.get("my_picks") or [])+(draft_state.get("enemy_picks") or [])
+            ranked_picks=self._draft_ranked_map_picks(draft_state.get("map"),excluded=excluded,limit=3)
+            if ranked_picks and len(seq) < 6:
+                next_side=self._draft_pick_order(draft_state["first_pick"])[len(seq)]
+                if next_side == "my":
+                    body+="\nPick consigliati: "+", ".join(ranked_picks)
             comp=self.draft_comp_advice_text(draft_state)
             if comp: body+="\n"+comp
             await message.reply_text(body)
