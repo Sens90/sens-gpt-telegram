@@ -125,11 +125,15 @@ def upsert(rows):
         r=requests.post(url+"/rest/v1/ranked_draft_stats?on_conflict=stat_scope,mode,map_name,brawler_id,other_brawler_id",
                         headers=h,json=rows[i:i+500],timeout=30);r.raise_for_status()
 
-if __name__=="__main__":
+def sync_once():
     seeds=[x for x in (os.getenv("RANKED_SYNC_SEEDS") or "").replace(" ","").split(",") if x]
     seeds=list(dict.fromkeys(seeds+registered_seeds()))
-    if not seeds:raise SystemExit("No Ranked sync seeds available")
+    if not seeds:return {"seeds":0,"matches":0,"rows":0}
     matches=collect(seeds,max_players=int(os.getenv("RANKED_SYNC_MAX_PLAYERS","250")))
     rows=aggregate(matches,min_sample=int(os.getenv("RANKED_SYNC_MIN_SAMPLE","20")))
     upsert(rows)
-    print(f"ranked matchup sync: matches={len(matches)} rows={len(rows)}",flush=True)
+    return {"seeds":len(seeds),"matches":len(matches),"rows":len(rows)}
+
+if __name__=="__main__":
+    result=sync_once()
+    print("ranked matchup sync: "+str(result),flush=True)
