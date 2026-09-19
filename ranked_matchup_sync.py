@@ -14,50 +14,104 @@ import requests
 API="https://api.brawlstars.com/v1"
 RANKED_TYPES={"ranked","soloranked","teamranked"}
 RANKED_MODES={"gemGrab","brawlBall","hotZone","bounty","heist","knockout"}
-RANKED_WIKI_URL=os.getenv("RANKED_WIKI_URL","https://brawlstars.fandom.com/wiki/Version_History")
+RANKED_WIKI_URL=os.getenv("RANKED_WIKI_URL","https://brawlstars.fandom.com/wiki/Ranked")
+RANKED_WIKI_API=os.getenv("RANKED_WIKI_API","https://brawlstars.fandom.com/api.php")
 _ranked_pool_cache={"ts":0.0,"pairs":None}
 
-# Current Ranked base pool as published by Brawl Stars Wiki. The two Featured
-# maps are supplied by the current official Supercell season notes below.
-# Keep English canonical map names internally; user-facing localization is
-# handled elsewhere.
-RANKED_WIKI_BASE_POOL={
-    "gemGrab":{"Double Swoosh","Gem Fort","Hard Rock Mine","Undermine"},
-    "heist":{"Bridge Too Far","Hot Potato","Kaboom Canyon","Safe Zone"},
-    "bounty":{"Dry Season","Hideout","Layer Cake","Shooting Star"},
-    "brawlBall":{"Center Stage","Pinball Dreams","Sneaky Fields","Triple Dribble"},
-    "hotZone":{"Dueling Beetles","Open Business","Parallel Plays","Ring of Fire"},
-    "knockout":{"Belle's Rock","Flaring Phoenix","New Horizons","Out in the Open"},
+_WIKI_MODE_CATEGORIES={
+    "Gem Grab Maps":"gemGrab",
+    "Brawl Ball Maps":"brawlBall",
+    "Hot Zone Maps":"hotZone",
+    "Bounty Maps":"bounty",
+    "Heist Maps":"heist",
+    "Knockout Maps":"knockout",
 }
-# Supercell August 2026 release notes, Ranked Season 2.
-RANKED_FEATURED_MODE="hotZone"
-RANKED_FEATURED_MAPS={"In the Liminal","Quick Travel"}
+
+def _wiki_active_map_names():
+    """Read the current Active maps section from the Brawl Stars Wiki Ranked page."""
+    from bs4 import BeautifulSoup
+    r=requests.get(
+        RANKED_WIKI_URL,
+        headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept-Language":"en-US,en;q=0.9"},
+        timeout=20,
+    )
+    r.raise_for_status()
+    soup=BeautifulSoup(r.text,"html.parser")
+    marker=soup.find(id=re.compile(r"^Active_maps$",re.I))
+    if marker is None:
+        # Fandom can vary the generated id slightly; use heading text as backup.
+        marker=next((h for h in soup.find_all(["h2","h3"]) if "active maps" in h.get_text(" ",strip=True).casefold()),None)
+    if marker is None:
+        raise RuntimeError("Wiki Active maps section not found")
+    heading=marker.find_parent(["h2","h3"]) if getattr(marker,"name",None) not in {"h2","h3"} else marker
+    if heading is None:
+        raise RuntimeError("Wiki Active maps heading not found")
+    names=[]
+    for node in heading.find_all_next():
+        if node is not heading and node.name in {"h2","h3"}:
+            break
+        if node.name!="a":
+            continue
+        href=str(node.get("href") or "")
+        name=node.get_text(" ",strip=True)
+        if not name or "/wiki/" not in href or name in names:
+            continue
+        # Ignore files/help/navigation links that may occur inside the section.
+        if any(x in href for x in ("/File:","/Category:","/Help:")):
+            continue
+        names.append(name)
+    if len(names)<20 or len(names)>40:
+        raise RuntimeError(f"Wiki Active maps suspicious count={len(names)}")
+    return names
+
+def _wiki_map_mode(name):
+    """Resolve one Ranked map to its game mode using Wiki page categories."""
+    r=requests.get(
+        RANKED_WIKI_API,
+        params={"action":"query","prop":"categories","cllimit":"max","titles":name,"format":"json","origin":"*"},
+        headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0"},
+        timeout=15,
+    )
+    r.raise_for_status()
+    pages=((r.json().get("query") or {}).get("pages") or {})
+    cats=[]
+    for page in pages.values():
+        cats.extend(str(x.get("title") or "").removeprefix("Category:") for x in (page.get("categories") or []))
+    modes={api for cat,api in _WIKI_MODE_CATEGORIES.items() if cat in cats}
+    if len(modes)!=1:
+        raise RuntimeError(f"Wiki mode ambiguous for {name!r}: categories={cats} modes={sorted(modes)}")
+    return next(iter(modes))
+
+def _fetch_wiki_ranked_pool():
+    names=_wiki_active_map_names()
+    pairs={(_wiki_map_mode(name),name) for name in names}
+    if len(pairs)!=len(names):
+        raise RuntimeError(f"Wiki Ranked pool duplicate/classification mismatch names={len(names)} pairs={len(pairs)}")
+    counts={mode:sum(1 for m,_ in pairs if m==mode) for mode in RANKED_MODES}
+    if set(counts)!=RANKED_MODES or any(counts[m]<4 for m in RANKED_MODES):
+        raise RuntimeError(f"Wiki Ranked pool structurally suspicious: total={len(pairs)} counts={counts}")
+    # Featured/additional maps can change the total and distribution by season.
+    # Do not force a historical 26-map assumption: Wiki's Active maps section
+    # is authoritative for membership, while this guard only rejects incomplete data.
+    if len(pairs)<24 or len(pairs)>40:
+        raise RuntimeError(f"Wiki Ranked pool suspicious total={len(pairs)} counts={counts}")
+    return pairs,counts
 
 def current_ranked_pool():
-    """Return the verified Ranked pool: Wiki base rotation + official Featured maps.
-
-    Fail closed if the expected 26-map/4-4-4-4-4-6 structure is ever broken.
-    This intentionally no longer scrapes BrawlZone.
-    """
+    """Fetch the live Ranked map pool from Brawl Stars Wiki; fail closed on bad data."""
     now=time.time()
     if _ranked_pool_cache["pairs"] is not None and now-_ranked_pool_cache["ts"]<21600:
         return _ranked_pool_cache["pairs"]
     try:
-        pairs={(mode,name) for mode,names in RANKED_WIKI_BASE_POOL.items() for name in names}
-        pairs.update((RANKED_FEATURED_MODE,name) for name in RANKED_FEATURED_MAPS)
-        counts={mode:sum(1 for m,_ in pairs if m==mode) for mode in RANKED_MODES}
-        distribution=sorted(counts.values())
-        if len(pairs)!=26 or distribution!=[4,4,4,4,4,6]:
-            raise RuntimeError(f"Ranked pool suspicious: total={len(pairs)} counts={counts}")
-        featured_modes=[mode for mode,count in counts.items() if count==6]
-        if featured_modes != [RANKED_FEATURED_MODE]:
-            raise RuntimeError(f"Featured mode mismatch: expected={RANKED_FEATURED_MODE} actual={featured_modes}")
+        pairs,counts=_fetch_wiki_ranked_pool()
+        max_count=max(counts.values())
+        featured=[mode for mode,count in counts.items() if count==max_count and count>4]
         maps_by_mode={mode:sorted(name for m,name in pairs if m==mode) for mode in sorted(RANKED_MODES)}
-        print(f"RANKED POOL OK: source=wiki+supercell total={len(pairs)} counts={counts} featured={RANKED_FEATURED_MODE} maps={maps_by_mode}",flush=True)
+        print(f"RANKED POOL OK: source=wiki-live total={len(pairs)} counts={counts} expanded={featured} maps={maps_by_mode}",flush=True)
         _ranked_pool_cache.update({"ts":now,"pairs":pairs})
         return pairs
     except Exception as exc:
-        print(f"RANKED POOL ERROR: {type(exc).__name__}: {exc}",flush=True)
+        print(f"RANKED POOL ERROR: source=wiki-live {type(exc).__name__}: {exc}",flush=True)
         return set()
 
 
