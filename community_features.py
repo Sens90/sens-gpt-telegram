@@ -2023,7 +2023,15 @@ class CommunityFeatures:
             draft_state["my_picks"]=[]
             draft_state["enemy_picks"]=[]
             context.user_data["ranked_draft"]=draft_state
-            await message.reply_text("Ordine pick impostato. "+self._draft_next_turn_text(draft_state))
+            body="Ordine pick impostato. "+self._draft_next_turn_text(draft_state)
+            # If our side owns pick 1, recommend immediately: waiting for a pick
+            # would make the advice arrive one turn too late.
+            if draft_state["first_pick"] == "my":
+                excluded=(draft_state.get("bans") or [])
+                recommendations=self._draft_ranked_map_picks(draft_state.get("map"),excluded=excluded,limit=3)
+                if recommendations:
+                    body+="\nPick consigliati: "+", ".join(recommendations)
+            await message.reply_text(body)
             return True
 
         # During the ban phase accept six plain Brawler names in one message.
