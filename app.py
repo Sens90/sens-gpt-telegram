@@ -2768,9 +2768,13 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ).strip()
 
     if mentioned:
-        question = question.replace(
-            f"@{bot_username}",
-            ""
+        # Remove the bot mention case-insensitively. Telegram usernames are
+        # case-insensitive, while str.replace() is not.
+        question = re.sub(
+            r"@" + re.escape(bot_username) + r"\\b",
+            "",
+            question,
+            flags=re.IGNORECASE,
         ).strip()
 
     # Reply-to-message reader: when a member replies to a Telegram message
