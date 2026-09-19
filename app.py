@@ -4104,7 +4104,7 @@ def main():
         application.job_queue.run_repeating(
             ranked_catalog_job,
             interval=21600,
-            first=180,
+            first=30,
             name="ranked_catalog_sync"
         )
 
