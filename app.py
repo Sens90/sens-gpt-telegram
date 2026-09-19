@@ -2304,7 +2304,7 @@ def automatic_trophy_monitor():
 
             for tag in tags:
                 try:
-                    player = get_brawlzone_player(tag)
+                    player = get_registration_player(tag)
 
                     if player:
                         save_trophy_snapshot(
