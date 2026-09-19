@@ -78,11 +78,7 @@ def normalize_official_events(rows):
     return out
 
 def brawlvalue_meta_state(state="italy",ttl=900):
-    """Optional Brawl Value cross-check for regional meta.
-
-    This source is deliberately secondary: BrawlTrack remains primary. Failure
-    or a page/schema change returns None and never blocks map/Draft responses.
-    """
+    """Optional Brawl Value cross-check for regional meta; raw published rates only."""
     from urllib.parse import quote
     region=re.sub(r"[^a-z0-9-]+","-",str(state or "italy").strip().casefold()).strip("-") or "italy"
     url=f"https://brawlvalue.com/en/meta/state/{quote(region,safe='-')}"
@@ -94,17 +90,19 @@ def brawlvalue_meta_state(state="italy",ttl=900):
         response=requests.get(url,headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"text/html"},timeout=15)
         response.raise_for_status()
         text=BeautifulSoup(response.text,"html.parser").get_text(" ",strip=True)
-        # Keep only directly published measurements. True-Weight/tier is a
-        # proprietary derived score and is intentionally not used here.
-        pat=re.compile(r"#?\d+\s+([A-Z][A-Z0-9 .&'-]*?)\s+[\d,]+\s+battles\s+[A-S]\s+(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%",re.I)
-        rows=[]
-        seen=set()
+        # Current page renders compact rows such as:
+        # "#1 WENDY 375,075 battles S 76.27% 2.47% 9.58%".
+        # Restrict names to the token span immediately before the battle count;
+        # do not consume the page prose preceding the table.
+        pat=re.compile(r"#\s*\d+\s+([A-Z][A-Z0-9 .&'-]{0,35}?)\s*([\d,]+)\s*battles\s+[A-S]\s+(\d+(?:\.\d+)?)%\s*(\d+(?:\.\d+)?)%\s*(\d+(?:\.\d+)?)%",re.I)
+        rows=[];seen=set()
         for m in pat.finditer(text):
             name=re.sub(r"\s+"," ",m.group(1)).strip().upper()
-            if name in seen:continue
+            if not name or name in seen:continue
             seen.add(name)
-            rows.append({"brawler":name,"win_rate":float(m.group(2)),"pick_rate":float(m.group(3)),"star_player_rate":float(m.group(4))})
-        if not rows:raise ValueError("Brawl Value meta schema not recognized")
+            rows.append({"brawler":name,"battles":int(m.group(2).replace(",","")),"win_rate":float(m.group(3)),"pick_rate":float(m.group(4)),"star_player_rate":float(m.group(5))})
+        if len(rows)<50:
+            raise ValueError(f"Brawl Value meta schema not recognized rows={len(rows)}")
         result={"source":"Brawl Value","scope":"regional_meta","region":region,"source_url":url,"brawlers":rows}
         _CACHE[key]=(time.monotonic(),result)
         return result
