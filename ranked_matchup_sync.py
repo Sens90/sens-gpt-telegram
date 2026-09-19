@@ -150,7 +150,16 @@ def _fetch_brawlzone_ranked_pool():
         raise RuntimeError(f"secondary Ranked pool structurally suspicious total={len(pairs)} counts={counts}")
     if len(pairs)<24 or len(pairs)>36:
         raise RuntimeError(f"secondary Ranked pool suspicious total={len(pairs)} counts={counts}")
-    return pairs,counts
+    page_text=" ".join(soup.stripped_strings)
+    season=None
+    m=re.search(r"Ranked\\s+season\\s+(\\d+)",page_text,re.I)
+    if m: season=int(m.group(1))
+    advertised=None
+    m=re.search(r"(\\d+)\\s+maps\\s+in\\s+the\\s+pool",page_text,re.I)
+    if m: advertised=int(m.group(1))
+    if advertised is not None and advertised!=len(pairs):
+        raise RuntimeError(f"secondary Ranked pool incomplete parsed={len(pairs)} advertised={advertised} counts={counts}")
+    return pairs,counts,season
 
 def current_ranked_pool():
     """Prefer validated Wiki data, then a validated live secondary pool, then known-good safety data."""
