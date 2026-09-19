@@ -1593,7 +1593,7 @@ class CommunityFeatures:
                 pending_rank = f"{combined.group(2).title()} {level}"
             identity = self._draft_identity(map_query)
             if not identity:
-                await message.reply_text("Mappa non riconosciuta. Inserisci una mappa Ranked valida.")
+                await message.reply_text("Mappa non presente in Ranked.")
                 return True
             setup.update({"stage": "rank", "map": identity.get("map_en"), "map_it": identity.get("map_it"), "map_id": identity.get("map_id"), "mode": identity.get("mode_en"), "mode_it": identity.get("mode_it"), "mode_api": identity.get("mode_api")})
             context.user_data["ranked_draft_setup"] = setup
