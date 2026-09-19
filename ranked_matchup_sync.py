@@ -44,16 +44,23 @@ def normalize_match(row):
 
 def collect(seed_tags,max_players=250,sleep_s=.08):
     queue=[str(x).strip().lstrip("#") for x in seed_tags if str(x).strip()]
-    seen_players=set(); matches={}
+    seen_players=set(); matches={}; diagnostics=defaultdict(int)
     while queue and len(seen_players)<max_players:
         tag=queue.pop(0)
         if tag in seen_players:continue
         seen_players.add(tag)
         try: rows=battlelog(tag)
-        except Exception: continue
+        except requests.HTTPError as exc:
+            diagnostics["http_"+str(getattr(exc.response,"status_code","error"))]+=1;continue
+        except Exception as exc:
+            diagnostics["error_"+type(exc).__name__]+=1;continue
+        diagnostics["battlelog_ok"]+=1;diagnostics["raw_battles"]+=len(rows)
         for raw in rows:
+            battle=raw.get("battle") or {}
+            diagnostics["type_"+str(battle.get("type") or "missing").casefold()]+=1
             m=normalize_match(raw)
             if not m:continue
+            diagnostics["ranked_matches_seen"]+=1
             # Preserve the first copy, but attach perspective needed for W/L.
             if m["key"] not in matches:
                 for idx,team in enumerate(m["teams"]):
@@ -67,7 +74,7 @@ def collect(seed_tags,max_players=250,sleep_s=.08):
                 for other,_ in team:
                     if other not in seen_players and other not in queue and len(queue)<max_players*3:queue.append(other)
         time.sleep(sleep_s)
-    return list(matches.values())
+    return list(matches.values()),dict(diagnostics)
 
 def aggregate(matches,min_sample=20):
     """Build every variable observable from final Ranked battle logs.
@@ -129,10 +136,10 @@ def sync_once():
     seeds=[x for x in (os.getenv("RANKED_SYNC_SEEDS") or "").replace(" ","").split(",") if x]
     seeds=list(dict.fromkeys(seeds+registered_seeds()))
     if not seeds:return {"seeds":0,"matches":0,"rows":0}
-    matches=collect(seeds,max_players=int(os.getenv("RANKED_SYNC_MAX_PLAYERS","250")))
+    matches,diagnostics=collect(seeds,max_players=int(os.getenv("RANKED_SYNC_MAX_PLAYERS","250")))
     rows=aggregate(matches,min_sample=int(os.getenv("RANKED_SYNC_MIN_SAMPLE","20")))
     upsert(rows)
-    return {"seeds":len(seeds),"matches":len(matches),"rows":len(rows)}
+    return {"seeds":len(seeds),"matches":len(matches),"rows":len(rows),"diagnostics":diagnostics}
 
 if __name__=="__main__":
     result=sync_once()
