@@ -2740,6 +2740,13 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await community.handle_command(message, context, _raw_command)
         return
 
+    # Global deterministic command router. Every recognized community command
+    # is offered to deterministic handlers before any Gemini/AI path.
+    # Unknown/free-form messages continue through the normal assistant flow.
+    if await community.handle_command(message, context, _raw_command):
+        print("DETERMINISTIC COMMAND ROUTE:", repr(_raw_command), flush=True)
+        return
+
     # Explicit mode on the current request always wins. Otherwise, replying
     # directly to a voice/audio message sent by Sens GPT inherits voice mode.
     explicit_mode = request_voice_mode(message.text)
