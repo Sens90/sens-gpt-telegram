@@ -2687,6 +2687,34 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message or not message.text:
         return
 
+    # Hard-route administrative census command before any generic AI/routing logic.
+    # This deliberately uses the raw Telegram text so mentions, casing and line breaks
+    # cannot make "non registrati" fall through to Gemini.
+    _raw_admin = message.text or ""
+    _without_mentions = re.sub(r"(?<!\\w)@[A-Za-z0-9_]{5,32}\\b", " ", _raw_admin, flags=re.IGNORECASE)
+    _admin_cmd = re.sub(r"[^a-z0-9à-ÿ ]+", " ", _without_mentions.casefold())
+    _admin_cmd = re.sub(r"\\s+", " ", _admin_cmd).strip()
+    if _admin_cmd in {"non registrati", "nonregistrati", "utenti non registrati"}:
+        if getattr(message.chat, "type", None) not in {"group", "supergroup"}:
+            await message.reply_text("Usa questo comando nel gruppo della community.")
+            return
+        member = await context.bot.get_chat_member(message.chat_id, message.from_user.id)
+        if member.status not in {"administrator", "creator"}:
+            await message.reply_text("Questo comando è riservato agli amministratori.")
+            return
+        # Seed any usernames present in the same admin message before comparing.
+        await asyncio.to_thread(census_tagged_usernames, message)
+        rows = await asyncio.to_thread(unregistered_telegram_users, message.chat_id)
+        tags = sorted({
+            "@" + str(row.get("telegram_username") or "").strip().lstrip("@")
+            for row in rows if str(row.get("telegram_username") or "").strip()
+        }, key=str.casefold)
+        if not tags:
+            await message.reply_text("UTENTI NON REGISTRATI\n\nNessun utente non registrato tra quelli censiti dal bot.\n\nTotale: 0")
+            return
+        await message.reply_text("UTENTI NON REGISTRATI\n\n" + "\n".join(tags) + "\n\nTotale: " + str(len(tags)))
+        return
+
     # Explicit mode on the current request always wins. Otherwise, replying
     # directly to a voice/audio message sent by Sens GPT inherits voice mode.
     explicit_mode = request_voice_mode(message.text)
