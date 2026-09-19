@@ -194,7 +194,7 @@ class CommunityFeatures:
         mode_aliases={
             "gem grab":"Gem Grab","gemgrab":"Gem Grab","arraffagemme":"Gem Grab",
             "brawl ball":"Brawl Ball","brawlball":"Brawl Ball","brawl_ball":"Brawl Ball","footbrawl":"Brawl Ball",
-            "hot zone":"Hot Zone","hotzone":"Hot Zone","zona rovente":"Hot Zone",
+            "hot zone":"Hot Zone","hotzone":"Hot Zone","dominio":"Hot Zone","zona rovente":"Hot Zone",
             "bounty":"Bounty","ricercati":"Bounty",
             "heist":"Heist","rapina":"Heist",
             "knockout":"Knockout","k.o.":"Knockout","ko":"Knockout",
@@ -245,6 +245,9 @@ class CommunityFeatures:
             if str(en_mode).casefold() in ("brawl ball","brawlball","brawl_ball"):
                 en_mode="Brawl Ball"
                 it_mode="Footbrawl"
+            elif str(en_mode).casefold() in ("hot zone","hotzone") and str(it_mode).casefold() in ("hot zone","zona rovente"):
+                # Current official Italian client label; localization catalog can lag behind game updates.
+                it_mode="Dominio"
             accepted={raw_event_mode.casefold(),str(en_mode).casefold(),str(it_mode).casefold()}-{""}
             accepted.update(k for k,v in mode_aliases.items() if en_mode and v.casefold()==str(en_mode).casefold())
             if wanted_mode and accepted and wanted_mode not in accepted:return None
