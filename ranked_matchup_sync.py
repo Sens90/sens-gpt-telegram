@@ -133,7 +133,8 @@ def _fetch_wiki_ranked_pool():
     for name in candidates:
         try:
             pairs.add((_wiki_map_mode(name),name))
-        except Exception:
+        except Exception as exc:
+            print(f"RANKED WIKI MAP MODE ERROR: map={name!r} error={exc!r}",flush=True)
             continue
     counts={mode:sum(1 for m,_ in pairs if m==mode) for mode in RANKED_MODES}
     # The current Ranked format has at least four maps per supported mode.
@@ -200,6 +201,7 @@ def current_ranked_pool():
             _ranked_pool_failure_until=0.0
             return pairs
         except Exception as exc:
+            print(f"RANKED POOL SOURCE ERROR: source={source} error={type(exc).__name__}: {exc}",flush=True)
             errors.append(f"{source}={type(exc).__name__}: {exc}")
     _ranked_pool_failure_until=now+3600
     counts={mode:sum(1 for m,_ in _KNOWN_GOOD_RANKED_POOL if m==mode) for mode in RANKED_MODES}
