@@ -174,14 +174,10 @@ class CommunityFeatures:
             "bounty":"Bounty","ricercati":"Bounty",
             "heist":"Heist","rapina":"Heist",
             "knockout":"Knockout","k.o.":"Knockout","ko":"Knockout",
-            "wipeout":"Wipeout","annientamento":"Wipeout",
-            "basket brawl":"Basket Brawl","basketbrawl":"Basket Brawl",
-            "air hockey":"Air Hockey","airhockey":"Air Hockey",
         }
         api_modes={
             "gem grab":"gemGrab","brawl ball":"brawlBall","hot zone":"hotZone",
-            "bounty":"bounty","heist":"heist","knockout":"knockout","wipeout":"wipeout",
-            "basket brawl":"basketBrawl","air hockey":"airHockey",
+            "bounty":"bounty","heist":"heist","knockout":"knockout",
         }
         # Draft validity must come from the same exact seasonal (mode, map)
         # provider used by the Ranked collector. Never let Trophy rotation maps
@@ -221,7 +217,11 @@ class CommunityFeatures:
             accepted={raw_event_mode.casefold(),str(en_mode).casefold(),str(it_mode).casefold()}-{""}
             accepted.update(k for k,v in mode_aliases.items() if en_mode and v.casefold()==str(en_mode).casefold())
             if wanted_mode and accepted and wanted_mode not in accepted:return None
-            return {"map_en":en,"map_it":it,"map_id":stats.get("map_id"),"mode_en":en_mode or None,"mode_it":it_mode or None,"mode_api":api_modes.get(str(en_mode).casefold()),"catalog_key":canonical_key}
+            mode_api=api_modes.get(str(en_mode).casefold())
+            if not mode_api:
+                LOG.warning("DRAFT unresolved Ranked API mode for %s: %s",en,en_mode)
+                return None
+            return {"map_en":en,"map_it":it,"map_id":stats.get("map_id"),"mode_en":en_mode or None,"mode_it":it_mode or None,"mode_api":mode_api,"catalog_key":canonical_key}
         return None
 
     @staticmethod
