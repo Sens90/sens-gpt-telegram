@@ -17,6 +17,15 @@ RANKED_MODES={"gemGrab","brawlBall","hotZone","bounty","heist","knockout"}
 RANKED_WIKI_URL=os.getenv("RANKED_WIKI_URL","https://brawlstars.fandom.com/wiki/Ranked")
 RANKED_WIKI_API=os.getenv("RANKED_WIKI_API","https://brawlstars.fandom.com/api.php")
 _ranked_pool_cache={"ts":0.0,"pairs":None}
+_KNOWN_GOOD_RANKED_POOL={
+    ("bounty","Dry Season"),("bounty","Hideout"),("bounty","Layer Cake"),("bounty","Shooting Star"),
+    ("brawlBall","Center Stage"),("brawlBall","Pinball Dreams"),("brawlBall","Sneaky Fields"),("brawlBall","Triple Dribble"),
+    ("gemGrab","Double Swoosh"),("gemGrab","Gem Fort"),("gemGrab","Hard Rock Mine"),("gemGrab","Undermine"),
+    ("heist","Bridge Too Far"),("heist","Hot Potato"),("heist","Kaboom Canyon"),("heist","Safe Zone"),
+    ("hotZone","Dueling Beetles"),("hotZone","In the Liminal"),("hotZone","Open Business"),("hotZone","Parallel Plays"),("hotZone","Quick Travel"),("hotZone","Ring of Fire"),
+    ("knockout","Belle's Rock"),("knockout","Flaring Phoenix"),("knockout","New Horizons"),("knockout","Out in the Open"),
+}
+_ranked_pool_failure_until=0.0
 
 _WIKI_MODE_CATEGORIES={
     "Gem Grab Maps":"gemGrab",
@@ -125,10 +134,13 @@ def _fetch_wiki_ranked_pool():
 
 
 def current_ranked_pool():
-    """Fetch the live Ranked map pool from Brawl Stars Wiki; fail closed on bad data."""
+    """Use validated live Wiki data; retain last known-good pool on source/parser failure."""
+    global _ranked_pool_failure_until
     now=time.time()
     if _ranked_pool_cache["pairs"] is not None and now-_ranked_pool_cache["ts"]<21600:
         return _ranked_pool_cache["pairs"]
+    if now < _ranked_pool_failure_until:
+        return _KNOWN_GOOD_RANKED_POOL
     try:
         pairs,counts=_fetch_wiki_ranked_pool()
         max_count=max(counts.values())
@@ -136,10 +148,15 @@ def current_ranked_pool():
         maps_by_mode={mode:sorted(name for m,name in pairs if m==mode) for mode in sorted(RANKED_MODES)}
         print(f"RANKED POOL OK: source=wiki-live total={len(pairs)} counts={counts} expanded={featured} maps={maps_by_mode}",flush=True)
         _ranked_pool_cache.update({"ts":now,"pairs":pairs})
+        _ranked_pool_failure_until=0.0
         return pairs
     except Exception as exc:
-        print(f"RANKED POOL ERROR: source=wiki-live {type(exc).__name__}: {exc}",flush=True)
-        return set()
+        # Do not hammer Fandom on every battle while its rendered structure is
+        # incompatible. Keep production functional with the last verified pool.
+        _ranked_pool_failure_until=now+3600
+        counts={mode:sum(1 for m,_ in _KNOWN_GOOD_RANKED_POOL if m==mode) for mode in RANKED_MODES}
+        print(f"RANKED POOL FALLBACK: source=known-good total={len(_KNOWN_GOOD_RANKED_POOL)} counts={counts} reason={type(exc).__name__}: {exc}",flush=True)
+        return _KNOWN_GOOD_RANKED_POOL
 
 
 def _headers():
