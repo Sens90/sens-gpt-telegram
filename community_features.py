@@ -2111,6 +2111,14 @@ class CommunityFeatures:
             q, re.I,
         )
         if draft_actions and draft_state:
+            # Mythic+ is strictly turn-driven: never let the legacy free-form parser
+            # bypass the 1-2-2-1 state machine or inject picks out of turn.
+            if draft_state.get("draft_format") == "turn_pick":
+                await message.reply_text(
+                    "Draft a turni attiva. Inserisci un solo Brawler alla volta: "
+                    + self._draft_next_turn_text(draft_state)
+                )
+                return True
             if any(action[3] for action in draft_actions):
                 draft_format=draft_state.get("draft_format")
                 if draft_format == "all_pick":
