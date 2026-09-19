@@ -127,29 +127,12 @@ _BRAWLZONE_MODE_LABELS={
 }
 
 def _fetch_brawlzone_ranked_pool():
-    """Secondary live pool source when Fandom's API omits the rendered current block."""
+    """Secondary live source: parse the published Full map pool, not sampled map cards."""
     from bs4 import BeautifulSoup
     url=os.getenv("RANKED_SECONDARY_URL","https://brawlzone.net/ranked")
     r=requests.get(url,headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"text/html"},timeout=20)
     r.raise_for_status()
     soup=BeautifulSoup(r.text,"html.parser")
-    pairs=set(); current_mode=None
-    for node in soup.find_all(re.compile(r"^h[1-4]$")):
-        label=" ".join(node.get_text(" ",strip=True).split())
-        folded=label.casefold()
-        # Mode headings may include a Featured suffix.
-        matched=next((api for human,api in _BRAWLZONE_MODE_LABELS.items() if folded==human or folded.startswith(human+" ")),None)
-        if matched:
-            current_mode=matched
-            continue
-        if current_mode and node.name in ("h3","h4") and label:
-            if folded not in ("how these picks are chosen","current season","ranked maps"):
-                pairs.add((current_mode,label))
-    counts={mode:sum(1 for m,_ in pairs if m==mode) for mode in RANKED_MODES}
-    if any(counts[m]<4 or counts[m]>6 for m in RANKED_MODES):
-        raise RuntimeError(f"secondary Ranked pool structurally suspicious total={len(pairs)} counts={counts}")
-    if len(pairs)<24 or len(pairs)>36:
-        raise RuntimeError(f"secondary Ranked pool suspicious total={len(pairs)} counts={counts}")
     page_text=" ".join(soup.stripped_strings)
     season=None
     m=re.search(r"Ranked\\s+season\\s+(\\d+)",page_text,re.I)
@@ -157,9 +140,54 @@ def _fetch_brawlzone_ranked_pool():
     advertised=None
     m=re.search(r"(\\d+)\\s+maps\\s+in\\s+the\\s+pool",page_text,re.I)
     if m: advertised=int(m.group(1))
+
+    heading=next((h for h in soup.find_all(re.compile(r"^h[1-6]$"))
+                  if "full map pool" in " ".join(h.get_text(" ",strip=True).split()).casefold()),None)
+    if heading is None:
+        raise RuntimeError("secondary Full map pool heading not found")
+    pairs=set()
+    start_level=int(heading.name[1])
+    current_mode=None
+    for node in heading.find_all_next():
+        if re.fullmatch(r"h[1-6]",str(node.name)) and int(node.name[1])<=start_level:
+            break
+        text=" ".join(node.get_text(" ",strip=True).split())
+        folded=text.casefold()
+        matched=next((api for human,api in _BRAWLZONE_MODE_LABELS.items()
+                      if folded==human or folded.startswith(human+" ")),None)
+        if matched:
+            current_mode=matched
+            continue
+        if node.name=="a" and current_mode and text:
+            href=str(node.get("href") or "")
+            if "/maps/" in href or "/map/" in href:
+                pairs.add((current_mode,text))
+
+    # Some renderings expose the pool as compact text/links without mode subheadings.
+    # In that case, walk siblings and use the visible mode labels as delimiters.
+    if len(pairs)<24:
+        pairs=set(); current_mode=None
+        for node in heading.find_all_next():
+            if re.fullmatch(r"h[1-6]",str(node.name)) and int(node.name[1])<=start_level:
+                break
+            text=" ".join(node.get_text(" ",strip=True).split())
+            folded=text.casefold()
+            matched=next((api for human,api in _BRAWLZONE_MODE_LABELS.items()
+                          if folded==human or folded.startswith(human+" ")),None)
+            if matched:
+                current_mode=matched
+            if node.name=="a" and current_mode and text and text.casefold() not in _BRAWLZONE_MODE_LABELS:
+                pairs.add((current_mode,text))
+
+    counts={mode:sum(1 for m,_ in pairs if m==mode) for mode in RANKED_MODES}
+    if any(counts[m]<4 or counts[m]>6 for m in RANKED_MODES):
+        raise RuntimeError(f"secondary Full map pool structurally suspicious total={len(pairs)} counts={counts}")
     if advertised is not None and advertised!=len(pairs):
-        raise RuntimeError(f"secondary Ranked pool incomplete parsed={len(pairs)} advertised={advertised} counts={counts}")
+        raise RuntimeError(f"secondary Full map pool incomplete parsed={len(pairs)} advertised={advertised} counts={counts}")
+    if len(pairs)<24 or len(pairs)>36:
+        raise RuntimeError(f"secondary Full map pool suspicious total={len(pairs)} counts={counts}")
     return pairs,counts,season
+
 
 def current_ranked_pool():
     """Prefer validated Wiki data, then a validated live secondary pool, then known-good safety data."""
