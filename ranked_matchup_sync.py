@@ -44,7 +44,11 @@ def current_ranked_pool():
         # pool. It does not publish a stable full-pool total in these notes, so
         # validate the scrape structurally rather than assuming 26 or 30 maps.
         counts={mode:sum(1 for m,_ in pairs if m==mode) for mode in RANKED_MODES}
-        if len(pairs)<18 or any(counts.get(mode,0)<2 for mode in RANKED_MODES):
+        # Ranked has four base maps per mode and the season's Featured mode
+        # receives two additional maps: exactly one mode must therefore expose
+        # six choices and the other five must expose four.
+        distribution=sorted(counts.values())
+        if len(pairs)!=26 or distribution!=[4,4,4,4,4,6]:
             raise RuntimeError(f"Ranked pool suspicious: total={len(pairs)} counts={counts}")
         _ranked_pool_cache.update({"ts":now,"pairs":pairs})
         return pairs
