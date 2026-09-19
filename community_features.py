@@ -1912,8 +1912,43 @@ class CommunityFeatures:
             if len(bans) >= 6:
                 await message.reply_text("I 6 ban della Draft sono già completi.")
                 return True
-            brawler=auto_ban_q.group(1).strip()
-            if any(str(x).casefold() == brawler.casefold() for x in bans):
+            raw_brawler=auto_ban_q.group(1).strip()
+            # A single explicit ban must pass through the same canonical catalog
+            # used by the six-name ban flow. Never store arbitrary text as a ban.
+            try:
+                catalog_rows=self._get("brawlers_catalog",{"select":"name_en,name_it"}) or []
+            except Exception as exc:
+                LOG.warning("DRAFT single-ban catalog unavailable: %s", type(exc).__name__)
+                catalog_rows=[]
+            wanted=re.sub(r"[^a-z0-9]+"," ",raw_brawler.casefold()).strip()
+            brawler=None
+            for row in catalog_rows:
+                en=str(row.get("name_en") or "").strip()
+                it=str(row.get("name_it") or en).strip()
+                keys={re.sub(r"[^a-z0-9]+"," ",x.casefold()).strip() for x in (en,it) if x}
+                if wanted in keys:
+                    brawler=it or en
+                    break
+            explicit_aliases={"mr p":"Mr. P","grey":"Gray","pocho":"Poco","maise":"Maisie"}
+            if not brawler:
+                brawler=explicit_aliases.get(wanted)
+            if not brawler and wanted:
+                import difflib
+                fuzzy=[]
+                for row in catalog_rows:
+                    en=str(row.get("name_en") or "").strip(); it=str(row.get("name_it") or en).strip()
+                    for alias in {en,it}:
+                        key=re.sub(r"[^a-z0-9]+"," ",alias.casefold()).strip()
+                        if key and difflib.SequenceMatcher(None,wanted,key).ratio() >= 0.80 and abs(len(key)-len(wanted)) <= 1:
+                            fuzzy.append(it or en)
+                unique=set(fuzzy)
+                if len(unique)==1:
+                    brawler=next(iter(unique))
+            if not brawler:
+                await message.reply_text(f"Non riconosco '{raw_brawler}' come Brawler. Riprova con il nome corretto.")
+                return True
+            normalized=lambda x: re.sub(r"[^a-z0-9]+"," ",str(x).casefold()).strip()
+            if any(normalized(x) == normalized(brawler) for x in bans):
                 await message.reply_text(f"{brawler} è già presente nei ban.")
                 return True
             bans.append(brawler)
