@@ -1914,7 +1914,7 @@ class CommunityFeatures:
                                 "select":"counter_brawler_id,score,sample_size",
                                 "brawler_id":f"eq.{enemy_id}",
                                 "mode":"eq.brawlBall",
-                                "map_name":f"eq.{draft_state.get('map')}",
+                                "map_name":"in.(*,"+str(draft_state.get("map") or "")+")",
                                 "order":"score.desc.nullslast",
                                 "limit":"50",
                             }) or []
