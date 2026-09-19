@@ -7,7 +7,7 @@ Run as a periodic job with a set of seed player tags. The collector expands one
 hop through players found in Ranked matches and upserts exact map/mode matchup
 rows into Supabase brawler_counters.
 """
-import hashlib, os, time
+import hashlib, os, re, time
 from collections import defaultdict
 import requests
 
