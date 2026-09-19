@@ -77,6 +77,41 @@ def normalize_official_events(rows):
         out.append({"start_time":row.get("startTime"),"end_time":row.get("endTime"),"event_mode":mode,"event_map":map_name,"event_map_id":key,"event_id":event.get("id"),"_official":True})
     return out
 
+def brawlvalue_meta_state(state="italy",ttl=900):
+    """Optional Brawl Value cross-check for regional meta.
+
+    This source is deliberately secondary: BrawlTrack remains primary. Failure
+    or a page/schema change returns None and never blocks map/Draft responses.
+    """
+    from urllib.parse import quote
+    region=re.sub(r"[^a-z0-9-]+","-",str(state or "italy").strip().casefold()).strip("-") or "italy"
+    url=f"https://brawlvalue.com/en/meta/state/{quote(region,safe='-')}"
+    key="brawlvalue:meta:"+region
+    cached=_CACHE.get(key)
+    if cached and time.monotonic()-cached[0]<ttl:return cached[1]
+    try:
+        from bs4 import BeautifulSoup
+        response=requests.get(url,headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"text/html"},timeout=15)
+        response.raise_for_status()
+        text=BeautifulSoup(response.text,"html.parser").get_text(" ",strip=True)
+        # Keep only directly published measurements. True-Weight/tier is a
+        # proprietary derived score and is intentionally not used here.
+        pat=re.compile(r"#?\d+\s+([A-Z][A-Z0-9 .&'-]*?)\s+[\d,]+\s+battles\s+[A-S]\s+(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%",re.I)
+        rows=[]
+        seen=set()
+        for m in pat.finditer(text):
+            name=re.sub(r"\s+"," ",m.group(1)).strip().upper()
+            if name in seen:continue
+            seen.add(name)
+            rows.append({"brawler":name,"win_rate":float(m.group(2)),"pick_rate":float(m.group(3)),"star_player_rate":float(m.group(4))})
+        if not rows:raise ValueError("Brawl Value meta schema not recognized")
+        result={"source":"Brawl Value","scope":"regional_meta","region":region,"source_url":url,"brawlers":rows}
+        _CACHE[key]=(time.monotonic(),result)
+        return result
+    except Exception as error:
+        LOG.warning("LIVE_MAPS optional Brawl Value unavailable region=%s error=%s",region,type(error).__name__)
+        return None
+
 def brawltrack_pro_map_url(map_name):
     """Stable BrawlTrack competitive-map URL; name is encoded by requests/web clients."""
     from urllib.parse import quote
