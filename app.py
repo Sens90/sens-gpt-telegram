@@ -91,6 +91,39 @@ def census_telegram_member(message):
         print("TELEGRAM CENSUS ERROR:", repr(exc), flush=True)
 
 
+def census_tagged_usernames(message):
+    """Store @usernames explicitly mentioned by an administrator, even before they interact with the bot."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY or not message or not message.text:
+        return
+    if getattr(message.chat, "type", None) not in {"group", "supergroup"}:
+        return
+    usernames = sorted(set(re.findall(r"(?<!\\w)@([A-Za-z0-9_]{5,32})\\b", message.text)))
+    bot_name = (getattr(message.get_bot(), "username", None) or "").casefold()
+    usernames = [u for u in usernames if u.casefold() != bot_name]
+    if not usernames:
+        return
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        for username in usernames:
+            # Username-only rows are intentionally merged by chat+username.
+            existing = requests.get(
+                SUPABASE_URL + "/rest/v1/telegram_group_members", headers=_supabase_headers(),
+                params={"select":"id","chat_id":"eq."+str(message.chat_id),"telegram_username":"ilike."+username,"limit":"1"}, timeout=10,
+            ); existing.raise_for_status()
+            if existing.json():
+                requests.patch(
+                    SUPABASE_URL + "/rest/v1/telegram_group_members", headers={**_supabase_headers(),"Prefer":"return=minimal"},
+                    params={"id":"eq."+str(existing.json()[0]["id"])}, json={"telegram_username":username,"last_seen_at":now,"is_active":True}, timeout=10,
+                ).raise_for_status()
+            else:
+                requests.post(
+                    SUPABASE_URL + "/rest/v1/telegram_group_members", headers={**_supabase_headers(),"Prefer":"return=minimal"},
+                    json={"chat_id":int(message.chat_id),"telegram_username":username,"last_seen_at":now,"is_active":True}, timeout=10,
+                ).raise_for_status()
+    except Exception as exc:
+        print("TAGGED USERNAME CENSUS ERROR:", repr(exc), flush=True)
+
+
 def unregistered_telegram_users(chat_id):
     """Return observed group usernames that do not have an active Brawl registration."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
@@ -108,8 +141,16 @@ def unregistered_telegram_users(chat_id):
             params={"select": "telegram_user_id,player_tag", "is_active": "eq.true"},
             timeout=10,
         ); rr.raise_for_status()
-        registered = {int(x["telegram_user_id"]) for x in rr.json() if x.get("telegram_user_id") is not None and str(x.get("player_tag") or "").strip()}
-        return [x for x in observed if int(x["telegram_user_id"]) not in registered]
+        registered_rows = [x for x in rr.json() if str(x.get("player_tag") or "").strip()]
+        registered_ids = {int(x["telegram_user_id"]) for x in registered_rows if x.get("telegram_user_id") is not None}
+        # Also compare Telegram usernames so administrator-tagged users can be checked
+        # before Telegram has exposed their numeric user ID to the bot.
+        rr2 = requests.get(
+            SUPABASE_URL + "/rest/v1/community_members", headers=_supabase_headers(),
+            params={"select":"telegram_user_id,telegram_username,player_tag","is_active":"eq.true"}, timeout=10,
+        ); rr2.raise_for_status()
+        registered_names = {str(x.get("telegram_username") or "").strip().lstrip("@").casefold() for x in rr2.json() if str(x.get("player_tag") or "").strip() and x.get("telegram_username")}
+        return [x for x in observed if not ((x.get("telegram_user_id") is not None and int(x["telegram_user_id"]) in registered_ids) or (x.get("telegram_username") and str(x["telegram_username"]).strip().lstrip("@").casefold() in registered_names))]
     except Exception as exc:
         print("UNREGISTERED LIST ERROR:", repr(exc), flush=True)
         return []
@@ -2674,6 +2715,13 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     community.track_activity(message)
     await asyncio.to_thread(census_telegram_member, message)
+    # Admin mentions are useful for immediately seeding the census with existing members.
+    try:
+        _cm = await context.bot.get_chat_member(message.chat_id, message.from_user.id) if getattr(message.chat, "type", None) in {"group", "supergroup"} else None
+        if _cm and _cm.status in {"administrator", "creator"}:
+            await asyncio.to_thread(census_tagged_usernames, message)
+    except Exception as exc:
+        print("TAGGED CENSUS ADMIN CHECK ERROR:", repr(exc), flush=True)
 
     # Resolve the sender once from Telegram identity so every downstream
     # feature can immediately know the registered Brawl Stars account.
