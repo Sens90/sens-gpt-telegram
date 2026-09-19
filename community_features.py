@@ -2085,8 +2085,23 @@ class CommunityFeatures:
                             LOG.warning("DRAFT BrawlTrack comp scoring unavailable: %s",type(exc).__name__)
                         # Verified evidence dominates; existing exact-map Ranked order remains
                         # the safe fallback while matchup/synergy evidence fills.
+                        # Weight the evidence by Draft context. Early picks need a strong,
+                        # generally safe exact-map profile; later picks should react more
+                        # aggressively to locked enemy picks and our existing composition.
+                        my_locked=len(draft_state.get("my_picks") or [])
+                        enemy_locked=len(draft_state.get("enemy_picks") or [])
+                        if enemy_locked == 0 and my_locked == 0:
+                            map_w,counter_w,synergy_w=1.0,0.0,0.0
+                        elif enemy_locked == 0:
+                            map_w,counter_w,synergy_w=0.75,0.0,1.15
+                        elif my_locked >= 2:
+                            map_w,counter_w,synergy_w=0.55,1.35,1.25
+                        else:
+                            map_w,counter_w,synergy_w=0.65,1.25,1.0
                         recommendations=sorted(ranked_picks,key=lambda x:(
-                            evidence[x.casefold()]["counter"]+evidence[x.casefold()]["synergy"]+evidence[x.casefold()]["map"],
+                            evidence[x.casefold()]["map"]*map_w+
+                            evidence[x.casefold()]["counter"]*counter_w+
+                            evidence[x.casefold()]["synergy"]*synergy_w,
                             evidence[x.casefold()]["samples"],-base_index[x.casefold()]
                         ),reverse=True)
                     except Exception as exc:
