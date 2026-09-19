@@ -114,7 +114,7 @@ def _profile_icon_url(icon_id, timeout=10):
         return None
 
 
-def get_brawltrack_player(player_tag, timeout=20):
+def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
     """Runtime player source. Supercell official is authoritative for every field it exposes."""
     tag = str(player_tag or "").upper().replace("#", "").strip()
     if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag): return None
@@ -174,11 +174,12 @@ def get_brawltrack_player(player_tag, timeout=20):
             "source": "Supercell Official API",
         }
         # Ranked/Prestigio are not supplied by the official player endpoint.
-        enrichment = _legacy_enrichment(tag, timeout=min(timeout, 15))
-        for key, value in enrichment.items():
-            if value is not None:
-                result[key] = value
-        normalize_ranked_fields(result)
+        if enrich_ranked:
+            enrichment = _legacy_enrichment(tag, timeout=min(timeout, 15))
+            for key, value in enrichment.items():
+                if value is not None:
+                    result[key] = value
+            normalize_ranked_fields(result)
         print("SUPERCELL OFFICIAL PLAYER:", tag, club_name, club_tag, flush=True)
         return result
     except Exception as error:
