@@ -28,18 +28,21 @@ _WIKI_MODE_CATEGORIES={
 }
 
 def _wiki_active_map_names():
-    """Read the current Active maps section from the Brawl Stars Wiki Ranked page."""
+    """Read Ranked Active maps through MediaWiki API (HTML page is blocked on Render)."""
     from bs4 import BeautifulSoup
     r=requests.get(
-        RANKED_WIKI_URL,
-        headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept-Language":"en-US,en;q=0.9"},
+        RANKED_WIKI_API,
+        params={"action":"parse","page":"Ranked","prop":"text","format":"json","origin":"*"},
+        headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"application/json"},
         timeout=20,
     )
     r.raise_for_status()
-    soup=BeautifulSoup(r.text,"html.parser")
+    html=(((r.json().get("parse") or {}).get("text") or {}).get("*") or "")
+    if not html:
+        raise RuntimeError("Wiki API returned no Ranked HTML")
+    soup=BeautifulSoup(html,"html.parser")
     marker=soup.find(id=re.compile(r"^Active_maps$",re.I))
     if marker is None:
-        # Fandom can vary the generated id slightly; use heading text as backup.
         marker=next((h for h in soup.find_all(["h2","h3"]) if "active maps" in h.get_text(" ",strip=True).casefold()),None)
     if marker is None:
         raise RuntimeError("Wiki Active maps section not found")
@@ -54,13 +57,12 @@ def _wiki_active_map_names():
             continue
         href=str(node.get("href") or "")
         name=node.get_text(" ",strip=True)
-        if not name or "/wiki/" not in href or name in names:
+        if not name or name in names:
             continue
-        # Ignore files/help/navigation links that may occur inside the section.
         if any(x in href for x in ("/File:","/Category:","/Help:")):
             continue
         names.append(name)
-    if len(names)<20 or len(names)>40:
+    if len(names)<24 or len(names)>40:
         raise RuntimeError(f"Wiki Active maps suspicious count={len(names)}")
     return names
 
