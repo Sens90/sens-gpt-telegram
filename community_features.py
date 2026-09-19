@@ -1880,11 +1880,36 @@ class CommunityFeatures:
             # Recommendations are driven by the map-specific Ranked meta below.
             # Do not expose the internal "counter unavailable" diagnostic in the guided Draft.
             excluded=(draft_state.get("bans") or [])+(draft_state.get("my_picks") or [])+(draft_state.get("enemy_picks") or [])
-            ranked_picks=self._draft_ranked_map_picks(draft_state.get("map"),excluded=excluded,limit=3)
+            ranked_picks=self._draft_ranked_map_picks(draft_state.get("map"),excluded=excluded,limit=8)
             if ranked_picks and len(seq) < 6:
                 next_side=self._draft_pick_order(draft_state["first_pick"])[len(seq)]
                 if next_side == "my":
-                    body+="\nPick consigliati: "+", ".join(ranked_picks)
+                    recommendations=list(ranked_picks)
+                    # If verified matchup rows exist, promote counters that are ALSO
+                    # strong on this Ranked map. Never replace map fit with a global counter.
+                    if side == "enemy":
+                        try:
+                            catalog=self._get("brawlers_catalog",{"select":"brawler_id,name_en,name_it"}) or []
+                            wanted=str(brawler).strip().casefold()
+                            target=next((x for x in catalog if wanted in {str(x.get("name_en") or "").casefold(),str(x.get("name_it") or "").casefold()}),None)
+                            if target:
+                                rows=self._get("brawler_counters",{
+                                    "select":"counter_brawler_id,score,sample_size",
+                                    "brawler_id":f"eq.{target['brawler_id']}",
+                                    "mode":"eq.brawlBall",
+                                    "order":"score.desc.nullslast",
+                                    "limit":"30",
+                                }) or []
+                                by_id={int(x["brawler_id"]):str(x.get("name_it") or x.get("name_en") or "") for x in catalog if x.get("brawler_id") is not None}
+                                counter_labels=[by_id.get(int(x["counter_brawler_id"])) for x in rows if x.get("counter_brawler_id") is not None]
+                                counter_order={str(x).casefold():i for i,x in enumerate(counter_labels) if x}
+                                matched=[x for x in ranked_picks if x.casefold() in counter_order]
+                                matched.sort(key=lambda x:counter_order[x.casefold()])
+                                if matched:
+                                    recommendations=matched+[x for x in ranked_picks if x not in matched]
+                        except Exception as exc:
+                            LOG.warning("DRAFT counter ranking unavailable: %s",type(exc).__name__)
+                    body+="\nPick consigliati: "+", ".join(recommendations[:3])
             comp=self.draft_comp_advice_text(draft_state)
             if comp: body+="\n"+comp
             await message.reply_text(body)
