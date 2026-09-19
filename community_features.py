@@ -212,6 +212,9 @@ class CommunityFeatures:
             LOG.warning("DRAFT current Ranked pool empty; failing closed")
             return None
         map_names=names.get("maps",{}) if isinstance(names,dict) else {}
+        # Localization catalogs are keyed inconsistently across upstream snapshots
+        # (some preserve English case, others use uppercase keys). Normalize both
+        # directions so Draft always accepts and displays the official Italian name.
         map_it_by_en={str(k).casefold():str(v) for k,v in map_names.items() if v}
         it_to_en={str(v).casefold():str(k) for k,v in map_names.items() if v}
         api_to_en={"gemGrab":"Gem Grab","brawlBall":"Brawl Ball","hotZone":"Hot Zone",
@@ -221,6 +224,10 @@ class CommunityFeatures:
             candidates.append((str(map_en),api_to_en.get(mode_api,mode_api),str(map_en)))
         for en,raw_event_mode,canonical_key in candidates:
             it=map_it_by_en.get(en.casefold()) or localized(names,"maps",en)
+            # localized() is case-sensitive against some cached catalogs; never
+            # expose the internal English map name when an Italian mapping exists.
+            if str(it).casefold() == en.casefold():
+                it = map_it_by_en.get(en.casefold(), it)
             # Also use the reverse localization table directly so a valid
             # Italian map name cannot escape the guided Draft state.
             matched_en=it_to_en.get(wanted)
