@@ -1907,6 +1907,11 @@ class CommunityFeatures:
 
         ranked_map = re.fullmatch(r"(?:draft\s+ranked|ranked|classificata)\s+(.+)", q, re.I)
         if ranked_map and not re.fullmatch(r"(?:oggi|7|15|30)(?:\s+giorni)?", ranked_map.group(1), re.I):
+            if getattr(message.chat, "type", None) != "private":
+                await message.reply_text(
+                    "La Draft Ranked funziona solo nella chat privata con Sens GPT."
+                )
+                return True
             raw = ranked_map.group(1).strip()
             rank_aliases = {
                 "bronzo i":"Bronzo I","bronzo 1":"Bronzo I","bronze i":"Bronzo I","bronze 1":"Bronzo I",
