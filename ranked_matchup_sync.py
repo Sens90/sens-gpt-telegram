@@ -14,6 +14,16 @@ import requests
 API="https://api.brawlstars.com/v1"
 RANKED_TYPES={"ranked","soloranked","teamranked"}
 RANKED_MODES={"gemGrab","brawlBall","hotZone","bounty","heist","knockout"}
+# Ranked season 49 current pool (Sep 2026). Keep mode+map paired so historical
+# Ranked battlelog entries cannot contaminate the current Draft evidence.
+CURRENT_RANKED_POOL={
+    "gemGrab":{"Double Swoosh","Gem Fort","Hard Rock Mine","Undermine"},
+    "heist":{"Bridge Too Far","Hot Potato","Kaboom Canyon","Safe Zone"},
+    "bounty":{"Dry Season","Hideout","Layer Cake","Shooting Star"},
+    "brawlBall":{"Center Stage","Pinball Dreams","Sneaky Fields","Triple Dribble"},
+    "hotZone":{"Dueling Beetles","In the Liminal","Open Business","Quick Travel","Parallel Plays","Ring of Fire"},
+    "knockout":{"Belle's Rock","Flaring Phoenix","New Horizons","Out in the Open"},
+}
 
 def _headers():
     token=(os.getenv("BRAWL_STARS_API_TOKEN") or os.getenv("BRAWL_API_TOKEN") or "").strip()
@@ -44,6 +54,8 @@ def normalize_match(row):
     if str(battle.get("type") or "").casefold() not in RANKED_TYPES:return None
     mode=event.get("mode") or battle.get("mode")
     if mode not in RANKED_MODES:return None
+    map_name=str(event.get("map") or "").strip()
+    if not map_name or map_name not in CURRENT_RANKED_POOL.get(mode,set()):return None
     teams=battle.get("teams")
     if not isinstance(teams,list) or len(teams)!=2 or any(len(t)!=3 for t in teams):return None
     def side(team):
@@ -56,7 +68,7 @@ def normalize_match(row):
     # Result belongs to the harvested player. Locate that player outside this
     # function before assigning a winner.
     return {"key":key,"time":row.get("battleTime"),"mode":mode,
-            "map":event.get("map"),"teams":[a,b],"result":result}
+            "map":map_name,"teams":[a,b],"result":result}
 
 def collect(seed_tags,max_players=250,sleep_s=.08):
     queue=[str(x).strip().lstrip("#") for x in seed_tags if str(x).strip()]
