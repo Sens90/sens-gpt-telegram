@@ -4171,6 +4171,20 @@ def _startup_brawltrack_map_smoke():
 
 _startup_brawltrack_map_smoke()
 
+def _startup_ranked_pool_smoke():
+    """One-shot production verification of the live Ranked Wiki pool."""
+    try:
+        from ranked_matchup_sync import current_ranked_pool
+        pairs=current_ranked_pool()
+        counts={}
+        for mode,_ in pairs:
+            counts[mode]=counts.get(mode,0)+1
+        print("RANKED POOL STARTUP SMOKE: total=%s counts=%s" % (len(pairs),counts),flush=True)
+    except Exception as exc:
+        print("RANKED POOL STARTUP SMOKE ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
+
+_startup_ranked_pool_smoke()
+
 def _startup_official_skins_smoke():
     """One-shot safe probe of the proxy's official /v1/skins route."""
     proxy_url=(os.environ.get("BRAWL_OFFICIAL_PROXY_URL") or "").strip()
