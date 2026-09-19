@@ -1606,6 +1606,21 @@ class CommunityFeatures:
             # guard documents that it must never fall through to the generic AI.
             pass
 
+        # Trophy leaderboard commands are common and can be expensive: route them
+        # before Skin Account/user registration lookups so they cannot be delayed
+        # by unrelated per-user database work.
+        if re.fullmatch(r"classifica(?:\\s+(?:della\\s+community))?(?:\\s+di)?\\s+oggi", q0, re.I):
+            await message.reply_text(self.ranking_text(message.chat_id, 0))
+            return True
+        _club_default_fast = re.fullmatch(
+            r"classific(?:a|he)\\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)",
+            q0, re.I,
+        )
+        if _club_default_fast:
+            _club_name = self.CLUB_ALIASES[_club_default_fast.group(1).lower()]
+            await message.reply_text(self.stat_ranking_text(message.chat_id, "trofei", _club_name))
+            return True
+
         registered = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
 
         # Skin Account: totals, category queries, owned/missing lists and per-Brawler details.
