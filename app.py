@@ -2710,6 +2710,15 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message or not message.text:
         return
 
+    # First-line production trace for every text update accepted by MessageHandler.
+    # Keep it free of user IDs and other private metadata.
+    print(
+        "TEXT UPDATE IN:",
+        repr((message.text or "")[:200]),
+        "chat_type=" + str(getattr(message.chat, "type", None)),
+        flush=True,
+    )
+
     # Hard-route administrative census command before any generic AI/routing logic.
     # This deliberately uses the raw Telegram text so mentions, casing and line breaks
     # cannot make "non registrati" fall through to Gemini.
