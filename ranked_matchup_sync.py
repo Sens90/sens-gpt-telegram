@@ -127,7 +127,7 @@ _BRAWLZONE_MODE_LABELS={
 }
 
 def _fetch_brawlzone_ranked_pool():
-    """Secondary live source: parse the published Full map pool, not sampled map cards."""
+    """Secondary live source: parse the published Full map pool from page text."""
     from bs4 import BeautifulSoup
     url=os.getenv("RANKED_SECONDARY_URL","https://brawlzone.net/ranked")
     r=requests.get(url,headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"text/html"},timeout=20)
@@ -135,49 +135,49 @@ def _fetch_brawlzone_ranked_pool():
     soup=BeautifulSoup(r.text,"html.parser")
     page_text=" ".join(soup.stripped_strings)
     season=None
-    m=re.search(r"Ranked\\s+season\\s+(\\d+)",page_text,re.I)
+    # Prefer the season attached to Full map pool; page may also mention next/current seasons.
+    m=re.search(r"Full\\s+map\\s+pool\\s*\\(\\s*season\\s*(\\d+)\\s*\\)",page_text,re.I)
     if m: season=int(m.group(1))
     advertised=None
     m=re.search(r"(\\d+)\\s+maps\\s+in\\s+the\\s+pool",page_text,re.I)
     if m: advertised=int(m.group(1))
 
-    heading=next((h for h in soup.find_all(re.compile(r"^h[1-6]$"))
-                  if "full map pool" in " ".join(h.get_text(" ",strip=True).split()).casefold()),None)
-    if heading is None:
-        raise RuntimeError("secondary Full map pool heading not found")
-    pairs=set()
-    start_level=int(heading.name[1])
-    current_mode=None
-    for node in heading.find_all_next():
-        if re.fullmatch(r"h[1-6]",str(node.name)) and int(node.name[1])<=start_level:
-            break
-        text=" ".join(node.get_text(" ",strip=True).split())
-        folded=text.casefold()
-        matched=next((api for human,api in _BRAWLZONE_MODE_LABELS.items()
-                      if folded==human or folded.startswith(human+" ")),None)
-        if matched:
-            current_mode=matched
-            continue
-        if node.name=="a" and current_mode and text:
-            href=str(node.get("href") or "")
-            if "/maps/" in href or "/map/" in href:
-                pairs.add((current_mode,text))
+    marker=re.search(r"Full\\s+map\\s+pool(?:\\s*\\(\\s*season\\s*\\d+\\s*\\))?",page_text,re.I)
+    if not marker:
+        raise RuntimeError("secondary Full map pool marker not found")
+    tail=page_text[marker.end():]
+    stop=re.search(r"How\\s+these\\s+picks\\s+are\\s+chosen",tail,re.I)
+    pool_text=tail[:stop.start()] if stop else tail
 
-    # Some renderings expose the pool as compact text/links without mode subheadings.
-    # In that case, walk siblings and use the visible mode labels as delimiters.
-    if len(pairs)<24:
-        pairs=set(); current_mode=None
-        for node in heading.find_all_next():
-            if re.fullmatch(r"h[1-6]",str(node.name)) and int(node.name[1])<=start_level:
-                break
-            text=" ".join(node.get_text(" ",strip=True).split())
-            folded=text.casefold()
-            matched=next((api for human,api in _BRAWLZONE_MODE_LABELS.items()
-                          if folded==human or folded.startswith(human+" ")),None)
-            if matched:
-                current_mode=matched
-            if node.name=="a" and current_mode and text and text.casefold() not in _BRAWLZONE_MODE_LABELS:
-                pairs.add((current_mode,text))
+    # Parse mode-delimited text. Mode labels are stable and map names occupy the
+    # text between consecutive labels. Validate names against the map cards/links
+    # present elsewhere on the same page to avoid splitting multi-word map names.
+    mode_order=[("Gem Grab","gemGrab"),("Heist","heist"),("Bounty","bounty"),
+                ("Brawl Ball","brawlBall"),("Hot Zone","hotZone"),("Knockout","knockout")]
+    anchors=[]
+    for a in soup.find_all("a"):
+        name=" ".join(a.get_text(" ",strip=True).split())
+        href=str(a.get("href") or "")
+        if name and ("/maps/" in href or "/map/" in href):
+            anchors.append(name)
+    # Map cards are headings on current rendering; include those too.
+    for h in soup.find_all(re.compile(r"^h[2-4]$")):
+        name=" ".join(h.get_text(" ",strip=True).split())
+        if name and name not in anchors and name.casefold() not in _BRAWLZONE_MODE_LABELS:
+            anchors.append(name)
+    pairs=set()
+    for i,(label,api) in enumerate(mode_order):
+        mm=re.search(re.escape(label)+r"(?:\\s+Featured)?",pool_text,re.I)
+        if not mm: continue
+        rest=pool_text[mm.end():]
+        ends=[]
+        for next_label,_ in mode_order[i+1:]:
+            nm=re.search(re.escape(next_label)+r"(?:\\s+Featured)?",rest,re.I)
+            if nm: ends.append(nm.start())
+        chunk=rest[:min(ends)] if ends else rest
+        for name in anchors:
+            if re.search(r"(?<!\\w)"+re.escape(name)+r"(?!\\w)",chunk,re.I):
+                pairs.add((api,name))
 
     counts={mode:sum(1 for m,_ in pairs if m==mode) for mode in RANKED_MODES}
     if any(counts[m]<4 or counts[m]>6 for m in RANKED_MODES):
