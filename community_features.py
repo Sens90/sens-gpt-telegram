@@ -183,53 +183,22 @@ class CommunityFeatures:
             "bounty":"bounty","heist":"heist","knockout":"knockout","wipeout":"wipeout",
             "basket brawl":"basketBrawl","air hockey":"airHockey",
         }
-        # First retain exact mode information from the current rotation when present.
-        candidates=[]
-        for event in rotation if isinstance(rotation,list) else []:
-            en=str(event.get("event_map") or event.get("map") or "").strip()
-            if en:candidates.append((en,str(event.get("event_mode") or event.get("mode") or ""),event.get("event_map_id")))
-        # Draft must search only the current seasonal Ranked pool, not the
-        # complete historical analyzer catalog. BrawlZone publishes the current
-        # pool and is used only as the pool filter; BrawlTrack remains primary
-        # for picks/comps/statistics.
-        map_names=names.get("maps",{}) if isinstance(names,dict) else {}
-        ranked_pool=set()
-        try:
-            from bs4 import BeautifulSoup
-            response=requests.get(
-                "https://brawlzone.net/ranked",
-                headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept-Language":"en-US,en;q=0.9"},
-                timeout=10,
-            )
-            response.raise_for_status()
-            pool_text=BeautifulSoup(response.text,"html.parser").get_text(" ",strip=True).casefold()
-            # Match only known localized catalog names against the published page.
-            # Longer names first avoids accidental substring matches.
-            for candidate_en in sorted(map_names.keys(),key=lambda x:len(str(x)),reverse=True):
-                label=str(candidate_en).strip()
-                if label and re.search(r"(?<![a-z0-9])"+re.escape(label.casefold())+r"(?![a-z0-9])",pool_text):
-                    ranked_pool.add(label.casefold())
-        except Exception as exc:
-            LOG.warning("DRAFT current Ranked pool unavailable: %s",type(exc).__name__)
-        if not ranked_pool:
-            # Accuracy first: never fall back to the historical map catalog, because
-            # that could make an old Ranked map valid in the current monthly season.
+        # Draft validity must come from the same exact seasonal (mode, map)
+        # provider used by the Ranked collector. Never let Trophy rotation maps
+        # bypass the current Ranked pool.
+        from ranked_matchup_sync import current_ranked_pool
+        pool_pairs=current_ranked_pool()
+        if not pool_pairs:
             LOG.warning("DRAFT current Ranked pool empty; failing closed")
             return None
-        # Resolve only maps present in the current seasonal Ranked pool.
+        map_names=names.get("maps",{}) if isinstance(names,dict) else {}
         map_it_by_en={str(k).casefold():str(v) for k,v in map_names.items() if v}
         it_to_en={str(v).casefold():str(k) for k,v in map_names.items() if v}
-        for key in ranked_catalog.keys() if isinstance(ranked_catalog,dict) else []:
-            key_text=str(key)
-            en=None
-            for candidate_en in map_names.keys():
-                if str(candidate_en).casefold() not in ranked_pool:
-                    continue
-                norm=re.sub(r"[^a-z0-9]+","_",str(candidate_en).casefold()).strip("_")
-                if norm==key_text.casefold():
-                    en=str(candidate_en);break
-            if en and not any(x[0].casefold()==en.casefold() for x in candidates):
-                candidates.append((en,"",key_text))
+        api_to_en={"gemGrab":"Gem Grab","brawlBall":"Brawl Ball","hotZone":"Hot Zone",
+                   "bounty":"Bounty","heist":"Heist","knockout":"Knockout"}
+        candidates=[]
+        for mode_api,map_en in sorted(pool_pairs):
+            candidates.append((str(map_en),api_to_en.get(mode_api,mode_api),str(map_en)))
         for en,raw_event_mode,canonical_key in candidates:
             it=map_it_by_en.get(en.casefold()) or localized(names,"maps",en)
             # Also use the reverse localization table directly so a valid
