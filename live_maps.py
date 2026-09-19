@@ -81,16 +81,15 @@ def brawlvalue_meta_state(state="italy",ttl=900):
     """Optional Brawl Value cross-check. BrawlTrack remains primary."""
     from urllib.parse import quote
     region=re.sub(r"[^a-z0-9-]+","-",str(state or "italy").strip().casefold()).strip("-") or "italy"
-    urls=[
-        f"https://brawlvalue.com/en/meta/state/{quote(region,safe='-')}",
-        "https://brawlvalue.com/en/meta",
-    ]
+    urls=[f"https://brawlvalue.com/en/meta/state/{quote(region,safe='-')}","https://brawlvalue.com/en/meta"]
     key="brawlvalue:meta:"+region
     cached=_CACHE.get(key)
     if cached and time.monotonic()-cached[0]<ttl:return cached[1]
     try:
         from bs4 import BeautifulSoup
-        pat=re.compile(r"#\s*\d+\s+([A-Z][A-Z0-9 .&'-]{0,35}?)\s*([\d,]+)\s*battles\s+[A-S]\s+(\d+(?:\.\d+)?)%\s*(\d+(?:\.\d+)?)%\s*(\d+(?:\.\d+)?)%",re.I)
+        # Brawl Value currently emits compact rows without whitespace between
+        # rank/tier/percent cells, e.g. "#1 WENDY375,075 battles S 76.27%2.47%9.58%".
+        pat=re.compile(r"#\s*\d+\s+(.{1,40}?)([\d,]+)\s*battles\s+[A-S]\s+(\d+(?:\.\d+)?)%\s*(\d+(?:\.\d+)?)%\s*(\d+(?:\.\d+)?)%",re.I)
         best=[];used_url=None
         for url in urls:
             response=requests.get(url,headers={"User-Agent":"SensGPT-TitaniAbusivi/1.0","Accept":"text/html"},timeout=15)
@@ -104,12 +103,10 @@ def brawlvalue_meta_state(state="italy",ttl=900):
                 rows.append({"brawler":name,"battles":int(m.group(2).replace(",","")),"win_rate":float(m.group(3)),"pick_rate":float(m.group(4)),"star_player_rate":float(m.group(5))})
             if len(rows)>len(best):best,used_url=rows,url
             if len(rows)>=50:break
-        if len(best)<50:
-            raise ValueError(f"Brawl Value meta schema not recognized rows={len(best)}")
+        if len(best)<50:raise ValueError(f"Brawl Value meta schema not recognized rows={len(best)}")
         scope="regional_meta" if "/state/" in (used_url or "") else "global_meta"
         result={"source":"Brawl Value","scope":scope,"region":region if scope=="regional_meta" else None,"source_url":used_url,"brawlers":best}
-        _CACHE[key]=(time.monotonic(),result)
-        return result
+        _CACHE[key]=(time.monotonic(),result);return result
     except Exception as error:
         LOG.warning("LIVE_MAPS optional Brawl Value unavailable region=%s error=%s",region,type(error).__name__)
         return None
