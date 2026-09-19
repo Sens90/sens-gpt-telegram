@@ -273,10 +273,17 @@ def normalize_match(row):
     return {"key":key,"time":row.get("battleTime"),"mode":mode,
             "map":map_name,"teams":[a,b],"result":result}
 
-def collect(seed_tags,max_players=250,sleep_s=.08):
+def collect(seed_tags,max_players=250,sleep_s=.08,max_seconds=900):
     queue=[str(x).strip().lstrip("#") for x in seed_tags if str(x).strip()]
     seen_players=set(); matches={}; diagnostics=defaultdict(int)
+    started=time.monotonic()
     while queue and len(seen_players)<max_players:
+        elapsed=time.monotonic()-started
+        if elapsed>=max_seconds:
+            diagnostics["time_budget_reached"]+=1
+            break
+        if seen_players and len(seen_players)%25==0:
+            print("RANKED CATALOG PROGRESS: players=%s/%s matches=%s queue=%s elapsed=%ss" % (len(seen_players),max_players,len(matches),len(queue),int(elapsed)),flush=True)
         tag=queue.pop(0)
         if tag in seen_players:continue
         seen_players.add(tag)
@@ -313,6 +320,8 @@ def collect(seed_tags,max_players=250,sleep_s=.08):
                 if len(queue)>=max_players*3:break
                 queue.append(other)
         time.sleep(sleep_s)
+    diagnostics["players_seen"]=len(seen_players)
+    diagnostics["elapsed_seconds"]=round(time.monotonic()-started,1)
     return list(matches.values()),dict(diagnostics)
 
 def aggregate(matches,min_sample=20):
