@@ -2061,8 +2061,28 @@ class CommunityFeatures:
                                 except (TypeError,ValueError):continue
                                 confidence=min(1.0,games/250.0)
                                 evidence[key]["synergy"]+=wr*confidence;evidence[key]["samples"]+=games
-                        # Verified evidence dominates; existing Ranked map order remains
-                        # the safe fallback while the multidimensional catalog fills.
+                        # BrawlTrack common final comps are primary verified team-synergy evidence.
+                        # They can promote only candidates already admitted by the exact-map Ranked filter.
+                        try:
+                            from live_maps import brawltrack_pro_map_stats
+                            pro=brawltrack_pro_map_stats(draft_state.get("map")) or {}
+                            chosen_ids={aliases.get(str(x).strip().casefold()) for x in (draft_state.get("my_picks") or [])}
+                            chosen_ids.discard(None)
+                            for comp in (pro.get("final_comps") or []):
+                                if not isinstance(comp,dict): continue
+                                team_ids={aliases.get(str(x).strip().casefold()) for x in (comp.get("team") or [])}
+                                team_ids.discard(None)
+                                if chosen_ids and not chosen_ids.issubset(team_ids): continue
+                                sets=int(comp.get("sets") or 0); wr=float(comp.get("win_rate") or 0)
+                                confidence=min(1.0,sets/50.0)
+                                for bid,key in candidate_ids.items():
+                                    if bid in team_ids and bid not in chosen_ids:
+                                        evidence[key]["synergy"]+=wr*confidence
+                                        evidence[key]["samples"]+=sets
+                        except Exception as exc:
+                            LOG.warning("DRAFT BrawlTrack comp scoring unavailable: %s",type(exc).__name__)
+                        # Verified evidence dominates; existing exact-map Ranked order remains
+                        # the safe fallback while matchup/synergy evidence fills.
                         recommendations=sorted(ranked_picks,key=lambda x:(
                             evidence[x.casefold()]["counter"]+evidence[x.casefold()]["synergy"]+evidence[x.casefold()]["map"],
                             evidence[x.casefold()]["samples"],-base_index[x.casefold()]
