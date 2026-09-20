@@ -129,8 +129,8 @@ def _fallback_brawlzone_player(tag, timeout=15, enrich_ranked=True):
             )
             return _number(match.group(1)) if match else None
 
-        level_match = re.search(r'\\\\\"Level \\\\",\\s*(\\d+)', decoded)
-        prestige_match = re.search(r'\\\\\"Prestige \\\\",\\s*\\\\\"?(\\d+)', decoded)
+        level_match = re.search(r'\\\"Level \\\",\s*(\d+)', decoded)
+        prestige_match = re.search(r'\\\"Prestige \\\",\s*\\\"?(\d+)', decoded)
         result = {
             "name": html.unescape(title_match.group(1)).strip(),
             "tag": f"#{tag}",
