@@ -4561,12 +4561,16 @@ async def automatic_today_ranking_job(context):
 
 
 async def automatic_today_ranking_catchup_job(context):
-    """Recover a recent ranking slot missed during a service restart."""
-    now = datetime.now(ROME); latest = None
-    for hour, minute in ((6, 0), (12, 0), (18, 0), (23, 59)):
-        slot = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        if slot <= now:
-            latest = slot
+    """Recover a recent ranking slot missed by the exact daily scheduler."""
+    now = datetime.now(ROME); candidates = []
+    # Include yesterday: just after midnight the most recent slot is yesterday 23:59.
+    for day_offset in (0, -1):
+        day = now + timedelta(days=day_offset)
+        for hour, minute in ((6, 0), (12, 0), (18, 0), (23, 59)):
+            slot = day.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if slot <= now:
+                candidates.append(slot)
+    latest = max(candidates) if candidates else None
     if latest is None or (now-latest).total_seconds() > 10800:
         return
     print("CLASSIFICA OGGI AUTO CATCHUP: slot=%s local=%s" % (
@@ -4602,6 +4606,14 @@ def main():
             name="ranked_catalog_sync"
         )
         application.job_queue.run_once(automatic_today_ranking_catchup_job, when=15, name="classifica_oggi_catchup")
+        # Watchdog: if an exact daily slot is missed, recover it from Supabase.
+        # _send_auto_ranking_slot is idempotent via last_auto_ranking_slot.
+        application.job_queue.run_repeating(
+            automatic_today_ranking_catchup_job,
+            interval=60,
+            first=75,
+            name="classifica_oggi_watchdog"
+        )
         # Exact Rome-local delivery times requested for the automatic "classifica oggi".
         # Separate daily jobs preserve 23:59 exactly instead of approximating a 6-hour interval.
         for hour, minute in ((6, 0), (12, 0), (18, 0), (23, 59)):
