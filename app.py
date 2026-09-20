@@ -2821,12 +2821,12 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # an explicit registration attempt as registration traffic and NEVER let it
     # fall through to Gemini.
     # Registration-family firewall: owner/admin registration is operational too.
-    _admin_registration_probe = re.search(r"registra\\s+(?:utente\\s+)?(?:@[A-Za-z0-9_]{3,32}|id\\s+\\d+)", _raw_command, re.I)
+    _admin_registration_probe = re.search(r"registra\s+(?:utente\s+)?(?:@[A-Za-z0-9_]{3,32}|id\s+\d+)", _raw_command, re.I)
     if _admin_registration_probe:
-        if not re.match(r"^registra\\b", _raw_command, re.I):
+        if not re.match(r"^registra\b", _raw_command, re.I):
             _raw_command = _raw_command[_admin_registration_probe.start():].strip()
         _valid_admin_registration = re.fullmatch(
-            r"registra\\s+(?:utente\\s+)?(?:@[A-Za-z0-9_]{3,32}|id\\s+\\d+)\\s+#?[A-Z0-9]{3,15}",
+            r"registra\s+(?:utente\s+)?(?:@[A-Za-z0-9_]{3,32}|id\s+\d+)\s+#?[A-Z0-9]{3,15}",
             _raw_command,
             re.I,
         )
