@@ -2454,7 +2454,6 @@ class CommunityFeatures:
             payload={
                 "player_tag":str(player["tag"]).replace("#","").upper(),
                 "player_name":player["name"],
-                "club_name":player.get("club_name") or "Senza club / non disponibile",
                 "ranked_current":player.get("ranked_current"),
                 "ranked_peak":player.get("ranked_peak"),
                 "ranked_current_elo":player.get("ranked_current_elo"),
