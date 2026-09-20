@@ -198,10 +198,21 @@ def _fallback_brawlzone_player(tag, timeout=15, enrich_ranked=True):
             "source": "BrawlZone legacy fallback",
         }
         if enrich_ranked:
-            for key, value in _extract_brawlzone_ranked_only(decoded).items():
+            ranked_enrichment = _extract_brawlzone_ranked_only(decoded)
+            for key, value in ranked_enrichment.items():
                 if value is not None:
                     result[key] = value
             normalize_ranked_fields(result)
+            print(
+                "BRAWLZONE RANKED ENRICH:",
+                tag,
+                "current=", result.get("ranked_current"),
+                "season=", result.get("ranked_season_peak"),
+                "career=", result.get("ranked_career_peak"),
+                flush=True,
+            )
+        else:
+            print("BRAWLZONE RANKED ENRICH SKIPPED:", tag, flush=True)
         print("BRAWLZONE PLAYER FALLBACK OK:", tag, flush=True)
         return result
     except Exception as error:
