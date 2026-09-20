@@ -2486,11 +2486,7 @@ class CommunityFeatures:
                 if not player:
                     await message.reply_text("Non riesco a trovare quel giocatore. Controlla il tag.")
                 elif player.get("_registration_locked"):
-                    await message.reply_text(
-                        f"Registrazione già attiva: {player.get('name')} {player.get('tag')}.\\n"
-                        "Non puoi sostituire o cancellare autonomamente il tag registrato. "
-                        "Il ripristino della registrazione può essere effettuato solo dall'amministratore."
-                    )
+                    await message.reply_text("Giocatore già presente nel database.")
                 else:
                     ranked_current = player.get("ranked_current")
                     ranked_peak = player.get("ranked_peak")
