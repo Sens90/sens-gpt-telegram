@@ -140,6 +140,28 @@ def _fallback_brawlzone_player(tag, timeout=15, enrich_ranked=True):
 
         level_match = re.search(r'\\\"Level \\\",\s*(\d+)', decoded)
         prestige_match = re.search(r'\\\"Prestige \\\",\s*\\\"?(\d+)', decoded)
+        club_name = None
+        club_tag = None
+        anchors = re.findall(
+            r'<a[^>]+href=["\\\']/(?:it/)?club/(?:%23|#)?([0289PYLQGRJCUV]{3,15})[^"\\\']*["\\\'][^>]*>(.*?)</a>',
+            decoded, re.I | re.S,
+        )
+        for raw_club_tag, raw_name in anchors:
+            clean_name = re.sub(r"<[^>]+>", " ", raw_name)
+            clean_name = re.sub(r"\\s+", " ", html.unescape(clean_name)).strip()
+            if clean_name and clean_name.casefold() not in {"club", "visualizza club", "view club"}:
+                club_name = clean_name
+                club_tag = _clean_tag(raw_club_tag)
+                break
+        if not club_name:
+            club_match = re.search(
+                r'"club"\\s*:\\s*\\{[^{}]{0,1200}?"tag"\\s*:\\s*"#?([0289PYLQGRJCUV]{3,15})"[^{}]{0,1200}?"name"\\s*:\\s*"([^"]+)"',
+                decoded, re.I | re.S,
+            )
+            if club_match:
+                club_tag = _clean_tag(club_match.group(1))
+                club_name = html.unescape(club_match.group(2)).strip()
+
         result = {
             "name": html.unescape(title_match.group(1)).strip(),
             "tag": f"#{tag}",
@@ -150,9 +172,9 @@ def _fallback_brawlzone_player(tag, timeout=15, enrich_ranked=True):
             "wins_3v3": find_stat("3v3 wins"),
             "wins_solo": find_stat("Solo SD wins"),
             "wins_duo": find_stat("Duo SD wins"),
-            "club": "Senza club / non disponibile",
-            "club_name": None,
-            "club_tag": None,
+            "club": club_name or "Senza club / non disponibile",
+            "club_name": club_name,
+            "club_tag": club_tag,
             "source": "BrawlZone legacy fallback",
         }
         if enrich_ranked:
