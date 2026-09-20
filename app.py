@@ -2523,10 +2523,23 @@ def create_aggregate_trophy_chart(scope_name, member_histories, days=30):
 
 
 def get_brawlzone_player(player_tag):
-    # BrawlTrack is the primary live source. BrawlZone is only a fallback.
-    primary = get_brawltrack_player(player_tag)
+    """Full live profile: Supercell identity first, BrawlZone fallback/enrichment."""
+    primary = get_brawltrack_player(player_tag, enrich_ranked=True)
     if primary and primary.get("name") and primary.get("trophies") is not None:
-        primary["club_name"] = primary.get("club") or primary.get("club_name")
+        # Preserve the structured club_name populated by player_tracking.
+        # Never replace it with the legacy display field, which can include
+        # a newline plus "Tag club".
+        if not primary.get("club_name"):
+            legacy_club = primary.get("club")
+            if isinstance(legacy_club, str):
+                primary["club_name"] = legacy_club.split("\n", 1)[0].strip() or None
+        print(
+            "FULL PROFILE SOURCE:",
+            str(primary.get("source") or "unknown"),
+            str(primary.get("tag") or player_tag),
+            "ranked=", primary.get("ranked_current"),
+            flush=True,
+        )
         return primary
     try:
         tag = player_tag.upper().replace("#", "").strip()
