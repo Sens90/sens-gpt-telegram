@@ -112,11 +112,11 @@ def _fallback_brawlzone_player(tag, timeout=15, enrich_ranked=True):
             return None
         decoded = html.unescape(response.text)
         title_match = re.search(
-            rf"<title>(.*?) \\(#{re.escape(tag)}\\) · BrawlZone</title>",
+            rf"<title>(.*?) \(#{re.escape(tag)}\) · BrawlZone</title>",
             decoded, re.I | re.S,
         )
         description_match = re.search(
-            r"has ([\\d,.]+) trophies and (\\d+) brawlers", decoded, re.I
+            r"has ([\d,.]+) trophies and (\d+) brawlers", decoded, re.I
         )
         if not title_match or not description_match:
             print("BRAWLZONE PLAYER FALLBACK PARSE:", tag, flush=True)
@@ -124,7 +124,7 @@ def _fallback_brawlzone_player(tag, timeout=15, enrich_ranked=True):
 
         def find_stat(label):
             match = re.search(
-                rf'children\\\\":\\\\"{re.escape(label)}\\\\".*?children\\\\":\\\\"([\\d,.]+)\\\\"',
+                rf'children\\":\\"{re.escape(label)}\\".*?children\\":\\"([\d,.]+)\\"',
                 decoded, re.I | re.S,
             )
             return _number(match.group(1)) if match else None
