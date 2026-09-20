@@ -1881,11 +1881,37 @@ def get_brawltrack_meta_context(question):
             if any(re.search(r"(?<![a-z0-9])"+re.escape(alias)+r"(?![a-z0-9])",q) for alias in aliases): selected.append(row)
         if not selected and any(term in q for term in ("meta","tier list","tierlist","miglior brawler","migliori brawler")): selected=rows
         if not selected: return ""
+        # Never trust cached/display names from BrawlTrack for game abilities.
+        # BrawlTrack remains authoritative for build usage/statistics, while the
+        # official-ID catalog is authoritative for the Italian name shown to users.
+        ability_names={}
+        for table,id_key in (("gadgets_catalog","gadget_id"),("star_powers_catalog","star_power_id"),("gears_catalog","gear_id"),("hypercharges_catalog","hypercharge_id")):
+            rr=requests.get(
+                f"{SUPABASE_URL}/rest/v1/{table}",
+                headers={"apikey":SUPABASE_SERVICE_ROLE_KEY,"Authorization":f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"},
+                params={"select":f"{id_key},name_it,name_en","limit":"1000"},
+                timeout=15,
+            )
+            rr.raise_for_status()
+            for ability in rr.json():
+                aid=ability.get(id_key)
+                if aid is None:continue
+                official_it=str(ability.get("name_it") or "").strip()
+                if official_it:ability_names[int(aid)]=official_it
         payload=[]
         for row in selected:
             builds=row.get("popular_builds") if isinstance(row.get("popular_builds"),dict) else {}; clean=[]
             for item in (builds.get("items") or []):
-                clean.append({"rank":item.get("rank"),"use_rate":item.get("use_rate"),"components":[{"type":c.get("type"),"name_it":c.get("name_it")} for c in (item.get("components") or []) if c.get("name_it")]})
+                components=[]
+                for component in (item.get("components") or []):
+                    cid=component.get("id")
+                    try: cid=int(cid) if cid is not None else None
+                    except (TypeError,ValueError): cid=None
+                    official_name=ability_names.get(cid)
+                    # Fail closed: a specific ability name is exposed only when its
+                    # official ID resolves to an Italian catalog name.
+                    if official_name:components.append({"type":component.get("type"),"name_it":official_name})
+                clean.append({"rank":item.get("rank"),"use_rate":item.get("use_rate"),"components":components})
             hyper=builds.get("hypercharge") if isinstance(builds.get("hypercharge"),dict) else None
             modes=row.get("modes") if isinstance(row.get("modes"),dict) else {}
             best_modes=modes.get("items") or []; best_maps=modes.get("maps") or []
@@ -1956,7 +1982,7 @@ def get_brawltrack_meta_context(question):
             except Exception as active_error: print("ACTIVE BRAWLER MAP ERROR:",repr(active_error),flush=True)
             bid=int(row.get("brawler_id")) if row.get("brawler_id") is not None else None
             display=(catalog_by_id.get(bid) or {}).get("name_it") or (catalog_by_id.get(bid) or {}).get("name_en") or row.get("brawler_name")
-            payload.append({"brawler":display,"win_rate":row.get("win_rate"),"meta_usage":row.get("pick_rate"),"star_rate":row.get("star_rate"),"rank":row.get("rank_label"),"popular_builds":clean,"overdrive":({"name_it":hyper.get("name_it")} if hyper and hyper.get("name_it") else None),"recommended_active_map":active_best,"top_3_mode_maps":top_pairs,"top_3_maps":top_maps,"updated_at":row.get("source_updated_at")})
+            payload.append({"brawler":display,"win_rate":row.get("win_rate"),"meta_usage":row.get("pick_rate"),"star_rate":row.get("star_rate"),"rank":row.get("rank_label"),"popular_builds":clean,"overdrive":({"name_it":ability_names.get(int(hyper.get("id")))} if hyper and hyper.get("id") is not None and ability_names.get(int(hyper.get("id"))) else None),"recommended_active_map":active_best,"top_3_mode_maps":top_pairs,"top_3_maps":top_maps,"updated_at":row.get("source_updated_at")})
         return "DATI META STRUTTURATI E LOCALIZZATI (PRIORITARI):\n"+json.dumps(payload,ensure_ascii=False,separators=(",",":"))
     except Exception as e:
         print("BRAWLTRACK META CONTEXT ERROR:",repr(e),flush=True); return ""
