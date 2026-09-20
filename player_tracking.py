@@ -88,7 +88,27 @@ def _extract_brawlzone_ranked_only(page):
             pos = compact.casefold().find(token)
             if pos >= 0:
                 snippets.append(compact[max(0, pos-120):pos+260])
-        print("BRAWLZONE RANKED PARSE MISS:", " || ".join(snippets[:6])[:2200], flush=True)
+        diagnostic = " || ".join(snippets[:6])[:2200]
+        if not diagnostic:
+            # The current page can encode profile data in serialized React/Next
+            # payloads without the legacy English labels. Log only safe nearby
+            # profile markup/serialized text so the parser can be adapted from
+            # real structure rather than guessed regexes.
+            safe_page = re.sub(
+                r'(?i)(api[_-]?key|authorization|token|secret|password)(.{0,80})',
+                r'\\1=[REDACTED]',
+                compact,
+            )
+            tag_pos = safe_page.find("(#")
+            if tag_pos < 0:
+                tag_pos = safe_page.casefold().find("prestige")
+            if tag_pos < 0:
+                tag_pos = safe_page.casefold().find("troph")
+            if tag_pos >= 0:
+                diagnostic = safe_page[max(0, tag_pos-300):tag_pos+1800]
+            else:
+                diagnostic = safe_page[:1800]
+        print("BRAWLZONE RANKED PARSE MISS:", diagnostic, flush=True)
     return result
 
 
