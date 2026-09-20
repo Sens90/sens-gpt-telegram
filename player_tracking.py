@@ -98,6 +98,66 @@ def _legacy_enrichment(tag, timeout=15):
         return {}
 
 
+
+def _fallback_brawlzone_player(tag, timeout=15, enrich_ranked=True):
+    """Legacy player source used before the official Supercell integration."""
+    try:
+        response = requests.get(
+            f"{BRAWLZONE_BASE_URL}/{tag}",
+            headers={"User-Agent": "Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)"},
+            timeout=timeout,
+        )
+        if response.status_code != 200:
+            print("BRAWLZONE PLAYER FALLBACK HTTP:", tag, response.status_code, flush=True)
+            return None
+        decoded = html.unescape(response.text)
+        title_match = re.search(
+            rf"<title>(.*?) \\(#{re.escape(tag)}\\) · BrawlZone</title>",
+            decoded, re.I | re.S,
+        )
+        description_match = re.search(
+            r"has ([\\d,.]+) trophies and (\\d+) brawlers", decoded, re.I
+        )
+        if not title_match or not description_match:
+            print("BRAWLZONE PLAYER FALLBACK PARSE:", tag, flush=True)
+            return None
+
+        def find_stat(label):
+            match = re.search(
+                rf'children\\\\":\\\\"{re.escape(label)}\\\\".*?children\\\\":\\\\"([\\d,.]+)\\\\"',
+                decoded, re.I | re.S,
+            )
+            return _number(match.group(1)) if match else None
+
+        level_match = re.search(r'\\\\\"Level \\\\",\\s*(\\d+)', decoded)
+        prestige_match = re.search(r'\\\\\"Prestige \\\\",\\s*\\\\\"?(\\d+)', decoded)
+        result = {
+            "name": html.unescape(title_match.group(1)).strip(),
+            "tag": f"#{tag}",
+            "trophies": _number(description_match.group(1)),
+            "brawlers": _number(description_match.group(2)),
+            "level": _number(level_match.group(1)) if level_match else None,
+            "prestige": _number(prestige_match.group(1)) if prestige_match else None,
+            "wins_3v3": find_stat("3v3 wins"),
+            "wins_solo": find_stat("Solo SD wins"),
+            "wins_duo": find_stat("Duo SD wins"),
+            "club": "Senza club / non disponibile",
+            "club_name": None,
+            "club_tag": None,
+            "source": "BrawlZone legacy fallback",
+        }
+        if enrich_ranked:
+            for key, value in _extract_brawlzone_ranked_only(decoded).items():
+                if value is not None:
+                    result[key] = value
+            normalize_ranked_fields(result)
+        print("BRAWLZONE PLAYER FALLBACK OK:", tag, flush=True)
+        return result
+    except Exception as error:
+        print("BRAWLZONE PLAYER FALLBACK ERROR:", tag, type(error).__name__, flush=True)
+        return None
+
+
 _ICON_CACHE = None
 
 def _profile_icon_url(icon_id, timeout=10):
@@ -164,7 +224,7 @@ def _fallback_brawltrack_player(tag, timeout=15, enrich_ranked=True):
         return result
     except (BrawlTrackError, ValueError, TypeError) as error:
         print("BRAWLTRACK PLAYER FALLBACK ERROR:", tag, type(error).__name__, flush=True)
-        return None
+        return _fallback_brawlzone_player(tag, timeout=timeout, enrich_ranked=enrich_ranked)
 
 
 def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
