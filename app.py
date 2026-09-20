@@ -2816,6 +2816,13 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         flags=re.I,
     )
     _raw_command = re.sub(r"\s+", " ", _raw_command).strip()
+    # A malformed bot mention can swallow the first command token
+    # (e.g. @SensGPT_TitaniAbusiviBotregistrami). Treat every text containing
+    # an explicit registration attempt as registration traffic and NEVER let it
+    # fall through to Gemini.
+    _registration_probe = re.search(r"(?:registrami|tegistrami)", _raw_command, re.I)
+    if _registration_probe and not re.match(r"^(?:registrami|tegistrami)\b", _raw_command, re.I):
+        _raw_command = _raw_command[_registration_probe.start():].strip()
     if re.match(r"^(?:registrami|tegistrami)\b", _raw_command, re.I):
         _valid_registration = re.fullmatch(r"(?:registrami|tegistrami)\s*#?([A-Z0-9]{3,15})", _raw_command, re.I)
         if not _valid_registration:
