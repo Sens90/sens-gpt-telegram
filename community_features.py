@@ -2917,24 +2917,7 @@ class CommunityFeatures:
                                 "telegram_user_id": f"eq.{int(member['telegram_user_id'])}",
                             },
                         )
-                    if auto_kick and risk:
-                        user_id = int(member["telegram_user_id"])
-                        try:
-                            chat_member = await context.bot.get_chat_member(chat_id, user_id)
-                            if chat_member.status in ("administrator", "creator"):
-                                continue
-                            await context.bot.ban_chat_member(chat_id, user_id)
-                            await context.bot.unban_chat_member(chat_id, user_id, only_if_banned=True)
-                            self._patch(
-                                "community_members",
-                                {"is_active": False},
-                                params={
-                                    "chat_id": f"eq.{chat_id}",
-                                    "telegram_user_id": f"eq.{user_id}",
-                                },
-                            )
-                            await context.bot.send_message(chat_id=chat_id, text=f"{member.get('display_name') or user_id} rimosso automaticamente per {days} giorni di inattività.")
-                        except Exception as exc:
+            except Exception as exc:
                             print("ERRORE AUTOKICK:", repr(exc), flush=True)
             except Exception as exc:
                 print("ERRORE JOB INATTIVITA:", repr(exc), flush=True)
