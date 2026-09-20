@@ -235,8 +235,8 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
     proxy_url = os.environ.get("BRAWL_OFFICIAL_PROXY_URL")
     proxy_key = os.environ.get("BRAWL_OFFICIAL_PROXY_KEY")
     if not proxy_url or not proxy_key:
-        print("SUPERCELL PROXY NON CONFIGURATO - uso fallback BrawlTrack", flush=True)
-        return _fallback_brawltrack_player(tag, timeout=timeout, enrich_ranked=enrich_ranked)
+        print("SUPERCELL PROXY NON CONFIGURATO - uso fallback BrawlZone", flush=True)
+        return _fallback_brawlzone_player(tag, timeout=timeout, enrich_ranked=enrich_ranked)
 
     try:
         response = requests.get(
@@ -273,7 +273,7 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
                     "content_type=", content_type or "unknown",
                     flush=True,
                 )
-            fallback = _fallback_brawltrack_player(tag, timeout=timeout, enrich_ranked=enrich_ranked)
+            fallback = _fallback_brawlzone_player(tag, timeout=timeout, enrich_ranked=enrich_ranked)
             if fallback:
                 return fallback
             return None
@@ -322,7 +322,7 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
         return result
     except Exception as error:
         print("ERRORE SUPERCELL OFFICIAL:", tag, repr(error), flush=True)
-        fallback = _fallback_brawltrack_player(tag, timeout=timeout, enrich_ranked=enrich_ranked)
+        fallback = _fallback_brawlzone_player(tag, timeout=timeout, enrich_ranked=enrich_ranked)
         if fallback:
             return fallback
         return None
