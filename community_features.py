@@ -2416,7 +2416,7 @@ class CommunityFeatures:
             return True
 
         owner_id = 437136453
-        admin_register = re.fullmatch(r"registra\\s+(?:utente\\s+)?(?:@([A-Za-z0-9_]{3,32})|id\\s+(\\d+))\\s+#?([A-Z0-9]{3,15})", q, re.I)
+        admin_register = re.fullmatch(r"registra\s+(?:utente\s+)?(?:@([A-Za-z0-9_]{3,32})|id\s+(\d+))\s+#?([A-Z0-9]{3,15})", q, re.I)
         if admin_register:
             if int(message.from_user.id) != owner_id:
                 await message.reply_text("Comando riservato al proprietario del bot.")
