@@ -80,6 +80,15 @@ def _extract_brawlzone_ranked_only(page):
         result["prestige"] = int(prestige.group(1))
     result["ranked_peak"] = result.get("ranked_career_peak")
     result["ranked_peak_elo"] = result.get("ranked_career_peak_elo")
+    if not any(result.get(k) for k in ("ranked_current", "ranked_season_peak", "ranked_career_peak")):
+        # Safe structural diagnostic: labels/nearby markup only, no credentials.
+        compact = re.sub(r"\\s+", " ", page or "")
+        snippets = []
+        for token in ("ranked", "season best", "all-time best", "highest rank", "best rank", "elo"):
+            pos = compact.casefold().find(token)
+            if pos >= 0:
+                snippets.append(compact[max(0, pos-120):pos+260])
+        print("BRAWLZONE RANKED PARSE MISS:", " || ".join(snippets[:6])[:2200], flush=True)
     return result
 
 
