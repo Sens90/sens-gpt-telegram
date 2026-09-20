@@ -2820,6 +2820,23 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # (e.g. @SensGPT_TitaniAbusiviBotregistrami). Treat every text containing
     # an explicit registration attempt as registration traffic and NEVER let it
     # fall through to Gemini.
+    # Registration-family firewall: owner/admin registration is operational too.
+    _admin_registration_probe = re.search(r"registra\\s+(?:utente\\s+)?(?:@[A-Za-z0-9_]{3,32}|id\\s+\\d+)", _raw_command, re.I)
+    if _admin_registration_probe:
+        if not re.match(r"^registra\\b", _raw_command, re.I):
+            _raw_command = _raw_command[_admin_registration_probe.start():].strip()
+        _valid_admin_registration = re.fullmatch(
+            r"registra\\s+(?:utente\\s+)?(?:@[A-Za-z0-9_]{3,32}|id\\s+\\d+)\\s+#?[A-Z0-9]{3,15}",
+            _raw_command,
+            re.I,
+        )
+        if not _valid_admin_registration:
+            await message.reply_text("Sintassi non valida. Usa: registra utente @username #TAG oppure registra id TELEGRAM_ID #TAG.")
+            return
+        print("ADMIN REGISTRATION ABSOLUTE ROUTE:", repr(_raw_command), flush=True)
+        await community.handle_command(message, context, _raw_command)
+        return
+
     _registration_probe = re.search(r"(?:registrami|tegistrami)", _raw_command, re.I)
     if _registration_probe and not re.match(r"^(?:registrami|tegistrami)\b", _raw_command, re.I):
         _raw_command = _raw_command[_registration_probe.start():].strip()
