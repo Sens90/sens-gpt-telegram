@@ -4459,10 +4459,14 @@ async def ranked_catalog_job(context):
     except Exception as exc:
         print("RANKED CATALOG SYNC ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
 
-async def automatic_today_ranking_job(context):
-    """Send the current-day trophy ranking to every configured community chat."""
+async def _send_auto_ranking_slot(context, slot):
+    """Send one automatic ranking slot at most once per chat, persisted in Supabase."""
+    key = slot.strftime("%Y-%m-%d-%H%M")
     try:
-        settings_rows = await asyncio.to_thread(community._get, "community_settings", {"select": "chat_id"})
+        settings_rows = await asyncio.to_thread(
+            community._get, "community_settings",
+            {"select": "chat_id,last_auto_ranking_slot"}
+        )
     except Exception as exc:
         print("CLASSIFICA OGGI AUTO SETTINGS ERROR:", repr(exc), flush=True)
         return
@@ -4470,29 +4474,43 @@ async def automatic_today_ranking_job(context):
     for row in settings_rows or []:
         try:
             chat_id = int(row["chat_id"])
+            if row.get("last_auto_ranking_slot") == key:
+                continue
             text = await asyncio.to_thread(community.ranking_text, chat_id, 0)
             await context.bot.send_message(chat_id=chat_id, text=text)
+            await asyncio.to_thread(
+                community._patch, "community_settings",
+                {"last_auto_ranking_slot": key},
+                params={"chat_id": f"eq.{chat_id}"}
+            )
             sent += 1
         except Exception as exc:
             print("CLASSIFICA OGGI AUTO SEND ERROR:", row.get("chat_id"), repr(exc), flush=True)
-    print("CLASSIFICA OGGI AUTO: sent=%s local=%s" % (
-        sent, datetime.now(ROME).strftime("%Y-%m-%d %H:%M:%S")
+    print("CLASSIFICA OGGI AUTO: slot=%s sent=%s local=%s" % (
+        key, sent, datetime.now(ROME).strftime("%Y-%m-%d %H:%M:%S")
     ), flush=True)
+
+
+async def automatic_today_ranking_job(context):
+    """Send the current scheduled trophy ranking once per configured chat."""
+    now = datetime.now(ROME)
+    slot = now.replace(second=0, microsecond=0)
+    await _send_auto_ranking_slot(context, slot)
 
 
 async def automatic_today_ranking_catchup_job(context):
     """Recover a recent ranking slot missed during a service restart."""
-    now=datetime.now(ROME); latest=None
-    for hour,minute in ((6,0),(12,0),(18,0),(23,59)):
-        slot=now.replace(hour=hour,minute=minute,second=0,microsecond=0)
-        if slot<=now: latest=slot
-    if latest is None or (now-latest).total_seconds()>10800: return
-    key=latest.strftime("%Y-%m-%d-%H%M")
-    sent=context.application.bot_data.setdefault("auto_ranking_catchup",set())
-    if key in sent: return
-    sent.add(key)
-    print("CLASSIFICA OGGI AUTO CATCHUP: slot=%s local=%s" % (latest.strftime("%Y-%m-%d %H:%M"),now.strftime("%Y-%m-%d %H:%M:%S")),flush=True)
-    await automatic_today_ranking_job(context)
+    now = datetime.now(ROME); latest = None
+    for hour, minute in ((6, 0), (12, 0), (18, 0), (23, 59)):
+        slot = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if slot <= now:
+            latest = slot
+    if latest is None or (now-latest).total_seconds() > 10800:
+        return
+    print("CLASSIFICA OGGI AUTO CATCHUP: slot=%s local=%s" % (
+        latest.strftime("%Y-%m-%d %H:%M"), now.strftime("%Y-%m-%d %H:%M:%S")
+    ), flush=True)
+    await _send_auto_ranking_slot(context, latest)
 
 
 async def generazioni_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
