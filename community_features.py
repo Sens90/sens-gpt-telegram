@@ -2416,6 +2416,60 @@ class CommunityFeatures:
             return True
 
         owner_id = 437136453
+        admin_register = re.fullmatch(r"registra\\s+(?:utente\\s+)?(?:@([A-Za-z0-9_]{3,32})|id\\s+(\\d+))\\s+#?([A-Z0-9]{3,15})", q, re.I)
+        if admin_register:
+            if int(message.from_user.id) != owner_id:
+                await message.reply_text("Comando riservato al proprietario del bot.")
+                return True
+            username, raw_id, raw_tag = admin_register.groups()
+            raw_tag = raw_tag.upper()
+            if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", raw_tag):
+                await message.reply_text("Tag Brawl Stars non valido.")
+                return True
+            if username:
+                target_rows=self._get("community_members",{"select":"*","telegram_username":f"ilike.{username}","limit":"1"}) or []
+            else:
+                target_rows=self._get("community_members",{"select":"*","telegram_user_id":f"eq.{int(raw_id)}","limit":"1"}) or []
+            if not target_rows:
+                await message.reply_text("Utente non trovato tra quelli censiti dal bot.")
+                return True
+            target=target_rows[0]
+            current_tag=str(target.get("player_tag") or "").upper().replace("#","").strip()
+            if current_tag:
+                await message.reply_text(f"Giocatore già presente nel database: {target.get('player_name') or 'Account'} #{current_tag}.")
+                return True
+            tag_owner=self._get("community_members",{"select":"telegram_user_id","player_tag":f"eq.{raw_tag}","limit":"1"}) or []
+            extra_owner=self._get("community_member_accounts",{"select":"telegram_user_id","player_tag":f"eq.{raw_tag}","is_active":"eq.true","limit":"1"}) or []
+            if tag_owner or extra_owner:
+                await message.reply_text("Questo tag Brawl Stars è già associato a un altro utente.")
+                return True
+            player=self.player_fetcher(raw_tag)
+            if not player:
+                await message.reply_text("Non riesco a verificare questo giocatore in questo momento. Nessuna registrazione effettuata.")
+                return True
+            payload={
+                "player_tag":str(player["tag"]).replace("#","").upper(),
+                "player_name":player["name"],
+                "trophies":player.get("trophies"),
+                "club_name":player.get("club_name"),
+                "ranked_current":player.get("ranked_current"),
+                "ranked_peak":player.get("ranked_peak"),
+                "ranked_current_elo":player.get("ranked_current_elo"),
+                "ranked_season_peak":player.get("ranked_season_peak"),
+                "ranked_season_peak_elo":player.get("ranked_season_peak_elo"),
+                "ranked_career_peak":player.get("ranked_career_peak"),
+                "ranked_career_peak_elo":player.get("ranked_career_peak_elo"),
+                "player_last_updated_at":self._now_iso(),
+                "is_active":True,
+            }
+            self._patch("community_members",payload,params={"telegram_user_id":f"eq.{int(target.get('telegram_user_id'))}"})
+            if self.snapshot_saver and player.get("trophies") is not None:
+                try:self.snapshot_saver(player["tag"],player["name"],player["trophies"])
+                except Exception as exc:print("ERRORE SNAPSHOT REGISTRAZIONE ADMIN:",repr(exc),flush=True)
+            label=("@"+str(target.get("telegram_username"))) if target.get("telegram_username") else ("ID "+str(target.get("telegram_user_id")))
+            await message.reply_text(f"Registrazione amministrativa completata: {label} → {player['name']} {player['tag']}.")
+            return True
+
         reset_primary = re.fullmatch(r"ripristina\\s+registrazione\\s+primario\\s+@([A-Za-z0-9_]{3,32})", q, re.I)
         reset_secondary = re.fullmatch(r"ripristina\\s+registrazione\\s+secondario\\s+@([A-Za-z0-9_]{3,32})(?:\\s+(\\d+))?", q, re.I)
         if reset_primary or reset_secondary:
