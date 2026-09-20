@@ -4573,6 +4573,13 @@ async def automatic_today_ranking_catchup_job(context):
     latest = max(candidates) if candidates else None
     if latest is None or (now-latest).total_seconds() > 10800:
         return
+    # Never replay the 23:59 "oggi" ranking after midnight: ranking_text(..., 0)
+    # would then refer to the new calendar day and could incorrectly show zeros.
+    if latest.date() != now.date():
+        print("CLASSIFICA OGGI AUTO CATCHUP SKIP CROSS-DATE: slot=%s local=%s" % (
+            latest.strftime("%Y-%m-%d %H:%M"), now.strftime("%Y-%m-%d %H:%M:%S")
+        ), flush=True)
+        return
     print("CLASSIFICA OGGI AUTO CATCHUP: slot=%s local=%s" % (
         latest.strftime("%Y-%m-%d %H:%M"), now.strftime("%Y-%m-%d %H:%M:%S")
     ), flush=True)
