@@ -4,6 +4,8 @@ import re
 
 import requests
 
+from brawltrack_client import BrawlTrackError, player as brawltrack_player
+
 RANK_NAMES_IT = {
     "bronze": "Bronzo", "silver": "Argento", "gold": "Oro",
     "diamond": "Diamante", "mythic": "Mito", "legendary": "Leggenda",
@@ -114,6 +116,57 @@ def _profile_icon_url(icon_id, timeout=10):
         return None
 
 
+def _fallback_brawltrack_player(tag, timeout=15, enrich_ranked=True):
+    """Fallback player source when the official Supercell proxy is unavailable."""
+    try:
+        data = brawltrack_player(tag)
+        if isinstance(data, dict):
+            data = data.get("player") or data.get("data") or data
+        if not isinstance(data, dict) or not data.get("name") or data.get("trophies") is None:
+            return None
+        raw_tag = data.get("tag") or data.get("playerTag") or data.get("player_tag")
+        resolved_tag = _clean_tag(raw_tag) or f"#{tag}"
+        if resolved_tag.replace("#", "") != tag:
+            return None
+        club = data.get("club") if isinstance(data.get("club"), dict) else {}
+        club_name = club.get("name") or data.get("clubName") or data.get("club_name") or None
+        club_tag = _clean_tag(club.get("tag") or data.get("clubTag") or data.get("club_tag"))
+        raw_brawlers = data.get("brawlers")
+        brawler_count = len(raw_brawlers) if isinstance(raw_brawlers, list) else _number(data.get("brawlerCount") or data.get("brawlersCount"))
+        icon = data.get("icon") if isinstance(data.get("icon"), dict) else {}
+        icon_id = _number(icon.get("id") or data.get("iconId") or data.get("icon_id"))
+        club_display = club_name or "Senza club"
+        if club_tag:
+            club_display = f"{club_display}\nTag club: {club_tag}"
+        result = {
+            "name": data.get("name"),
+            "tag": resolved_tag,
+            "trophies": _number(data.get("trophies")),
+            "brawlers": brawler_count,
+            "level": _number(data.get("expLevel") or data.get("level")),
+            "wins_3v3": _number(data.get("3vs3Victories") or data.get("wins3v3")),
+            "wins_solo": _number(data.get("soloVictories") or data.get("soloWins")),
+            "wins_duo": _number(data.get("duoVictories") or data.get("duoWins")),
+            "club": club_display,
+            "club_name": club_name,
+            "club_tag": club_tag,
+            "icon_id": icon_id,
+            "icon_url": _profile_icon_url(icon_id),
+            "source": "BrawlTrack fallback",
+        }
+        if enrich_ranked:
+            enrichment = _legacy_enrichment(tag, timeout=min(timeout, 15))
+            for key, value in enrichment.items():
+                if value is not None:
+                    result[key] = value
+            normalize_ranked_fields(result)
+        print("BRAWLTRACK PLAYER FALLBACK OK:", tag, flush=True)
+        return result
+    except (BrawlTrackError, ValueError, TypeError) as error:
+        print("BRAWLTRACK PLAYER FALLBACK ERROR:", tag, type(error).__name__, flush=True)
+        return None
+
+
 def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
     """Runtime player source. Supercell official is authoritative for every field it exposes."""
     tag = str(player_tag or "").upper().replace("#", "").strip()
@@ -122,8 +175,8 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
     proxy_url = os.environ.get("BRAWL_OFFICIAL_PROXY_URL")
     proxy_key = os.environ.get("BRAWL_OFFICIAL_PROXY_KEY")
     if not proxy_url or not proxy_key:
-        print("SUPERCELL PROXY NON CONFIGURATO", flush=True)
-        return None
+        print("SUPERCELL PROXY NON CONFIGURATO - uso fallback BrawlTrack", flush=True)
+        return _fallback_brawltrack_player(tag, timeout=timeout, enrich_ranked=enrich_ranked)
 
     try:
         response = requests.get(
@@ -160,6 +213,9 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
                     "content_type=", content_type or "unknown",
                     flush=True,
                 )
+            fallback = _fallback_brawltrack_player(tag, timeout=timeout, enrich_ranked=enrich_ranked)
+            if fallback:
+                return fallback
             return None
         data = response.json()
         if not isinstance(data, dict) or not data.get("name") or data.get("trophies") is None:
@@ -206,6 +262,9 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
         return result
     except Exception as error:
         print("ERRORE SUPERCELL OFFICIAL:", tag, repr(error), flush=True)
+        fallback = _fallback_brawltrack_player(tag, timeout=timeout, enrich_ranked=enrich_ranked)
+        if fallback:
+            return fallback
         return None
 
 
