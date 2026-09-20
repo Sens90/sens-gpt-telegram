@@ -137,7 +137,29 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             timeout=timeout,
         )
         if response.status_code != 200:
-            print("SUPERCELL PROXY HTTP:", response.status_code, response.text[:300], flush=True)
+            # Safe diagnostic: distinguish a proxy/Imunify rejection from an
+            # upstream Supercell error without logging secrets or full payloads.
+            try:
+                error_payload = response.json()
+            except Exception:
+                error_payload = None
+            if isinstance(error_payload, dict):
+                print(
+                    "SUPERCELL PROXY HTTP:",
+                    response.status_code,
+                    "error=", error_payload.get("error"),
+                    "upstream_status=", error_payload.get("upstream_status"),
+                    flush=True,
+                )
+            else:
+                content_type = (response.headers.get("Content-Type") or "").split(";", 1)[0]
+                print(
+                    "SUPERCELL PROXY HTTP:",
+                    response.status_code,
+                    "non_json=1",
+                    "content_type=", content_type or "unknown",
+                    flush=True,
+                )
             return None
         data = response.json()
         if not isinstance(data, dict) or not data.get("name") or data.get("trophies") is None:
