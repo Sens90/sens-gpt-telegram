@@ -4480,6 +4480,21 @@ async def automatic_today_ranking_job(context):
     ), flush=True)
 
 
+async def automatic_today_ranking_catchup_job(context):
+    """Recover a recent ranking slot missed during a service restart."""
+    now=datetime.now(ROME); latest=None
+    for hour,minute in ((6,0),(12,0),(18,0),(23,59)):
+        slot=now.replace(hour=hour,minute=minute,second=0,microsecond=0)
+        if slot<=now: latest=slot
+    if latest is None or (now-latest).total_seconds()>10800: return
+    key=latest.strftime("%Y-%m-%d-%H%M")
+    sent=context.application.bot_data.setdefault("auto_ranking_catchup",set())
+    if key in sent: return
+    sent.add(key)
+    print("CLASSIFICA OGGI AUTO CATCHUP: slot=%s local=%s" % (latest.strftime("%Y-%m-%d %H:%M"),now.strftime("%Y-%m-%d %H:%M:%S")),flush=True)
+    await automatic_today_ranking_job(context)
+
+
 async def generazioni_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.from_user:
@@ -4506,6 +4521,7 @@ def main():
             first=30,
             name="ranked_catalog_sync"
         )
+        application.job_queue.run_once(automatic_today_ranking_catchup_job, when=15, name="classifica_oggi_catchup")
         # Exact Rome-local delivery times requested for the automatic "classifica oggi".
         # Separate daily jobs preserve 23:59 exactly instead of approximating a 6-hour interval.
         for hour, minute in ((6, 0), (12, 0), (18, 0), (23, 59)):
