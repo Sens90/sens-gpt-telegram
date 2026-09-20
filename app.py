@@ -3449,6 +3449,17 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             player["club"] = "TALENTI ABUSIVI"
             player["club_name"] = "TALENTI ABUSIVI"
 
+        # Club source priority: Supercell -> BrawlZone -> community census.
+        # The player fetcher already resolves the first two. Only use the
+        # census when neither live source returned a club.
+        profile_club = player.get("club_name") or player.get("club")
+        profile_club_tag = player.get("club_tag")
+        if not profile_club and member_data:
+            profile_club = member_data.get("club_name")
+            profile_club_tag = None
+        if not profile_club:
+            profile_club = "Senza club / non disponibile"
+
         ranked_current = (
             player.get("ranked_current")
             or (member_data or {}).get("ranked_current")
@@ -3469,7 +3480,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = (
             f"{player['name']}\n"
             f"Tag: {player['tag']}\n"
-            f"Club: {player.get('club') or player.get('club_name') or (member_data or {}).get('club_name') or 'Senza club / non disponibile'}\n\n"
+            f"Club: {profile_club}\n"
+            f"Tag club: {profile_club_tag or 'Non disponibile'}\n\n"
             f"Trofei: {format_number_it(player['trophies'])}\n"
             f"Brawler: {format_number_it(player['brawlers'])}\n"
             f"Livello: {format_number_it(player['level'])}\n"
