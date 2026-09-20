@@ -173,7 +173,9 @@ class CommunityFeatures:
             json=payload,
             timeout=15,
         )
-        response.raise_for_status()
+        if not response.ok:
+            print("SUPABASE PATCH ERROR:", table, response.status_code, response.text[:2000], flush=True)
+            response.raise_for_status()
         if not response.text:
             return []
         return response.json()
