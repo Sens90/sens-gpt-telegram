@@ -261,6 +261,7 @@ def _fallback_brawltrack_player(tag, timeout=15, enrich_ranked=True):
         if club_tag:
             club_display = f"{club_display}\nTag club: {club_tag}"
         catalog_totals = _collection_totals_from_catalog(_official_brawler_catalog(timeout=min(timeout, 20)))
+        progression = _brawltime_progression(tag, timeout=min(timeout, 15))
 
         result = {
             "name": data.get("name"),
@@ -289,6 +290,48 @@ def _fallback_brawltrack_player(tag, timeout=15, enrich_ranked=True):
     except (BrawlTrackError, ValueError, TypeError) as error:
         print("BRAWLTRACK PLAYER FALLBACK ERROR:", tag, type(error).__name__, flush=True)
         return _fallback_brawlzone_player(tag, timeout=timeout, enrich_ranked=enrich_ranked)
+
+
+def _brawltime_progression(player_tag, timeout=15):
+    tag = str(player_tag or "").upper().replace("#", "").strip()
+    if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
+        return {}
+    try:
+        response = requests.get(
+            "https://brawltime.ninja/profile/" + tag,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; SensGPT/1.0)"},
+            timeout=timeout,
+        )
+        if response.status_code != 200:
+            return {}
+        page = html.unescape(response.text)
+        result = {}
+        # The site labels play time as an estimate. Prefer the explicit FAQ sentence,
+        # which is present in server-rendered HTML even when the visual counter is JS-driven.
+        hours_patterns = [
+            r"estimated to have played\s*([\d,.]+)\s*hours",
+            r"Hours Played[^\d]{0,80}([\d,.]+)",
+            r"Hours spent[^\d]{0,120}([\d,.]+)",
+        ]
+        for pattern in hours_patterns:
+            match = re.search(pattern, page, re.I | re.S)
+            if match:
+                result["estimated_hours"] = _number(match.group(1))
+                break
+        # Dynamic progression totals are useful for categories the official catalog
+        # does not expose globally (notably gears and buffies).
+        labels = {
+            "gears_total": r"Gears[^\d]{0,100}[\d,.]+\s*/\s*([\d,.]+)",
+            "buffies_total": r"Buffies[^\d]{0,100}[\d,.]+\s*/\s*([\d,.]+)",
+        }
+        for key, pattern in labels.items():
+            match = re.search(pattern, page, re.I | re.S)
+            if match:
+                result[key] = _number(match.group(1))
+        return result
+    except Exception as error:
+        print("ERRORE BRAWL TIME PROGRESSION:", tag, repr(error), flush=True)
+        return {}
 
 
 def _official_brawler_catalog(timeout=20):
@@ -439,6 +482,9 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             "gadgets_total": catalog_totals.get("gadgets") or None,
             "star_powers_total": catalog_totals.get("star_powers") or None,
             "hypercharges_total": catalog_totals.get("hypercharges") or None,
+            "gears_total": progression.get("gears_total"),
+            "buffies_total": progression.get("buffies_total"),
+            "estimated_hours": progression.get("estimated_hours"),
             "source": "Supercell Official API",
         }
         # Ranked/Prestigio are not supplied by the official player endpoint.
