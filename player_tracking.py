@@ -393,6 +393,9 @@ def _brawlytix_progression(player_tag, timeout=8):
             value = _number(payload.get(key))
             if value is not None:
                 result[key] = value
+        safe_meta = payload.get("diagnostic") if isinstance(payload.get("diagnostic"), dict) else {}
+        if safe_meta:
+            print("PROGRESSION BRIDGE META:", tag, safe_meta, flush=True)
         print("BRAWLYTIX PROGRESSION PROXY:", tag, result, flush=True)
         return result
     except Exception as error:
