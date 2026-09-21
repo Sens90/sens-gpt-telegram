@@ -555,11 +555,41 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
                     "content_type=", content_type or "unknown",
                     flush=True,
                 )
-            fallback = _fallback_brawlzone_player(tag, timeout=timeout, enrich_ranked=enrich_ranked)
-            if fallback:
-                return fallback
-            return None
-        data = response.json()
+
+            # If RoyaleAPI's Supercell proxy is temporarily unavailable, retry
+            # the same official player request through the already configured
+            # authenticated Netsons bridge before degrading to third-party HTML.
+            # This keeps every valid account on the same complete profile path.
+            data = None
+            if api_proxy_key and proxy_url and proxy_key:
+                try:
+                    bridge = requests.get(
+                        proxy_url,
+                        params={"action": "player", "tag": tag},
+                        headers={
+                            "X-Sens-Key": proxy_key,
+                            "Accept": "application/json",
+                            "User-Agent": "SensGPT-TitaniAbusivi/1.0",
+                        },
+                        timeout=min(timeout, 8),
+                    )
+                    if bridge.status_code == 200:
+                        bridge_data = bridge.json()
+                        if isinstance(bridge_data, dict) and bridge_data.get("name") and bridge_data.get("trophies") is not None:
+                            data = bridge_data
+                            print("SUPERCELL NETSONS FALLBACK OK:", tag, flush=True)
+                    if data is None:
+                        print("SUPERCELL NETSONS FALLBACK HTTP:", tag, bridge.status_code, flush=True)
+                except Exception as bridge_error:
+                    print("SUPERCELL NETSONS FALLBACK ERROR:", tag, type(bridge_error).__name__, flush=True)
+
+            if data is None:
+                fallback = _fallback_brawlzone_player(tag, timeout=timeout, enrich_ranked=enrich_ranked)
+                if fallback:
+                    return fallback
+                return None
+        else:
+            data = response.json()
         if not isinstance(data, dict) or not data.get("name") or data.get("trophies") is None:
             return None
 
