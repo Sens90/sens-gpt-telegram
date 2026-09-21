@@ -2774,9 +2774,11 @@ class CommunityFeatures:
                         "TEMPO DI GIOCO",
                         f"Ore giocate stimate: {fmt(player.get('estimated_hours'))} h" if player.get("estimated_hours") is not None else "Ore giocate stimate: Non disponibile", "",
                         "COSTO PER MAXARE L'ACCOUNT",
-                        f"Monete mancanti: {fmt(player.get('max_cost_coins'))}",
-                        f"Punti energia mancanti: {fmt(player.get('max_cost_power_points'))}",
-                        f"Costo Equipaggiamenti mancanti: {fmt(player.get('gears_missing_cost'))} monete",
+                        *(["ACCOUNT MAXATO"] if all(player.get(key) == 0 for key in ("max_cost_coins", "max_cost_power_points", "gears_missing_cost")) else [
+                            f"Monete mancanti: {fmt(player.get('max_cost_coins'))}",
+                            f"Punti energia mancanti: {fmt(player.get('max_cost_power_points'))}",
+                            f"Costo Equipaggiamenti mancanti: {fmt(player.get('gears_missing_cost'))} monete",
+                        ]),
                         "",
                     ]
                     await message.reply_text("\n".join(lines))
