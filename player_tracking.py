@@ -394,6 +394,20 @@ def _brawlytix_progression(player_tag, timeout=8):
             if value is not None:
                 result[key] = value
         safe_meta = payload.get("diagnostic") if isinstance(payload.get("diagnostic"), dict) else {}
+        contexts = safe_meta.get("contexts") if isinstance(safe_meta.get("contexts"), dict) else {}
+        for key, context_key, label in (
+            ("estimated_hours", "hours_spent", "Hours Spent"),
+            ("clip_level", "records_level", "Records Level"),
+            ("clip_points", "records_points", "Records Points"),
+            ("skins_owned", "skins_unlocked", "Skins Unlocked"),
+        ):
+            if result.get(key) is not None:
+                continue
+            match = re.search(r"([0-9][0-9,.]*)\s*" + re.escape(label), str(contexts.get(context_key) or ""), re.I)
+            if match:
+                value = _number(match.group(1))
+                if value is not None:
+                    result[key] = value
         if safe_meta:
             print("PROGRESSION BRIDGE META:", tag, safe_meta, flush=True)
         print("BRAWLYTIX PROGRESSION PROXY:", tag, result, flush=True)
@@ -564,7 +578,12 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             club_display = f"{club_display}\nTag club: {club_tag}"
 
         catalog_totals = _collection_totals_from_catalog(_official_brawler_catalog(timeout=min(timeout, 20)))
-        progression = _brawltime_progression(tag, timeout=min(timeout, 4))
+        progression = _brawlytix_progression(tag, timeout=min(timeout, 5))
+        if not all(progression.get(k) is not None for k in ("estimated_hours", "clip_level", "clip_points", "account_created_year")):
+            secondary = _brawltime_progression(tag, timeout=min(timeout, 4))
+            for key, value in secondary.items():
+                if progression.get(key) is None and value is not None:
+                    progression[key] = value
         # Brawl Time can reject Render (HTTP 403). Probe the already documented
         # BrawlTrack player endpoint only for optional progression fields.
         if not all(progression.get(k) is not None for k in ("estimated_hours", "clip_level", "clip_points", "account_created_year")):
@@ -589,12 +608,6 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
                     print("BRAWLTRACK PROGRESSION:", tag, {k: progression.get(k) for k in aliases}, "keys=", sorted(bt.keys()), flush=True)
             except Exception as error:
                 print("BRAWLTRACK PROGRESSION ERROR:", tag, type(error).__name__, repr(error), flush=True)
-        if not all(progression.get(k) is not None for k in ("estimated_hours", "clip_level", "clip_points")):
-            brawlytix = _brawlytix_progression(tag, timeout=min(timeout, 5))
-            for key in ("estimated_hours", "clip_level", "clip_points", "skins_owned"):
-                if progression.get(key) is None and brawlytix.get(key) is not None:
-                    progression[key] = brawlytix[key]
-
         power_levels = {}
         prestige_levels = {}
         collection = {"gadgets": 0, "star_powers": 0, "gears": 0, "hypercharges": 0, "buffies": 0}
@@ -646,6 +659,8 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             "gears_owned": collection["gears"],
             "hypercharges_owned": collection["hypercharges"],
             "buffies_owned": collection["buffies"],
+            "skins_owned": progression.get("skins_owned"),
+            "skins_total": 1131,
             "brawlers_total": catalog_totals.get("brawlers") or None,
             "gadgets_total": catalog_totals.get("gadgets") or None,
             "star_powers_total": catalog_totals.get("star_powers") or None,
