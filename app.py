@@ -3759,6 +3759,12 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             count = int((player.get("power_levels") or {}).get(level, 0) or 0)
             if count > 0:
                 power_lines.append(f"Livello {level}: {count}/{total_brawlers}")
+        prestige_lines = []
+        prestige_levels = player.get("prestige_levels") or {}
+        for prestige_level in sorted(prestige_levels, key=lambda value: int(value)):
+            count = int(prestige_levels.get(prestige_level, 0) or 0)
+            if count > 0:
+                prestige_lines.append(f"Prestigio {prestige_level}: {count}/{total_brawlers}")
         def _owned_total(owned_key, total_key):
             owned = player.get(owned_key)
             total = player.get(total_key)
@@ -3769,7 +3775,6 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return f"{format_number_it(owned)}/{format_number_it(total)}"
 
         collection_lines = [
-            f"Brawler: {_owned_total('brawlers', 'brawlers_total')}",
             f"Gadget: {_owned_total('gadgets_owned', 'gadgets_total')}",
             f"Abilità stellari: {_owned_total('star_powers_owned', 'star_powers_total')}",
             f"Equipaggiamenti: {_owned_total('gears_owned', 'gears_total')}",
@@ -3779,35 +3784,38 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             collection_lines.append(f"Buffie: {_owned_total('buffies_owned', 'buffies_total')}")
         collection_text = "COLLEZIONE\n" + "\n".join(collection_lines)
         levels_text = "LIVELLI BRAWLER\n" + ("\n".join(power_lines) if power_lines else "Non disponibili")
+        prestige_text = "PRESTIGIO BRAWLER\n" + f"Prestigi totali: {format_number_it(player.get('prestige'))}\n" + ("\n".join(prestige_lines) if prestige_lines else "Distribuzione non disponibile")
         play_time_text = ""
         if player.get("estimated_hours") is not None:
             play_time_text = f"\n\nTEMPO DI GIOCO\nOre giocate stimate: {format_number_it(player.get('estimated_hours'))} h"
 
         text = (
-            f"{player['name']}\n"
+            f"{str(player['name']).upper()}\n"
             f"Tag: {player['tag']}\n"
             f"Club: {profile_club}\n"
             f"Tag club: {profile_club_tag or 'Non disponibile'}\n\n"
+            f"PROFILO\n"
             f"Trofei: {format_number_it(player['trophies'])}\n"
-            f"Brawler: {format_number_it(player['brawlers'])}\n"
-            f"Livello: {format_number_it(player['level'])}\n"
-            f"Prestigio: {format_number_it(player['prestige'])}\n"
+            f"Brawler: {_owned_total('brawlers', 'brawlers_total')}\n"
+            f"Livello: {format_number_it(player['level'])}\n\n"
+            f"RANKED\n"
             f"Ranked attuale: {ranked_current}\n"
             f"Record stagione: {ranked_season_peak}\n"
             f"Record massimo: {ranked_peak}\n\n"
-            f"Vittorie:\n"
-            f"- 3v3: {format_number_it(player['wins_3v3'])}\n"
-            f"- Solo: {format_number_it(player['wins_solo'])}\n"
-            f"- Duo: {format_number_it(player['wins_duo'])}\n\n"
+            f"VITTORIE\n"
+            f"3v3: {format_number_it(player['wins_3v3'])}\n"
+            f"Solo: {format_number_it(player['wins_solo'])}\n"
+            f"Duo: {format_number_it(player['wins_duo'])}\n\n"
             f"{collection_text}\n\n"
-            f"{levels_text}"
+            f"{levels_text}\n\n"
+            f"{prestige_text}"
             f"{play_time_text}\n\n"
-            f"Andamento trofei:\n"
-            f"- Oggi: {format_trophy_change(changes.get('today'))}\n"
-            f"- 7 giorni: {format_trophy_change(changes.get('7d'))}\n"
-            f"- 15 giorni: {format_trophy_change(changes.get('15d'))}\n"
-            f"- 30 giorni: {format_trophy_change(changes.get('30d'))}\n"
-            f"- 90 giorni: {format_trophy_change(changes.get('90d'))}"
+            f"ANDAMENTO TROFEI\n"
+            f"Oggi: {format_trophy_change(changes.get('today'))}\n"
+            f"7 giorni: {format_trophy_change(changes.get('7d'))}\n"
+            f"15 giorni: {format_trophy_change(changes.get('15d'))}\n"
+            f"30 giorni: {format_trophy_change(changes.get('30d'))}\n"
+            f"90 giorni: {format_trophy_change(changes.get('90d'))}"
         )
 
         await send_mode_aware_text(message, context, text)
