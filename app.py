@@ -3484,7 +3484,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         profile_club_tag = player.get("club_tag")
         if not profile_club and member_data:
             profile_club = member_data.get("club_name")
-            profile_club_tag = None
+        # Census stores the club name but not its tag. Resolve the four official
+        # community tags from the centralized mapping instead of leaving it blank.
+        if profile_club and not profile_club_tag:
+            profile_club_tag = CommunityFeatures.CLUB_TAGS.get(str(profile_club).strip().upper())
         if not profile_club:
             profile_club = "Senza club / non disponibile"
 
