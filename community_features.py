@@ -2772,7 +2772,12 @@ class CommunityFeatures:
                         "PRESTIGIO BRAWLER",
                         f"Prestigi totali: {fmt(player.get('prestige'))}", *prestige_lines, "",
                         "TEMPO DI GIOCO",
-                        f"Ore giocate stimate: {fmt(player.get('estimated_hours'))} h" if player.get("estimated_hours") is not None else "Ore giocate stimate: Non disponibile",
+                        f"Ore giocate stimate: {fmt(player.get('estimated_hours'))} h" if player.get("estimated_hours") is not None else "Ore giocate stimate: Non disponibile", "",
+                        "COSTO PER MAXARE L'ACCOUNT",
+                        f"Monete mancanti: {fmt(player.get('max_cost_coins'))}",
+                        f"Punti energia mancanti: {fmt(player.get('max_cost_power_points'))}",
+                        "Calcolo attuale: livelli 11 + Gadget + Abilità stellari + Overdrive",
+                        "Equipaggiamenti e Buffie esclusi finché il conteggio non è verificato",
                     ]
                     await message.reply_text("\n".join(lines))
             except Exception as exc:
