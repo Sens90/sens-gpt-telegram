@@ -649,6 +649,13 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
         club_name = club.get("name") or None
         club_tag = _clean_tag(club.get("tag"))
         brawlers = data.get("brawlers") if isinstance(data.get("brawlers"), list) else []
+        if tag == "YQPPPL98G":
+            skin_probe = [
+                {"brawler": b.get("name"), "skin": b.get("skin")}
+                for b in brawlers
+                if isinstance(b, dict)
+            ]
+            print("ANTO SKIN RAW:", skin_probe, flush=True)
         icon_data = data.get("icon") if isinstance(data.get("icon"), dict) else {}
         icon_id = _number(icon_data.get("id"))
         icon_url = _profile_icon_url(icon_id)
