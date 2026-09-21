@@ -3168,10 +3168,11 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not player:
                 await message.reply_text("Non riesco a trovare questo giocatore. Controlla che il tag sia corretto e riprova.")
                 return
-            await asyncio.to_thread(save_trophy_snapshot, player["tag"], player["name"], player["trophies"])
-            history = await asyncio.to_thread(get_trophy_history, player["tag"], 91)
-            changes = calculate_trophy_changes(history, player["trophies"])
-            member_data = community.get_member_by_player_tag(message.chat_id, player["tag"])
+            # Do not block the interactive profile on Supabase history writes/reads.
+            # The background monitor owns persistence; stats must render immediately.
+            history = []
+            changes = {"today": None, "7d": None, "15d": None, "30d": None, "90d": None}
+            member_data = None
             profile_club = player.get("club_name") or player.get("club") or (member_data or {}).get("club_name") or "Senza club / non disponibile"
             profile_club_tag = player.get("club_tag") or CommunityFeatures.CLUB_TAGS.get(str(profile_club).strip().upper())
             ranked_current = player.get("ranked_current") or (member_data or {}).get("ranked_current") or "Non disponibile"
