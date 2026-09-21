@@ -619,140 +619,93 @@ class CommunityFeatures:
         if not registered_user or not registered_user.get("player_tag"):
             return "Devi prima registrare il tuo tag Brawl Stars."
         try:
-            catalog = []
-            page_size = 1000
-            offset = 0
+            catalog, offset = [], 0
             while True:
                 page = self._get("skins_catalog", {
                     "select": "external_id,brawler_id,name_en,name_it,rarity,brawler_name,source_payload,price_gems,price_coins,acquisition_type,availability_status",
                     "verification_status": "eq.structured_verified",
                     "external_id": "not.in.(29001472,29001473,29001831,29001832,29001833,29001834,29001835,29001836)",
-                    "order": "brawler_name.asc,name_en.asc",
-                    "limit": str(page_size),
-                    "offset": str(offset),
+                    "order": "brawler_name.asc,name_en.asc", "limit": "1000", "offset": str(offset),
                 })
                 catalog.extend(page)
-                if len(page) < page_size:
-                    break
-                offset += page_size
+                if len(page) < 1000: break
+                offset += 1000
             if not catalog:
                 return "Il catalogo skin non è disponibile in questo momento."
             owned_ids = self._official_owned_skin_ids(registered_user["player_tag"])
             rows = list(catalog)
             if brawler_name:
-                canonical_brawler = self._resolve_skin_brawler_name(brawler_name)
-                wanted = self._skin_key(canonical_brawler)
-                matches = [r for r in rows if self._skin_key(r.get("brawler_name")) == wanted]
-                if not matches:
-                    return f"Non trovo il Brawler {brawler_name} nel catalogo skin."
-                rows = matches
+                canonical = self._resolve_skin_brawler_name(brawler_name)
+                wanted = self._skin_key(canonical)
+                rows = [r for r in rows if self._skin_key(r.get("brawler_name")) == wanted]
+                if not rows: return f"Non trovo il Brawler {brawler_name} nel catalogo skin."
             if rarity:
-                wanted_rarity = self._skin_key(rarity)
-                rows = [r for r in rows if self._skin_key(r.get("rarity")) == wanted_rarity]
+                wanted = self._skin_key(rarity)
+                rows = [r for r in rows if self._skin_key(r.get("rarity")) == wanted]
             if category:
-                wanted_category = self._skin_key(category)
-                rows = [r for r in rows if self._skin_key(self._skin_category_label(r)) == wanted_category]
+                wanted = self._skin_key(category)
+                rows = [r for r in rows if self._skin_key(self._skin_category_label(r)) == wanted]
             if not rows:
-                scope = f" per {brawler_name}" if brawler_name else ""
-                return f"Non risultano skin in questa categoria{scope}."
-            for row in rows:
-                row["_owned"] = int(row.get("external_id")) in owned_ids if row.get("external_id") is not None else False
+                return f"Non risultano skin in questa categoria{' per '+brawler_name if brawler_name else ''}."
+            for r in rows:
+                r["_owned"] = r.get("external_id") is not None and int(r["external_id"]) in owned_ids
             owned = [r for r in rows if r["_owned"]]
             missing = [r for r in rows if not r["_owned"]]
-            name = lambda r: str(r.get("name_it") or r.get("name_en") or "")
-            brawler_title = None
+            skin_name = lambda r: str(r.get("name_it") or r.get("name_en") or "")
+            title = None
             if brawler_name:
-                canonical = str(rows[0].get("brawler_name") or brawler_name)
-                brawler_id = rows[0].get("brawler_id")
-                brawler_rows = self._get("brawlers_catalog", {
-                    "select": "brawler_id,name_en,name_it",
-                    "brawler_id": f"eq.{int(brawler_id)}",
-                    "limit": "1",
-                }) if brawler_id is not None else []
-                brawler_title = str((brawler_rows[0].get("name_it") if brawler_rows else None) or brawler_name or canonical).upper()
-            if mode in ("owned", "missing"):
+                bid = rows[0].get("brawler_id")
+                br = self._get("brawlers_catalog", {"select":"brawler_id,name_en,name_it","brawler_id":f"eq.{int(bid)}","limit":"1"}) if bid is not None else []
+                title = str((br[0].get("name_it") if br else None) or brawler_name).upper()
+
+            order = {"Rare":10,"Super rare":20,"Epiche":30,"Mitiche":40,"Leggendarie":50,"Skin Overdrive":60,"Pass Pro":70,"Brawl Pass":80,"Collezione":90,"Senza rarità":100,"Argento":1000,"Oro":1001}
+            def add_values(lines, selected, label):
+                gems = sum(int(r.get("price_gems") or 0) for r in selected if r.get("acquisition_type") == "gems")
+                coins = sum(int(r.get("price_coins") or 0) for r in selected if r.get("acquisition_type") == "coins")
+                special = sum(1 for r in selected if r.get("acquisition_type") not in ("gems","coins"))
+                lines += ["", f"VALORE SKIN {label}", f"💎 Gemme: {gems:,}".replace(",","."), f"🪙 Monete: {coins:,}".replace(",",".")]
+                if special: lines.append(f"🎟️ Senza prezzo diretto verificato: {special}")
+
+            if mode in ("owned","missing"):
                 selected = owned if mode == "owned" else missing
-                title = brawler_title if brawler_name else (category or rarity or "SKIN").upper()
                 label = "POSSEDUTE" if mode == "owned" else "MANCANTI"
-                if not selected:
-                    empty = "Nessuna." if mode == "owned" else "Nessuna: le possiedi tutte."
-                    return f"{title} — SKIN {label} (0/{len(rows)})\\n{empty}"
-                lines = [f"{title} — SKIN {label} ({len(selected)}/{len(rows)})"]
-                if brawler_name and not category and not rarity:
-                    grouped = {}
-                    for row in selected:
-                        grouped.setdefault(self._skin_category_label(row), []).append(row)
-                    category_order = {
-                        "Rare": 10, "Super rare": 20, "Epiche": 30, "Mitiche": 40,
-                        "Leggendarie": 50, "Skin Overdrive": 60, "Pass Pro": 70,
-                        "Brawl Pass": 80, "Collezione": 90, "Senza rarità": 100,
-                        "Argento": 1000, "Oro": 1001,
-                    }
-                    for key, group in sorted(grouped.items(), key=lambda item: (category_order.get(item[0], 500), item[0])):
-                        lines += ["", key.upper(), ", ".join(name(r) for r in group)]
+                heading = title if brawler_name else (category or rarity or "SKIN").upper()
+                lines = [f"{heading} — SKIN {label} ({len(selected)}/{len(rows)})"]
+                if selected:
+                    if brawler_name and not category and not rarity:
+                        groups = {}
+                        for r in selected: groups.setdefault(self._skin_category_label(r), []).append(r)
+                        for key, group in sorted(groups.items(), key=lambda x:(order.get(x[0],500),x[0])):
+                            lines += ["", key.upper(), ", ".join(skin_name(r) for r in group)]
+                    else:
+                        lines += ["", ", ".join(skin_name(r) for r in selected)]
                 else:
-                    lines.append(", ".join(name(r) for r in selected))
-                gem_value = sum(int(r.get("price_gems") or 0) for r in selected if r.get("acquisition_type") == "gems")
-                coin_value = sum(int(r.get("price_coins") or 0) for r in selected if r.get("acquisition_type") == "coins")
-                special_count = sum(1 for r in selected if r.get("acquisition_type") not in ("gems", "coins"))
-                lines += ["", f"VALORE SKIN {label}"]
-                if gem_value:
-                    lines.append(f"💎 Gemme: {gem_value:,}".replace(",", "."))
-                if coin_value:
-                    lines.append(f"🪙 Monete: {coin_value:,}".replace(",", "."))
-                if special_count:
-                    lines.append(f"🎟️ Senza prezzo diretto verificato: {special_count}")
-                if not gem_value and not coin_value and not special_count:
-                    lines.append("Valore non disponibile.")
-                return "\\n".join(lines)
-            if not brawler_name:
-                if rarity or category:
-                    label = category or rarity.title()
-                    lines = [f"SKIN ACCOUNT — {label}", f"Possedute: {len(owned)}/{len(rows)}", f"Mancanti: {len(missing)}", ""]
-                    lines.append("NOMI POSSEDUTI")
-                    lines.append(", ".join(name(r) for r in owned) if owned else "Nessuna.")
-                    lines += ["", "NOMI MANCANTI"]
-                    lines.append(", ".join(name(r) for r in missing) if missing else "Nessuna: le possiedi tutte.")
-                    return "\n".join(lines)
-                breakdown = {}
-                for row in rows:
-                    key = self._skin_category_label(row)
-                    data = breakdown.setdefault(key, [0, 0])
-                    data[1] += 1
-                    if row["_owned"]:
-                        data[0] += 1
-                lines = [f"SKIN ACCOUNT\nTotale: {len(owned)}/{len(rows)}", ""]
-                for key in sorted(breakdown):
-                    have,total = breakdown[key]
-                    lines.append(f"{key}: {have}/{total}")
+                    lines += ["", "Nessuna." if mode == "owned" else "Nessuna: le possiedi tutte."]
+                add_values(lines, selected, label)
                 return "\n".join(lines)
-            title = brawler_title or str(rows[0].get("brawler_name") or brawler_name).upper()
-            groups = {}
-            for row in rows:
-                groups.setdefault(self._skin_category_label(row), []).append(row)
-            # Brawler summary is deliberately statistics-only. Names are returned
-            # only by the explicit owned/missing subcommands; images only by an
-            # explicit photo/image request.
-            if mode in ("count", "full", "summary"):
-                lines = [
-                    f"{title} — SKIN",
-                    f"Possedute: {len(owned)}/{len(rows)}",
-                    f"Mancanti: {len(missing)}",
-                ]
-                if rows:
-                    lines.append(f"Completamento: {len(owned) * 100.0 / len(rows):.1f}%")
-                lines += ["", "PER RARITÀ"]
-                category_order = {
-                    "Rare": 10, "Super rare": 20, "Epiche": 30, "Mitiche": 40,
-                    "Leggendarie": 50, "Skin Overdrive": 60, "Pass Pro": 70,
-                    "Brawl Pass": 80, "Collezione": 90, "Senza rarità": 100,
-                    "Argento": 1000, "Oro": 1001,
-                }
-                for key, group in sorted(groups.items(), key=lambda item: (category_order.get(item[0], 500), item[0])):
-                    have = sum(1 for r in group if r["_owned"])
-                    lines.append(f"{key}: {have}/{len(group)}")
-                return "\\n".join(lines)
-            return "Comando skin non riconosciuto."
+
+            if not brawler_name and (rarity or category):
+                label = category or rarity.title()
+                lines = [f"SKIN ACCOUNT — {label}", f"Possedute: {len(owned)}/{len(rows)}", f"Mancanti: {len(missing)}", "", "NOMI POSSEDUTI", ", ".join(skin_name(r) for r in owned) if owned else "Nessuna.", "", "NOMI MANCANTI", ", ".join(skin_name(r) for r in missing) if missing else "Nessuna: le possiedi tutte."]
+                add_values(lines, owned, "POSSEDUTE"); add_values(lines, missing, "MANCANTI")
+                return "\n".join(lines)
+
+            if not brawler_name:
+                groups = {}
+                for r in rows:
+                    key=self._skin_category_label(r); d=groups.setdefault(key,[0,0]); d[1]+=1; d[0]+=1 if r["_owned"] else 0
+                lines=[f"SKIN ACCOUNT\nTotale: {len(owned)}/{len(rows)}", f"Mancanti: {len(missing)}", f"Completamento: {len(owned)*100.0/len(rows):.1f}%", "", "PER RARITÀ"]
+                for key,(have,total) in sorted(groups.items(), key=lambda x:(order.get(x[0],500),x[0])): lines.append(f"{key}: {have}/{total}")
+                add_values(lines, owned, "POSSEDUTE"); add_values(lines, missing, "MANCANTI")
+                return "\n".join(lines)
+
+            groups={}
+            for r in rows: groups.setdefault(self._skin_category_label(r),[]).append(r)
+            lines=[f"{title} — SKIN", f"Possedute: {len(owned)}/{len(rows)}", f"Mancanti: {len(missing)}", f"Completamento: {len(owned)*100.0/len(rows):.1f}%", "", "PER RARITÀ"]
+            for key,group in sorted(groups.items(), key=lambda x:(order.get(x[0],500),x[0])):
+                lines.append(f"{key}: {sum(1 for r in group if r['_owned'])}/{len(group)}")
+            add_values(lines, owned, "POSSEDUTE"); add_values(lines, missing, "MANCANTI")
+            return "\n".join(lines)
         except Exception as exc:
             print("ERRORE SKIN ACCOUNT:", repr(exc), flush=True)
             return "Non riesco a leggere la tua Skin Collection in questo momento."
