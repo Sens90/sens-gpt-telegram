@@ -1678,6 +1678,14 @@ class CommunityFeatures:
         # Trophy leaderboard commands are common and can be expensive: route them
         # before Skin Account/user registration lookups so they cannot be delayed
         # by unrelated per-user database work.
+        # Keep club-vs-club daily ranking distinct from the individual daily ranking.
+        # Both are deterministic and must never fall through to Gemini.
+        if re.fullmatch(r"classifica\\s+(?:dei\\s+)?club\\s+(?:di\\s+)?oggi", q0, re.I):
+            await context.bot.send_message(
+                chat_id=message.chat_id,
+                text=self.club_trophy_ranking_text(message.chat_id, 0),
+            )
+            return True
         if re.fullmatch(r"classifica(?:\\s+(?:della\\s+community))?(?:\\s+di)?\\s+oggi", q0, re.I):
             await context.bot.send_message(chat_id=message.chat_id, text=self.ranking_text(message.chat_id, 0))
             return True
