@@ -4965,6 +4965,26 @@ async def _send_auto_ranking_slot(context, slot):
             chat_id = int(row["chat_id"])
             if row.get("last_auto_ranking_slot") == key:
                 continue
+            # Atomically claim this slot before computing/sending. Scheduler and
+            # watchdog can race at the exact minute; only one PATCH may match the
+            # previously observed value. The loser must not send a duplicate.
+            previous_slot = row.get("last_auto_ranking_slot")
+            claim_params = {"chat_id": f"eq.{chat_id}", "select": "chat_id"}
+            claim_params["last_auto_ranking_slot"] = (
+                f"eq.{previous_slot}" if previous_slot is not None else "is.null"
+            )
+            claim_response = await asyncio.to_thread(
+                requests.patch,
+                SUPABASE_URL + "/rest/v1/community_settings",
+                headers={**_supabase_headers(), "Prefer": "return=representation"},
+                params=claim_params,
+                json={"last_auto_ranking_slot": key},
+                timeout=10,
+            )
+            claim_response.raise_for_status()
+            if not claim_response.json():
+                print("CLASSIFICA OGGI AUTO CLAIM SKIP:", chat_id, key, flush=True)
+                continue
             # Compute the slot payload before sending. At 23:59 this freezes all
             # end-of-day texts while "today" still points to the closing Rome day,
             # so a Telegram send crossing midnight cannot reset the calculation.
@@ -4983,11 +5003,6 @@ async def _send_auto_ranking_slot(context, slot):
                 await context.bot.send_message(chat_id=chat_id, text=club_text)
                 await context.bot.send_message(chat_id=chat_id, text=global_text)
                 await context.bot.send_message(chat_id=chat_id, text=global_club_text)
-            await asyncio.to_thread(
-                community._patch, "community_settings",
-                {"last_auto_ranking_slot": key},
-                params={"chat_id": f"eq.{chat_id}"}
-            )
             sent += 1
         except Exception as exc:
             print("CLASSIFICA OGGI AUTO SEND ERROR:", row.get("chat_id"), repr(exc), flush=True)
