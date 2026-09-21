@@ -3232,8 +3232,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "COSTO PER MAXARE L'ACCOUNT",
                 f"Monete mancanti: {format_number_it(player.get('max_cost_coins'))}",
                 f"Punti energia mancanti: {format_number_it(player.get('max_cost_power_points'))}",
-                "Calcolo attuale: livelli 11 + Gadget + Abilità stellari + Overdrive",
-                "Equipaggiamenti e Buffie esclusi finché il conteggio non è verificato", "",
+                "",
                 "ANDAMENTO TROFEI", f"Oggi: {format_trophy_change(changes.get('today'))}", f"7 giorni: {format_trophy_change(changes.get('7d'))}", f"15 giorni: {format_trophy_change(changes.get('15d'))}", f"30 giorni: {format_trophy_change(changes.get('30d'))}", f"90 giorni: {format_trophy_change(changes.get('90d'))}"
             ])
             print("FULL PROFILE EARLY RENDER:", player_tag, "chars=", len(text), flush=True)
