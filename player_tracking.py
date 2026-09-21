@@ -310,6 +310,7 @@ def _brawltime_progression(player_tag, timeout=15):
             timeout=timeout,
         )
         if response.status_code != 200:
+            print("BRAWL TIME PROGRESSION HTTP:", tag, response.status_code, flush=True)
             return {}
         page = html.unescape(response.text)
         result = {}
@@ -346,6 +347,7 @@ def _brawltime_progression(player_tag, timeout=15):
             match = re.search(pattern, page, re.I | re.S)
             if match:
                 result[key] = _number(match.group(1))
+        print("BRAWL TIME PROGRESSION:", tag, result, "bytes=", len(page), flush=True)
         return result
     except Exception as error:
         print("ERRORE BRAWL TIME PROGRESSION:", tag, repr(error), flush=True)
