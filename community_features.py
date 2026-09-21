@@ -1308,25 +1308,60 @@ class CommunityFeatures:
         previous_last = this_month - timedelta(days=1)
         return previous_last.replace(day=1), this_month
 
+    @staticmethod
+    def _daily_baseline_tags(rows, tolerance_minutes=15):
+        """Tags captured with the club's initial daily roster; later joiners have no daily baseline."""
+        first_by_club = {}
+        parsed = []
+        for row in rows:
+            club = str(row.get("club_name") or "").strip().upper()
+            tag = str(row.get("player_tag") or "").strip().upper()
+            raw = row.get("first_seen_at")
+            try:
+                seen = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            except (TypeError, ValueError):
+                seen = None
+            parsed.append((club, tag, seen))
+            if club and seen is not None and (club not in first_by_club or seen < first_by_club[club]):
+                first_by_club[club] = seen
+        tolerance = timedelta(minutes=tolerance_minutes)
+        return {
+            tag for club, tag, seen in parsed
+            if tag and seen is not None and club in first_by_club
+            and seen <= first_by_club[club] + tolerance
+        }
+
     def global_ranking_text(self, chat_id, days=0):
         """All players in the four complete club rosters. Daily scope only."""
         today = datetime.now(timezone.utc).astimezone(ROME).date()
         rows = self._complete_roster_daily_rows(today, today + timedelta(days=1))
+        baseline_tags = self._daily_baseline_tags(rows)
         players = []
         for row in rows:
             try:
-                current = int(row["last_trophies"]); delta = current - int(row["first_trophies"])
+                current = int(row["last_trophies"])
             except (TypeError, ValueError, KeyError):
                 continue
+            tag = str(row.get("player_tag") or "").strip().upper()
+            delta = None
+            if tag in baseline_tags:
+                try:
+                    delta = current - int(row["first_trophies"])
+                except (TypeError, ValueError, KeyError):
+                    delta = None
             players.append({"name": row.get("player_name") or row.get("player_tag"), "current": current, "delta": delta})
-        players.sort(key=lambda row: (row["delta"], row["current"]), reverse=True)
+        players.sort(key=lambda row: (row["delta"] is not None, row["delta"] if row["delta"] is not None else -10**9, row["current"]), reverse=True)
         lines = ["CLASSIFICA GLOBALE - OGGI", ""]
         if not players:
             lines.append("Storico roster completo non ancora disponibile.")
             return "\\n".join(lines)
         for index, row in enumerate(players[:200], 1):
-            sign = "+" if row["delta"] > 0 else ""
-            lines.append(f"{index}. {row['name']} - {self.number_formatter(row['current'])} ({sign}{row['delta']})")
+            if row["delta"] is None:
+                delta_text = "N/D"
+            else:
+                sign = "+" if row["delta"] > 0 else ""
+                delta_text = f"{sign}{row['delta']}"
+            lines.append(f"{index}. {row['name']} - {self.number_formatter(row['current'])} ({delta_text})")
         return "\\n".join(lines)
 
     def global_club_ranking_text(self, chat_id, monthly=False):
@@ -1339,14 +1374,18 @@ class CommunityFeatures:
             start = datetime.now(timezone.utc).astimezone(ROME).date(); end = start + timedelta(days=1)
             title = "CLASSIFICA GLOBALE CLUB - OGGI"
         source_rows = self._complete_roster_daily_rows(start, end)
+        baseline_tags = None if monthly else self._daily_baseline_tags(source_rows)
         totals = {club: {"delta": 0, "players": set()} for club in self.CLUB_TAGS}
         for row in source_rows:
             club = str(row.get("club_name") or "").strip().upper()
             if club not in totals: continue
+            tag = str(row.get("player_tag") or "").strip().upper()
+            if baseline_tags is not None and tag not in baseline_tags:
+                continue
             try: delta = int(row["last_trophies"]) - int(row["first_trophies"])
             except (TypeError, ValueError, KeyError): continue
             totals[club]["delta"] += delta
-            if row.get("player_tag"): totals[club]["players"].add(str(row["player_tag"]))
+            if tag: totals[club]["players"].add(tag)
         ranked = sorted(totals.items(), key=lambda item: (item[1]["delta"], len(item[1]["players"])), reverse=True)
         lines = [title, ""]
         for index, (club, data) in enumerate(ranked, 1):
