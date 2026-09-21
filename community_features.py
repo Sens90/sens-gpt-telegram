@@ -1287,42 +1287,97 @@ class CommunityFeatures:
             )
         return "\n".join(lines)
 
+    def _complete_roster_daily_rows(self, start_date, end_date):
+        """Read complete-roster daily snapshots for [start_date, end_date)."""
+        try:
+            return self._get("club_roster_daily", {
+                "select": "snapshot_date,club_name,club_tag,player_tag,player_name,first_trophies,last_trophies,first_seen_at,last_seen_at,source",
+                "snapshot_date": f"gte.{start_date.isoformat()}",
+                "and": f"(snapshot_date.lt.{end_date.isoformat()})",
+                "order": "snapshot_date.asc,player_tag.asc",
+                "limit": "10000",
+            }) or []
+        except Exception as exc:
+            print("ERRORE LETTURA ROSTER GLOBALE:", repr(exc), flush=True)
+            return []
+
+    @staticmethod
+    def _previous_month_bounds(now=None):
+        local = (now or datetime.now(timezone.utc)).astimezone(ROME)
+        this_month = local.date().replace(day=1)
+        previous_last = this_month - timedelta(days=1)
+        return previous_last.replace(day=1), this_month
+
     def global_ranking_text(self, chat_id, days=0):
-        """Global individual ranking across the four community clubs from stored snapshots."""
-        rows = []
-        for member in self.members(chat_id):
-            club = str(member.get("club_name") or "").strip().upper()
-            tag = member.get("player_tag")
-            if club not in self.CLUB_TAGS or not tag:
+        """All players in the four complete club rosters. Daily scope only."""
+        today = datetime.now(timezone.utc).astimezone(ROME).date()
+        rows = self._complete_roster_daily_rows(today, today + timedelta(days=1))
+        players = []
+        for row in rows:
+            try:
+                current = int(row["last_trophies"]); delta = current - int(row["first_trophies"])
+            except (TypeError, ValueError, KeyError):
                 continue
-            current = self._member_current_trophies(member)
-            if current is None:
-                continue
-            history = self.history_fetcher(tag, days=max(days + 2, 10))
-            changes = self.change_calculator(history, current)
-            key = "today" if days == 0 else {7: "7d", 15: "15d", 30: "30d", 90: "90d"}.get(days, "7d")
-            delta = changes.get(key)
-            if delta is None:
-                continue
-            rows.append({
-                "name": member.get("player_name") or member.get("display_name") or tag,
-                "club": club,
-                "current": int(current),
-                "delta": int(delta),
-            })
-        rows.sort(key=lambda row: (row["delta"], row["current"]), reverse=True)
-        label = "OGGI" if days == 0 else f"{days} GIORNI"
-        lines = [f"CLASSIFICA GLOBALE - {label}", ""]
-        if not rows:
-            lines.append("Storico trofei non ancora disponibile.")
-            return "\n".join(lines)
-        for index, row in enumerate(rows[:200], 1):
+            players.append({"name": row.get("player_name") or row.get("player_tag"), "current": current, "delta": delta})
+        players.sort(key=lambda row: (row["delta"], row["current"]), reverse=True)
+        lines = ["CLASSIFICA GLOBALE - OGGI", ""]
+        if not players:
+            lines.append("Storico roster completo non ancora disponibile.")
+            return "\\n".join(lines)
+        for index, row in enumerate(players[:200], 1):
             sign = "+" if row["delta"] > 0 else ""
-            lines.append(
-                f"{index}. {row['name']} - {self.number_formatter(row['current'])} "
-                f"({sign}{row['delta']}) - {row['club']}"
-            )
-        return "\n".join(lines)
+            lines.append(f"{index}. {row['name']} - {self.number_formatter(row['current'])} ({sign}{row['delta']})")
+        return "\\n".join(lines)
+
+    def global_club_ranking_text(self, chat_id, monthly=False):
+        """Compare all four complete rosters, including non-registered players."""
+        if monthly:
+            start, end = self._previous_month_bounds()
+            month_names = ["GENNAIO","FEBBRAIO","MARZO","APRILE","MAGGIO","GIUGNO","LUGLIO","AGOSTO","SETTEMBRE","OTTOBRE","NOVEMBRE","DICEMBRE"]
+            title = f"CLASSIFICA GLOBALE CLUB - {month_names[start.month-1]} {start.year}"
+        else:
+            start = datetime.now(timezone.utc).astimezone(ROME).date(); end = start + timedelta(days=1)
+            title = "CLASSIFICA GLOBALE CLUB - OGGI"
+        source_rows = self._complete_roster_daily_rows(start, end)
+        totals = {club: {"delta": 0, "players": set()} for club in self.CLUB_TAGS}
+        for row in source_rows:
+            club = str(row.get("club_name") or "").strip().upper()
+            if club not in totals: continue
+            try: delta = int(row["last_trophies"]) - int(row["first_trophies"])
+            except (TypeError, ValueError, KeyError): continue
+            totals[club]["delta"] += delta
+            if row.get("player_tag"): totals[club]["players"].add(str(row["player_tag"]))
+        ranked = sorted(totals.items(), key=lambda item: (item[1]["delta"], len(item[1]["players"])), reverse=True)
+        lines = [title, ""]
+        for index, (club, data) in enumerate(ranked, 1):
+            delta = data["delta"]; sign = "+" if delta > 0 else ""
+            lines.append(f"{index}. {club} - {sign}{self.number_formatter(delta)}")
+        return "\\n".join(lines)
+
+    def global_monthly_ranking_text(self, chat_id):
+        """All-player ranking for the previous completed calendar month."""
+        start, end = self._previous_month_bounds()
+        source_rows = self._complete_roster_daily_rows(start, end)
+        players = {}
+        for row in source_rows:
+            tag = str(row.get("player_tag") or "").strip()
+            if not tag: continue
+            try:
+                delta = int(row["last_trophies"]) - int(row["first_trophies"]); current = int(row["last_trophies"])
+            except (TypeError, ValueError, KeyError): continue
+            item = players.setdefault(tag, {"name": row.get("player_name") or tag, "delta": 0, "current": current})
+            item["delta"] += delta; item["current"] = current
+            if row.get("player_name"): item["name"] = row["player_name"]
+        ranked = sorted(players.values(), key=lambda row: (row["delta"], row["current"]), reverse=True)
+        month_names = ["GENNAIO","FEBBRAIO","MARZO","APRILE","MAGGIO","GIUGNO","LUGLIO","AGOSTO","SETTEMBRE","OTTOBRE","NOVEMBRE","DICEMBRE"]
+        lines = [f"CLASSIFICA GLOBALE - {month_names[start.month-1]} {start.year}", ""]
+        if not ranked:
+            lines.append("Storico roster completo non ancora disponibile per il mese precedente.")
+            return "\\n".join(lines)
+        for index, row in enumerate(ranked[:200], 1):
+            sign = "+" if row["delta"] > 0 else ""
+            lines.append(f"{index}. {row['name']} - {self.number_formatter(row['current'])} ({sign}{row['delta']})")
+        return "\\n".join(lines)
 
     def club_trophy_ranking_text(self, chat_id, days=0):
         """Rank the four community clubs by summed trophy movement from stored snapshots."""
@@ -1722,6 +1777,15 @@ class CommunityFeatures:
                 chat_id=message.chat_id,
                 text=self.global_ranking_text(message.chat_id, 0),
             )
+            return True
+        if re.fullmatch(r"classifica\s+globale\s+club\s+(?:di\s+)?oggi", q0, re.I):
+            await context.bot.send_message(chat_id=message.chat_id, text=self.global_club_ranking_text(message.chat_id, monthly=False))
+            return True
+        if re.fullmatch(r"classifica\s+globale\s+mensile", q0, re.I):
+            await context.bot.send_message(chat_id=message.chat_id, text=self.global_monthly_ranking_text(message.chat_id))
+            return True
+        if re.fullmatch(r"classifica\s+globale\s+club\s+mensile", q0, re.I):
+            await context.bot.send_message(chat_id=message.chat_id, text=self.global_club_ranking_text(message.chat_id, monthly=True))
             return True
         if re.fullmatch(r"classifica\s+(?:dei\s+)?club\s+(?:di\s+)?oggi", q0, re.I):
             await context.bot.send_message(
