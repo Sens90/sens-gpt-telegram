@@ -3155,6 +3155,56 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if _full_profile_route:
         print("FULL PROFILE DEDICATED ROUTE:", repr(_raw_command), flush=True)
+        # Hard-route full player profiles immediately. This prevents any later
+        # premium/community/legacy handler from returning the compact card.
+        profile_match = re.fullmatch(
+            r"(?:tag|stats|statistiche|profilo|scheda|status(?:\\s+(?:del\\s+)?giocatore)?|stato(?:\\s+(?:del\\s+)?giocatore)?)\\s*(?:di\\s+)?#?([0289PYLQGRJCUV]{3,15})",
+            _raw_command.strip(), re.I,
+        )
+        if profile_match:
+            player_tag = profile_match.group(1).upper()
+            await context.bot.send_chat_action(chat_id=message.chat_id, action="typing")
+            player = await asyncio.to_thread(get_brawlzone_player, player_tag)
+            if not player:
+                await message.reply_text("Non riesco a trovare questo giocatore. Controlla che il tag sia corretto e riprova.")
+                return
+            await asyncio.to_thread(save_trophy_snapshot, player["tag"], player["name"], player["trophies"])
+            history = await asyncio.to_thread(get_trophy_history, player["tag"], 91)
+            changes = calculate_trophy_changes(history, player["trophies"])
+            member_data = community.get_member_by_player_tag(message.chat_id, player["tag"])
+            profile_club = player.get("club_name") or player.get("club") or (member_data or {}).get("club_name") or "Senza club / non disponibile"
+            profile_club_tag = player.get("club_tag") or CommunityFeatures.CLUB_TAGS.get(str(profile_club).strip().upper())
+            ranked_current = player.get("ranked_current") or (member_data or {}).get("ranked_current") or "Non disponibile"
+            ranked_season_peak = player.get("ranked_season_peak") or (member_data or {}).get("ranked_season_peak") or "Non disponibile"
+            ranked_peak = player.get("ranked_career_peak") or player.get("ranked_peak") or (member_data or {}).get("ranked_peak") or "Non disponibile"
+            total_brawlers = int(player.get("brawlers") or 0)
+            level_lines = [f"Livello {level}: {int(count)}/{total_brawlers}" for level,count in sorted((player.get("power_levels") or {}).items(), key=lambda item:int(item[0])) if int(count or 0)>0]
+            prestige_lines = [f"Prestigio {level}: {int(count)}/{total_brawlers}" for level,count in sorted((player.get("prestige_levels") or {}).items(), key=lambda item:int(item[0])) if int(count or 0)>0]
+            def owned_total(owned_key,total_key):
+                owned,total=player.get(owned_key),player.get(total_key)
+                if owned is None:return "Non disponibile"
+                return format_number_it(owned) if total is None else f"{format_number_it(owned)}/{format_number_it(total)}"
+            fame_caps={"global":2000,"lunar":3200,"martian":4500,"saturnian":8000,"solar":12000,"meteoric":20000,"alien":50000,"starr force":75000}
+            fame_tier=str(player.get("fame_tier") or "").strip(); fame_text=fame_tier or "Non disponibile"; fame_cap=None
+            for key,cap in fame_caps.items():
+                if key in fame_tier.casefold():fame_cap=cap;break
+            if player.get("fame") is not None:
+                fame_text += f" — {format_number_it(player.get('fame'))}" + (f"/{format_number_it(fame_cap)}" if fame_cap else "")
+            collection=[f"Gadget: {owned_total('gadgets_owned','gadgets_total')}",f"Abilità stellari: {owned_total('star_powers_owned','star_powers_total')}",f"Equipaggiamenti: {owned_total('gears_owned','gears_total')}",f"Overdrive: {owned_total('hypercharges_owned','hypercharges_total')}"]
+            if player.get("buffies_owned") is not None:collection.append(f"Buffie: {owned_total('buffies_owned','buffies_total')}")
+            brawler_text=owned_total("brawlers","brawlers_total")
+            text = "\\n".join([
+                str(player["name"]).upper(), f"Tag: {player['tag']}", f"Club: {profile_club}", f"Tag club: {profile_club_tag or 'Non disponibile'}", "",
+                "PROFILO", f"Trofei: {format_number_it(player['trophies'])}", f"Brawler: {brawler_text}", f"Livello: {format_number_it(player.get('level'))}", f"Punti esperienza: {format_number_it(player.get('exp_points'))}", f"Fama: {fame_text}", f"Livello Clip: {format_number_it(player.get('clip_level'))}", f"Punti Clip: {format_number_it(player.get('clip_points'))}", f"Account creato nel: {format_number_it(player.get('account_created_year'))}", f"Qualificazione Championship: {'Qualificato' if player.get('championship_qualified') else 'Mai qualificato'}", "",
+                "RANKED", f"Ranked attuale: {ranked_current}", f"Record stagione: {ranked_season_peak}", f"Record massimo: {ranked_peak}", "",
+                "VITTORIE", f"3v3: {format_number_it(player.get('wins_3v3'))}", f"Solo: {format_number_it(player.get('wins_solo'))}", f"Duo: {format_number_it(player.get('wins_duo'))}", "",
+                "COLLEZIONE", *collection, "", "LIVELLI BRAWLER", *(level_lines or ["Non disponibili"]), "", "PRESTIGIO BRAWLER", f"Prestigi totali: {format_number_it(player.get('prestige'))}", *(prestige_lines or ["Distribuzione non disponibile"]), "",
+                "TEMPO DI GIOCO", (f"Ore giocate stimate: {format_number_it(player.get('estimated_hours'))} h" if player.get("estimated_hours") is not None else "Ore giocate stimate: Non disponibile"), "",
+                "ANDAMENTO TROFEI", f"Oggi: {format_trophy_change(changes.get('today'))}", f"7 giorni: {format_trophy_change(changes.get('7d'))}", f"15 giorni: {format_trophy_change(changes.get('15d'))}", f"30 giorni: {format_trophy_change(changes.get('30d'))}", f"90 giorni: {format_trophy_change(changes.get('90d'))}"
+            ])
+            print("FULL PROFILE EARLY RENDER:", player_tag, "chars=", len(text), flush=True)
+            await send_mode_aware_text(message, context, text)
+            return
 
     # Explicit mode on the current request always wins. Otherwise, replying
     # directly to a voice/audio message sent by Sens GPT inherits voice mode.
