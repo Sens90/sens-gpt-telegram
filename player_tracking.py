@@ -510,9 +510,18 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             collection["star_powers"] += len(brawler.get("starPowers") or [])
             collection["gears"] += len(brawler.get("gears") or [])
             collection["hypercharges"] += len(brawler.get("hyperCharges") or [])
-            # The official payload currently exposes Buffie-related component
-            # records, but not a verified ownership flag. Keep ownership unknown
-            # rather than treating those component records as collected Buffies.
+            # Safe temporary diagnostic: field names + primitive values only.
+            buffie_records = brawler.get("buffies") or []
+            if buffie_records:
+                safe_records = []
+                for record in buffie_records[:4]:
+                    if isinstance(record, dict):
+                        safe_records.append({key: value for key, value in record.items()
+                                             if isinstance(value, (str, int, float, bool, type(None)))})
+                    else:
+                        safe_records.append({"type": type(record).__name__})
+                print("BUFFIE SCHEMA:", str(brawler.get("name") or brawler.get("id") or "unknown")[:40],
+                      safe_records, flush=True)
 
         max_cost = _max_account_cost(brawlers, collection)
 
