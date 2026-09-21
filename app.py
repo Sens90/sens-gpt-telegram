@@ -2314,6 +2314,41 @@ def get_ranked_history(player_tag, limit=10):
         return []
 
 
+def fetch_supercell_proxy_club_roster(club_name, club_tag):
+    """Official Supercell club-members endpoint through the static-IP API proxy."""
+    tag = str(club_tag or "").strip().lstrip("#").upper()
+    token = str(os.environ.get("BRAWL_PROXY_API_KEY") or "").strip()
+    if not tag or not token:
+        print("SUPERCELL API PROXY ROSTER SKIP:", club_name, "missing_key=", not bool(token), flush=True)
+        return []
+    try:
+        response = requests.get(
+            "https://bsproxy.royaleapi.dev/v1/clubs/%23" + tag + "/members",
+            headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
+            timeout=25,
+        )
+        if response.status_code != 200:
+            print("SUPERCELL API PROXY ROSTER HTTP:", club_name, response.status_code, str(response.text)[:160], flush=True)
+            return []
+        payload = response.json()
+        items = payload.get("items") if isinstance(payload, dict) else None
+        rows = []
+        for item in items or []:
+            ptag = str(item.get("tag") or "").strip().lstrip("#").upper()
+            name = str(item.get("name") or "").strip()
+            trophies = item.get("trophies")
+            if ptag and name and isinstance(trophies, int):
+                rows.append({"player_tag": ptag, "player_name": name, "trophies": trophies})
+        if not (1 <= len(rows) <= 30):
+            print("SUPERCELL API PROXY ROSTER REJECTED:", club_name, "count=", len(rows), flush=True)
+            return []
+        print("SUPERCELL API PROXY ROSTER OK:", club_name, "count=", len(rows), flush=True)
+        return rows
+    except Exception as exc:
+        print("SUPERCELL API PROXY ROSTER ERROR:", club_name, type(exc).__name__, str(exc)[:160], flush=True)
+        return []
+
+
 def fetch_brawlytix_club_roster(club_name, club_tag):
     tag = str(club_tag or "").strip().lstrip("#").upper()
     if not tag:
@@ -2462,8 +2497,11 @@ def refresh_complete_club_rosters():
     """Refresh all four complete rosters. Brawlify is fallback while official proxy is WAF-blocked."""
     total = 0
     for club_name, club_tag in community.CLUB_TAGS.items():
-        roster = fetch_brawlytix_club_roster(club_name, club_tag)
-        source = "brawlytix"
+        roster = fetch_supercell_proxy_club_roster(club_name, club_tag)
+        source = "supercell_proxy"
+        if not roster:
+            roster = fetch_brawlytix_club_roster(club_name, club_tag)
+            source = "brawlytix"
         if not roster:
             roster = fetch_brawlify_club_roster(club_name, club_tag)
             source = "brawlify"
