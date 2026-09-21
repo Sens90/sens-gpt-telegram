@@ -3230,9 +3230,11 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "COLLEZIONE", *collection, "", "LIVELLI BRAWLER", *(level_lines or ["Non disponibili"]), "", "PRESTIGIO BRAWLER", f"Prestigi totali: {format_number_it(player.get('prestige'))}", *(prestige_lines or ["Distribuzione non disponibile"]), "",
                 "TEMPO DI GIOCO", (f"Ore giocate stimate: {format_number_it(player.get('estimated_hours'))} h" if player.get("estimated_hours") is not None else "Ore giocate stimate: Non disponibile"), "",
                 "COSTO PER MAXARE L'ACCOUNT",
-                f"Monete mancanti: {format_number_it(player.get('max_cost_coins'))}",
-                f"Punti energia mancanti: {format_number_it(player.get('max_cost_power_points'))}",
-                f"Costo Equipaggiamenti mancanti: {format_number_it(player.get('gears_missing_cost'))} monete",
+                *(["ACCOUNT MAXATO"] if all(player.get(key) == 0 for key in ("max_cost_coins", "max_cost_power_points", "gears_missing_cost")) else [
+                    f"Monete mancanti: {format_number_it(player.get('max_cost_coins'))}",
+                    f"Punti energia mancanti: {format_number_it(player.get('max_cost_power_points'))}",
+                    f"Costo Equipaggiamenti mancanti: {format_number_it(player.get('gears_missing_cost'))} monete",
+                ]),
                 "",
                 "ANDAMENTO TROFEI", f"Oggi: {format_trophy_change(changes.get('today'))}", f"7 giorni: {format_trophy_change(changes.get('7d'))}", f"15 giorni: {format_trophy_change(changes.get('15d'))}", f"30 giorni: {format_trophy_change(changes.get('30d'))}", f"90 giorni: {format_trophy_change(changes.get('90d'))}"
             ])
