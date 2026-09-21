@@ -450,6 +450,32 @@ def _brawlytix_progression(player_tag, timeout=8, retry_missing=True):
                 value = _number(match.group(1))
                 if value is not None:
                     result[key] = value
+        skin_context = str(contexts.get("skins_unlocked") or "")
+        if result.get("skin_value_gems") is None:
+            match = re.search(r"([0-9][0-9,.]*)\\s*Total Skin Gem Value", skin_context, re.I)
+            if match:
+                result["skin_value_gems"] = _number(match.group(1))
+        if not result.get("skin_rarity_counts"):
+            rarity_patterns = {
+                "rare": r"([0-9][0-9,.]*)\\s*Rare Skins",
+                "super rare": r"([0-9][0-9,.]*)\\s*Super Rare Skins",
+                "epic": r"([0-9][0-9,.]*)\\s*Epic Skins",
+                "mythic": r"([0-9][0-9,.]*)\\s*Mythic Skins",
+                "legendary": r"([0-9][0-9,.]*)\\s*Legendary Skins",
+                "hypercharge": r"([0-9][0-9,.]*)\\s*Hypercharge Skins",
+                "ranked": r"([0-9][0-9,.]*)\\s*Ranked Skins",
+                "true silver": r"([0-9][0-9,.]*)\\s*True Silver Skins",
+                "true gold": r"([0-9][0-9,.]*)\\s*True Gold Skins",
+            }
+            cleaned = {}
+            for rarity, pattern in rarity_patterns.items():
+                match = re.search(pattern, skin_context, re.I)
+                if match:
+                    value = _number(match.group(1))
+                    if value is not None:
+                        cleaned[rarity] = value
+            if cleaned:
+                result["skin_rarity_counts"] = cleaned
         if safe_meta:
             print("PROGRESSION BRIDGE META:", tag, safe_meta, flush=True)
 
@@ -649,13 +675,6 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
         club_name = club.get("name") or None
         club_tag = _clean_tag(club.get("tag"))
         brawlers = data.get("brawlers") if isinstance(data.get("brawlers"), list) else []
-        if tag == "YQPPPL98G":
-            skin_probe = [
-                {"brawler": b.get("name"), "skin": b.get("skin")}
-                for b in brawlers
-                if isinstance(b, dict)
-            ]
-            print("ANTO SKIN RAW:", skin_probe, flush=True)
         icon_data = data.get("icon") if isinstance(data.get("icon"), dict) else {}
         icon_id = _number(icon_data.get("id"))
         icon_url = _profile_icon_url(icon_id)
