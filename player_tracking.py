@@ -321,9 +321,20 @@ def _brawltime_progression(player_tag, timeout=15):
         # Dynamic progression totals are useful for categories the official catalog
         # does not expose globally (notably gears and buffies).
         labels = {
-            "gears_total": r"Gears[^\d]{0,100}[\d,.]+\s*/\s*([\d,.]+)",
-            "buffies_total": r"Buffies[^\d]{0,100}[\d,.]+\s*/\s*([\d,.]+)",
+            "gears_total": r"Gears[^\\d]{0,100}[\\d,.]+\\s*/\\s*([\\d,.]+)",
+            "buffies_total": r"Buffies[^\\d]{0,100}[\\d,.]+\\s*/\\s*([\\d,.]+)",
         }
+        extra_patterns = {
+            "account_created_year": [r"Account Created[^0-9]{0,80}(20[0-9]{2})", r"account(?: was)? created[^0-9]{0,80}(20[0-9]{2})"],
+            "clip_level": [r"Record Level[^0-9]{0,80}([0-9]+)"],
+            "clip_points": [r"Record Points[^0-9]{0,80}([\\d,.]+)"],
+        }
+        for key, patterns in extra_patterns.items():
+            for pattern in patterns:
+                match = re.search(pattern, page, re.I | re.S)
+                if match:
+                    result[key] = _number(match.group(1))
+                    break
         for key, pattern in labels.items():
             match = re.search(pattern, page, re.I | re.S)
             if match:
@@ -490,6 +501,11 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             "gears_total": progression.get("gears_total"),
             "buffies_total": progression.get("buffies_total"),
             "estimated_hours": progression.get("estimated_hours"),
+            "account_created_year": progression.get("account_created_year"),
+            "clip_level": progression.get("clip_level"),
+            "clip_points": progression.get("clip_points"),
+            "exp_points": _number(data.get("expPoints")),
+            "championship_qualified": bool(data.get("isQualifiedFromChampionshipChallenge", False)),
             "source": "Supercell Official API",
         }
         # Ranked/Prestigio are not supplied by the official player endpoint.
