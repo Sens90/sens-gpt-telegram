@@ -2776,6 +2776,7 @@ class CommunityFeatures:
                         "COSTO PER MAXARE L'ACCOUNT",
                         f"Monete mancanti: {fmt(player.get('max_cost_coins'))}",
                         f"Punti energia mancanti: {fmt(player.get('max_cost_power_points'))}",
+                        f"Costo Equipaggiamenti mancanti: {fmt(player.get('gears_missing_cost'))} monete",
                         "",
                     ]
                     await message.reply_text("\n".join(lines))
