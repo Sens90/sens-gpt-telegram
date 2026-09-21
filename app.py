@@ -3759,11 +3759,21 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             count = int((player.get("power_levels") or {}).get(level, 0) or 0)
             if count > 0:
                 power_lines.append(f"Livello {level}: {count}/{total_brawlers}")
+        def _owned_total(owned_key, total_key):
+            owned = player.get(owned_key)
+            total = player.get(total_key)
+            if owned is None:
+                return "Non disponibile"
+            if total is None:
+                return format_number_it(owned)
+            return f"{format_number_it(owned)}/{format_number_it(total)}"
+
         collection_lines = [
-            f"Gadget: {format_number_it(player.get('gadgets_owned'))}",
-            f"Abilità stellari: {format_number_it(player.get('star_powers_owned'))}",
+            f"Brawler: {_owned_total('brawlers', 'brawlers_total')}",
+            f"Gadget: {_owned_total('gadgets_owned', 'gadgets_total')}",
+            f"Abilità stellari: {_owned_total('star_powers_owned', 'star_powers_total')}",
             f"Equipaggiamenti: {format_number_it(player.get('gears_owned'))}",
-            f"Overdrive: {format_number_it(player.get('hypercharges_owned'))}",
+            f"Overdrive: {_owned_total('hypercharges_owned', 'hypercharges_total')}",
         ]
         if player.get("buffies_owned") is not None:
             collection_lines.append(f"Buffie: {format_number_it(player.get('buffies_owned'))}")
