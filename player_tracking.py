@@ -508,9 +508,11 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             collection["star_powers"] += len(brawler.get("starPowers") or [])
             collection["gears"] += len(brawler.get("gears") or [])
             collection["hypercharges"] += len(brawler.get("hyperCharges") or [])
-            # Supercell's buffies array contains multiple component records per
-            # brawler, not a reliable count of owned Buffies. Do not present that
-            # array length as an ownership total until ownership semantics are verified.
+            # The official payload currently exposes Buffie-related component
+            # records, but not a verified ownership flag. Keep ownership unknown
+            # rather than treating those component records as collected Buffies.
+
+        max_cost = _max_account_cost(brawlers, collection)
 
         result = {
             "name": data.get("name"),
