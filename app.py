@@ -2314,6 +2314,51 @@ def get_ranked_history(player_tag, limit=10):
         return []
 
 
+def fetch_brawlytix_club_roster(club_name, club_tag):
+    tag = str(club_tag or "").strip().lstrip("#").upper()
+    if not tag:
+        return []
+    try:
+        from bs4 import BeautifulSoup
+        response = requests.get(
+            "https://brawlytix.com/club/" + tag,
+            headers={"User-Agent": "Mozilla/5.0 (SensGPT-TitaniAbusivi/1.0)", "Accept-Language": "en-US,en;q=0.9"},
+            timeout=25,
+        )
+        if response.status_code != 200:
+            print("BRAWLYTIX CLUB ROSTER HTTP:", club_name, response.status_code, flush=True)
+            return []
+        soup = BeautifulSoup(response.text, "html.parser")
+        found = {}
+        for a in soup.find_all("a", href=True):
+            m = re.search(r"/player/([0289PYLQGRJCUV]{3,15})(?:[/?#]|$)", str(a.get("href") or ""), re.I)
+            if not m:
+                continue
+            ptag = m.group(1).upper()
+            node = a
+            block = ""
+            for _ in range(5):
+                node = getattr(node, "parent", None)
+                if node is None: break
+                block = node.get_text(" ", strip=True)
+                if re.search(r"\\b(Member|Senior|Vice President|President)\\b", block, re.I):
+                    break
+            name = a.get_text(" ", strip=True).strip()
+            nums = [int(x.replace(",", "")) for x in re.findall(r"(?<!\\d)(\\d{1,3}(?:,\\d{3})+)(?!\\d)", block)]
+            nums = [x for x in nums if 1000 <= x <= 500000]
+            if name and nums:
+                found[ptag] = {"player_tag": ptag, "player_name": name, "trophies": nums[-1]}
+        rows = list(found.values())
+        if not (1 <= len(rows) <= 30):
+            print("BRAWLYTIX CLUB ROSTER REJECTED:", club_name, "count=", len(rows), flush=True)
+            return []
+        print("BRAWLYTIX CLUB ROSTER OK:", club_name, "count=", len(rows), flush=True)
+        return rows
+    except Exception as exc:
+        print("BRAWLYTIX CLUB ROSTER ERROR:", club_name, type(exc).__name__, str(exc)[:160], flush=True)
+        return []
+
+
 def fetch_brawlify_club_roster(club_name, club_tag):
     """Fetch the current complete club roster from Brawlify without profile-by-profile calls."""
     tag = str(club_tag or "").strip().lstrip("#").upper()
@@ -2417,9 +2462,13 @@ def refresh_complete_club_rosters():
     """Refresh all four complete rosters. Brawlify is fallback while official proxy is WAF-blocked."""
     total = 0
     for club_name, club_tag in community.CLUB_TAGS.items():
-        roster = fetch_brawlify_club_roster(club_name, club_tag)
+        roster = fetch_brawlytix_club_roster(club_name, club_tag)
+        source = "brawlytix"
+        if not roster:
+            roster = fetch_brawlify_club_roster(club_name, club_tag)
+            source = "brawlify"
         if roster:
-            total += save_complete_roster_daily(club_name, club_tag, roster, source="brawlify")
+            total += save_complete_roster_daily(club_name, club_tag, roster, source=source)
     print("COMPLETE CLUB ROSTER REFRESH: saved=", total, flush=True)
     return total
 
