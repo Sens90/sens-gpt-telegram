@@ -261,8 +261,11 @@ def _fallback_brawltrack_player(tag, timeout=15, enrich_ranked=True):
         club_display = club_name or "Senza club"
         if club_tag:
             club_display = f"{club_display}\nTag club: {club_tag}"
-        catalog_totals = _collection_totals_from_catalog(_official_brawler_catalog(timeout=min(timeout, 20)))
-        progression = _brawltime_progression(tag, timeout=min(timeout, 15))
+        # Optional enrichments must never hold an official Supercell profile for
+        # tens of seconds. Keep tight independent budgets; missing enrichment is
+        # rendered as unavailable while all official fields are returned now.
+        catalog_totals = _collection_totals_from_catalog(_official_brawler_catalog(timeout=min(timeout, 4)))
+        progression = _brawltime_progression(tag, timeout=min(timeout, 4))
 
         result = {
             "name": data.get("name"),
