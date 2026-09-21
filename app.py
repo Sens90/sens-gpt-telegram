@@ -2314,6 +2314,116 @@ def get_ranked_history(player_tag, limit=10):
         return []
 
 
+def fetch_brawlify_club_roster(club_name, club_tag):
+    """Fetch the current complete club roster from Brawlify without profile-by-profile calls."""
+    tag = str(club_tag or "").strip().lstrip("#").upper()
+    if not tag:
+        return []
+    try:
+        from bs4 import BeautifulSoup
+        response = requests.get(
+            f"https://brawlify.com/club/{tag}/members",
+            headers={"User-Agent": "Mozilla/5.0 (compatible; SensGPT/1.0)", "Accept-Language": "en-US,en;q=0.9"},
+            timeout=25,
+        )
+        response.raise_for_status()
+        html_text = re.split(r"Previous Members|Membri precedenti", response.text, maxsplit=1, flags=re.I)[0]
+        soup = BeautifulSoup(html_text, "html.parser")
+        found = {}
+        valid_tag = re.compile(r"/player/([0289PYLQGRJCUV]{3,15})(?:[/?#]|$)", re.I)
+        for anchor in soup.find_all("a", href=True):
+            match = valid_tag.search(str(anchor.get("href") or ""))
+            if not match:
+                continue
+            player_tag = match.group(1).upper()
+            name = re.sub(r"^#?\\d+\\s+", "", anchor.get_text(" ", strip=True)).strip()
+            if not name or name.startswith("#"):
+                continue
+            trophies = None
+            node = anchor
+            for _ in range(6):
+                node = getattr(node, "parent", None)
+                if node is None:
+                    break
+                text_value = node.get_text(" ", strip=True)
+                formatted = re.findall(r"(?<!\\d)(\\d{1,3}(?:,\\d{3})+)(?!\\d)", text_value)
+                values = [int(x.replace(",", "")) for x in formatted]
+                values = [x for x in values if 1000 <= x <= 500000]
+                if values:
+                    trophies = max(values)
+                    break
+            if trophies is not None:
+                found[player_tag] = {"player_tag": player_tag, "player_name": name, "trophies": trophies}
+        rows = list(found.values())
+        # A real community roster cannot exceed 30. Fail closed on malformed pages
+        # instead of polluting historical rankings with former/related players.
+        if not (1 <= len(rows) <= 30):
+            print("BRAWLIFY CLUB ROSTER REJECTED:", club_name, "count=", len(rows), flush=True)
+            return []
+        print("BRAWLIFY CLUB ROSTER OK:", club_name, "count=", len(rows), flush=True)
+        return rows
+    except Exception as exc:
+        print("BRAWLIFY CLUB ROSTER ERROR:", club_name, type(exc).__name__, str(exc)[:180], flush=True)
+        return []
+
+
+def save_complete_roster_daily(club_name, club_tag, roster, source="brawlify"):
+    """Persist one compact first/last trophy row per player per Rome calendar day."""
+    if not roster or not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return 0
+    day = datetime.now(timezone.utc).astimezone(ROME).date().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
+    headers = _tracking_headers()
+    try:
+        existing_response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/club_roster_daily",
+            headers=headers,
+            params={"snapshot_date": f"eq.{day}", "select": "player_tag,first_trophies", "limit": "500"},
+            timeout=15,
+        )
+        existing_response.raise_for_status()
+        existing = {str(x.get("player_tag") or "").upper(): x for x in existing_response.json()}
+        saved = 0
+        for player in roster:
+            tag = str(player["player_tag"]).upper().replace("#", "")
+            trophies = int(player["trophies"])
+            payload = {
+                "snapshot_date": day, "club_name": club_name, "club_tag": str(club_tag).upper(),
+                "player_tag": tag, "player_name": player.get("player_name") or tag,
+                "last_trophies": trophies, "last_seen_at": now, "source": source,
+            }
+            if tag not in existing:
+                payload.update({"first_trophies": trophies, "first_seen_at": now})
+                requests.post(
+                    f"{SUPABASE_URL}/rest/v1/club_roster_daily",
+                    headers=_tracking_headers("return=minimal"), json=payload, timeout=15,
+                ).raise_for_status()
+                existing[tag] = {"player_tag": tag, "first_trophies": trophies}
+            else:
+                requests.patch(
+                    f"{SUPABASE_URL}/rest/v1/club_roster_daily",
+                    headers=_tracking_headers("return=minimal"),
+                    params={"snapshot_date": f"eq.{day}", "player_tag": f"eq.{tag}"},
+                    json=payload, timeout=15,
+                ).raise_for_status()
+            saved += 1
+        return saved
+    except Exception as exc:
+        print("COMPLETE ROSTER SAVE ERROR:", club_name, repr(exc), flush=True)
+        return 0
+
+
+def refresh_complete_club_rosters():
+    """Refresh all four complete rosters. Brawlify is fallback while official proxy is WAF-blocked."""
+    total = 0
+    for club_name, club_tag in community.CLUB_TAGS.items():
+        roster = fetch_brawlify_club_roster(club_name, club_tag)
+        if roster:
+            total += save_complete_roster_daily(club_name, club_tag, roster, source="brawlify")
+    print("COMPLETE CLUB ROSTER REFRESH: saved=", total, flush=True)
+    return total
+
+
 def automatic_trophy_monitor():
     import time
 
@@ -2321,6 +2431,9 @@ def automatic_trophy_monitor():
 
     while True:
         try:
+            # Complete-roster rankings are refreshed independently from registered users.
+            # This path never changes the primary player-profile source order.
+            refresh_complete_club_rosters()
             tags = get_tracked_player_tags()
 
             print(
@@ -4576,14 +4689,17 @@ async def _send_auto_ranking_slot(context, slot):
             final_slot = slot.hour == 23 and slot.minute == 59
             club_text = None
             global_text = None
+            global_club_text = None
             if final_slot:
                 club_text = await asyncio.to_thread(community.club_trophy_ranking_text, chat_id, 0)
                 global_text = await asyncio.to_thread(community.global_ranking_text, chat_id, 0)
+                global_club_text = await asyncio.to_thread(community.global_club_ranking_text, chat_id, False)
 
             await context.bot.send_message(chat_id=chat_id, text=text)
             if final_slot:
                 await context.bot.send_message(chat_id=chat_id, text=club_text)
                 await context.bot.send_message(chat_id=chat_id, text=global_text)
+                await context.bot.send_message(chat_id=chat_id, text=global_club_text)
             await asyncio.to_thread(
                 community._patch, "community_settings",
                 {"last_auto_ranking_slot": key},
@@ -4595,6 +4711,29 @@ async def _send_auto_ranking_slot(context, slot):
     print("CLASSIFICA OGGI AUTO: slot=%s sent=%s local=%s" % (
         key, sent, datetime.now(ROME).strftime("%Y-%m-%d %H:%M:%S")
     ), flush=True)
+
+
+async def automatic_monthly_global_rankings_job(context):
+    """On day 1, send the two complete-roster rankings for the previous calendar month."""
+    now = datetime.now(ROME)
+    if now.day != 1:
+        return
+    month_key = now.strftime("%Y-%m")
+    try:
+        settings_rows = await asyncio.to_thread(community._get, "community_settings", {"select": "chat_id"})
+    except Exception as exc:
+        print("CLASSIFICA MENSILE SETTINGS ERROR:", repr(exc), flush=True)
+        return
+    for row in settings_rows or []:
+        chat_id = int(row["chat_id"])
+        try:
+            individual = await asyncio.to_thread(community.global_monthly_ranking_text, chat_id)
+            clubs = await asyncio.to_thread(community.global_club_ranking_text, chat_id, True)
+            await context.bot.send_message(chat_id=chat_id, text=individual)
+            await context.bot.send_message(chat_id=chat_id, text=clubs)
+            print("CLASSIFICA MENSILE AUTO: chat=%s month=%s" % (chat_id, month_key), flush=True)
+        except Exception as exc:
+            print("CLASSIFICA MENSILE AUTO SEND ERROR:", chat_id, repr(exc), flush=True)
 
 
 async def log_automatic_ranking_schedule(context):
@@ -4685,6 +4824,14 @@ def main():
             interval=60,
             first=75,
             name="classifica_oggi_watchdog"
+        )
+        # Previous completed calendar month: send both global rankings on day 1.
+        application.job_queue.run_monthly(
+            automatic_monthly_global_rankings_job,
+            when=dt_time(hour=6, minute=5, tzinfo=ROME),
+            day=1,
+            name="classifiche_globali_mensili",
+            job_kwargs={"misfire_grace_time": 1800, "coalesce": True, "max_instances": 1},
         )
         # Exact Rome-local delivery times requested for the automatic "classifica oggi".
         # Separate daily jobs preserve 23:59 exactly instead of approximating a 6-hour interval.
