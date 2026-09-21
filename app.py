@@ -3753,6 +3753,23 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             or "Non disponibile"
         )
 
+        power_lines = []
+        total_brawlers = int(player.get("brawlers") or 0)
+        for level in range(1, 12):
+            count = int((player.get("power_levels") or {}).get(level, 0) or 0)
+            if count > 0:
+                power_lines.append(f"Lv {level}: {count}/{total_brawlers}")
+        collection_lines = [
+            f"Gadget: {format_number_it(player.get('gadgets_owned'))}",
+            f"Abilità stellari: {format_number_it(player.get('star_powers_owned'))}",
+            f"Equipaggiamenti: {format_number_it(player.get('gears_owned'))}",
+            f"Overdrive: {format_number_it(player.get('hypercharges_owned'))}",
+        ]
+        if player.get("buffies_owned") is not None:
+            collection_lines.append(f"Buffie: {format_number_it(player.get('buffies_owned'))}")
+        collection_text = "COLLEZIONE\n" + "\n".join(collection_lines)
+        levels_text = "LIVELLI BRAWLER\n" + ("\n".join(power_lines) if power_lines else "Non disponibili")
+
         text = (
             f"{player['name']}\n"
             f"Tag: {player['tag']}\n"
@@ -3769,6 +3786,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"- 3v3: {format_number_it(player['wins_3v3'])}\n"
             f"- Solo: {format_number_it(player['wins_solo'])}\n"
             f"- Duo: {format_number_it(player['wins_duo'])}\n\n"
+            f"{collection_text}\n\n"
+            f"{levels_text}\n\n"
             f"Andamento trofei:\n"
             f"- Oggi: {format_trophy_change(changes.get('today'))}\n"
             f"- 7 giorni: {format_trophy_change(changes.get('7d'))}\n"
