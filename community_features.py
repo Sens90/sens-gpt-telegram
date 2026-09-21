@@ -1354,7 +1354,7 @@ class CommunityFeatures:
         lines = ["CLASSIFICA GLOBALE - OGGI", ""]
         if not players:
             lines.append("Storico roster completo non ancora disponibile.")
-            return "\\n".join(lines)
+            return "\n".join(lines)
         for index, row in enumerate(players[:200], 1):
             if row["delta"] is None:
                 delta_text = "N/D"
@@ -1362,7 +1362,7 @@ class CommunityFeatures:
                 sign = "+" if row["delta"] > 0 else ""
                 delta_text = f"{sign}{row['delta']}"
             lines.append(f"{index}. {row['name']} - {self.number_formatter(row['current'])} ({delta_text})")
-        return "\\n".join(lines)
+        return "\n".join(lines)
 
     def global_club_ranking_text(self, chat_id, monthly=False):
         """Compare all four complete rosters, including non-registered players."""
@@ -1391,7 +1391,7 @@ class CommunityFeatures:
         for index, (club, data) in enumerate(ranked, 1):
             delta = data["delta"]; sign = "+" if delta > 0 else ""
             lines.append(f"{index}. {club} - {sign}{self.number_formatter(delta)} ({len(data['players'])} giocatori)")
-        return "\\n".join(lines)
+        return "\n".join(lines)
 
     def global_monthly_ranking_text(self, chat_id):
         """All-player ranking for the previous completed calendar month."""
@@ -1412,11 +1412,11 @@ class CommunityFeatures:
         lines = [f"CLASSIFICA GLOBALE - {month_names[start.month-1]} {start.year}", ""]
         if not ranked:
             lines.append("Storico roster completo non ancora disponibile per il mese precedente.")
-            return "\\n".join(lines)
+            return "\n".join(lines)
         for index, row in enumerate(ranked[:200], 1):
             sign = "+" if row["delta"] > 0 else ""
             lines.append(f"{index}. {row['name']} - {self.number_formatter(row['current'])} ({sign}{row['delta']})")
-        return "\\n".join(lines)
+        return "\n".join(lines)
 
     def club_trophy_ranking_text(self, chat_id, days=0):
         """Rank the four community clubs by summed trophy movement from stored snapshots."""
