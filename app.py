@@ -2893,9 +2893,19 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Global deterministic command router. Every recognized community command
     # is offered to deterministic handlers before any Gemini/AI path.
     # Unknown/free-form messages continue through the normal assistant flow.
-    if await community.handle_command(message, context, _raw_command):
+    # Full player profile/stat commands are handled by the dedicated block below,
+    # because they need the enriched live profile (including BrawlZone Ranked).
+    # Registration/monitoring deliberately keep using the lightweight fetcher.
+    _full_profile_route = bool(re.fullmatch(
+        r"(?:stats|statistiche|profilo|scheda|status(?:\\s+(?:del\\s+)?giocatore)?|stato(?:\\s+(?:del\\s+)?giocatore)?)\\s*(?:di\\s+)?#?[0289PYLQGRJCUV]{3,15}",
+        _raw_command.strip(),
+        re.I,
+    ))
+    if not _full_profile_route and await community.handle_command(message, context, _raw_command):
         print("DETERMINISTIC COMMAND ROUTE:", repr(_raw_command), flush=True)
         return
+    if _full_profile_route:
+        print("FULL PROFILE DEDICATED ROUTE:", repr(_raw_command), flush=True)
 
     # Explicit mode on the current request always wins. Otherwise, replying
     # directly to a voice/audio message sent by Sens GPT inherits voice mode.
