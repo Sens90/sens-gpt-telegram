@@ -4655,10 +4655,17 @@ def main():
         # Exact Rome-local delivery times requested for the automatic "classifica oggi".
         # Separate daily jobs preserve 23:59 exactly instead of approximating a 6-hour interval.
         for hour, minute in ((6, 0), (12, 0), (18, 0), (23, 59)):
-            application.job_queue.run_daily(
+            job = application.job_queue.run_daily(
                 automatic_today_ranking_job,
                 time=dt_time(hour=hour, minute=minute, tzinfo=ROME),
-                name=f"classifica_oggi_{hour:02d}{minute:02d}"
+                name=f"classifica_oggi_{hour:02d}{minute:02d}",
+                job_kwargs={"misfire_grace_time": 300, "coalesce": True, "max_instances": 1},
+            )
+            print(
+                "CLASSIFICA OGGI SCHEDULED: name=%s next=%s" % (
+                    job.name, getattr(job.job, "next_run_time", None)
+                ),
+                flush=True,
             )
 
     application.add_handler(
