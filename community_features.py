@@ -2776,8 +2776,7 @@ class CommunityFeatures:
                         "COSTO PER MAXARE L'ACCOUNT",
                         f"Monete mancanti: {fmt(player.get('max_cost_coins'))}",
                         f"Punti energia mancanti: {fmt(player.get('max_cost_power_points'))}",
-                        "Calcolo attuale: livelli 11 + Gadget + Abilità stellari + Overdrive",
-                        "Equipaggiamenti e Buffie esclusi finché il conteggio non è verificato",
+                        "",
                     ]
                     await message.reply_text("\n".join(lines))
             except Exception as exc:
