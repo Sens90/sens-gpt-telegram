@@ -294,23 +294,34 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
     tag = str(player_tag or "").upper().replace("#", "").strip()
     if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag): return None
 
+    api_proxy_key = str(os.environ.get("BRAWL_PROXY_API_KEY") or "").strip()
     proxy_url = os.environ.get("BRAWL_OFFICIAL_PROXY_URL")
     proxy_key = os.environ.get("BRAWL_OFFICIAL_PROXY_KEY")
-    if not proxy_url or not proxy_key:
+    if not api_proxy_key and (not proxy_url or not proxy_key):
         print("SUPERCELL PROXY NON CONFIGURATO - uso fallback BrawlZone", flush=True)
         return _fallback_brawlzone_player(tag, timeout=timeout, enrich_ranked=enrich_ranked)
 
     try:
-        response = requests.get(
-            proxy_url,
-            params={"action": "player", "tag": tag},
-            headers={
-                "X-Sens-Key": proxy_key,
-                "Accept": "application/json",
-                "User-Agent": "SensGPT-TitaniAbusivi/1.0",
-            },
-            timeout=timeout,
-        )
+        if api_proxy_key:
+            response = requests.get(
+                "https://bsproxy.royaleapi.dev/v1/players/%23" + tag,
+                headers={
+                    "Authorization": "Bearer " + api_proxy_key,
+                    "Accept": "application/json",
+                },
+                timeout=timeout,
+            )
+        else:
+            response = requests.get(
+                proxy_url,
+                params={"action": "player", "tag": tag},
+                headers={
+                    "X-Sens-Key": proxy_key,
+                    "Accept": "application/json",
+                    "User-Agent": "SensGPT-TitaniAbusivi/1.0",
+                },
+                timeout=timeout,
+            )
         if response.status_code != 200:
             # Safe diagnostic: distinguish a proxy/Imunify rejection from an
             # upstream Supercell error without logging secrets or full payloads.
