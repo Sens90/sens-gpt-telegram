@@ -451,10 +451,25 @@ def _brawlytix_progression(player_tag, timeout=8, retry_missing=True):
                 if value is not None:
                     result[key] = value
         skin_context = str(contexts.get("skins_unlocked") or "")
+        silver_gold_coins = None
+        match = re.search(r"([0-9][0-9,.]*)\\s*Total Silver/Gold Cost", skin_context, re.I)
+        if match:
+            silver_gold_coins = _number(match.group(1))
+            if silver_gold_coins is not None:
+                result["skin_silver_gold_coins"] = silver_gold_coins
         if result.get("skin_value_gems") is None:
             match = re.search(r"([0-9][0-9,.]*)\\s*Total Skin Gem Value", skin_context, re.I)
             if match:
                 result["skin_value_gems"] = _number(match.group(1))
+        # Economic reference chosen for stats: 2,000 gems = EUR 119.99;
+        # the largest permanent coin pack is 4,680 coins = 360 gems.
+        # Convert both cosmetic currencies to one euro-equivalent total.
+        if result.get("skin_value_gems") is not None:
+            gem_eur = float(result["skin_value_gems"]) * (119.99 / 2000.0)
+            coin_eur = 0.0
+            if result.get("skin_silver_gold_coins") is not None:
+                coin_eur = float(result["skin_silver_gold_coins"]) * (360.0 / 4680.0) * (119.99 / 2000.0)
+            result["skin_value_eur"] = round(gem_eur + coin_eur, 2)
         if not result.get("skin_rarity_counts"):
             rarity_patterns = {
                 "rare": r"([0-9][0-9,.]*)\\s*Rare Skins",
