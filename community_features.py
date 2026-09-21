@@ -961,6 +961,7 @@ class CommunityFeatures:
                 7: "7d",
                 15: "15d",
                 30: "30d",
+                90: "90d",
             }.get(days, "7d")
             delta = changes.get(key)
             rows.append(
