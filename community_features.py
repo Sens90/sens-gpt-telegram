@@ -2725,8 +2725,20 @@ class CommunityFeatures:
                         total = player.get(total_key)
                         return f"{fmt(owned)}/{fmt(total)}" if total is not None else fmt(owned)
                     fame_text = player.get("fame_tier") or "Non disponibile"
+                    fame_caps = {
+                        "global": 2000, "lunar": 3200, "martian": 4500, "saturnian": 8000,
+                        "solar": 12000, "meteoric": 20000, "alien": 50000, "starr force": 75000,
+                    }
+                    fame_cap = None
+                    fame_key = str(player.get("fame_tier") or "").casefold()
+                    for tier_name, tier_cap in fame_caps.items():
+                        if tier_name in fame_key:
+                            fame_cap = tier_cap
+                            break
                     if player.get("fame") is not None:
                         fame_text += f" — {fmt(player.get('fame'))}"
+                        if fame_cap is not None:
+                            fame_text += f"/{fmt(fame_cap)}"
                     lines = [
                         f"ACCOUNT COLLEGATO: {str(player.get('name') or '').upper()}",
                         f"Tag: {player.get('tag')}",
