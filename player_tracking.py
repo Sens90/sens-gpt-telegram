@@ -458,6 +458,7 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
         progression = _brawltime_progression(tag, timeout=min(timeout, 15))
 
         power_levels = {}
+        prestige_levels = {}
         collection = {"gadgets": 0, "star_powers": 0, "gears": 0, "hypercharges": 0, "buffies": 0}
         for brawler in brawlers:
             if not isinstance(brawler, dict):
@@ -465,6 +466,9 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             power = _number(brawler.get("power"))
             if power and 1 <= power <= 11:
                 power_levels[power] = power_levels.get(power, 0) + 1
+            prestige_level = _number(brawler.get("prestigeLevel"))
+            if prestige_level is not None:
+                prestige_levels[prestige_level] = prestige_levels.get(prestige_level, 0) + 1
             collection["gadgets"] += len(brawler.get("gadgets") or [])
             collection["star_powers"] += len(brawler.get("starPowers") or [])
             collection["gears"] += len(brawler.get("gears") or [])
@@ -489,6 +493,7 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             "icon_id": icon_id,
             "icon_url": icon_url,
             "power_levels": power_levels,
+            "prestige_levels": prestige_levels,
             "gadgets_owned": collection["gadgets"],
             "star_powers_owned": collection["star_powers"],
             "gears_owned": collection["gears"],
