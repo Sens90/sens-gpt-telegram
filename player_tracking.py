@@ -328,13 +328,13 @@ def _brawltime_progression(player_tag, timeout=15):
         # Dynamic progression totals are useful for categories the official catalog
         # does not expose globally (notably gears and buffies).
         labels = {
-            "gears_total": r"Gears[^\\d]{0,100}[\\d,.]+\\s*/\\s*([\\d,.]+)",
-            "buffies_total": r"Buffies[^\\d]{0,100}[\\d,.]+\\s*/\\s*([\\d,.]+)",
+            "gears_total": r"Gears[^\d]{0,100}[\d,.]+\s*/\s*([\d,.]+)",
+            "buffies_total": r"Buffies[^\d]{0,100}[\d,.]+\s*/\s*([\d,.]+)",
         }
         extra_patterns = {
             "account_created_year": [r"Account Created[^0-9]{0,80}(20[0-9]{2})", r"account(?: was)? created[^0-9]{0,80}(20[0-9]{2})"],
             "clip_level": [r"Record Level[^0-9]{0,80}([0-9]+)"],
-            "clip_points": [r"Record Points[^0-9]{0,80}([\\d,.]+)"],
+            "clip_points": [r"Record Points[^0-9]{0,80}([\d,.]+)", r"Record Score[^0-9]{0,80}([\d,.]+)"],
         }
         for key, patterns in extra_patterns.items():
             for pattern in patterns:
