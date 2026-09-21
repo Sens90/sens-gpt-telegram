@@ -516,7 +516,31 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             club_display = f"{club_display}\nTag club: {club_tag}"
 
         catalog_totals = _collection_totals_from_catalog(_official_brawler_catalog(timeout=min(timeout, 20)))
-        progression = _brawltime_progression(tag, timeout=min(timeout, 15))
+        progression = _brawltime_progression(tag, timeout=min(timeout, 4))
+        # Brawl Time can reject Render (HTTP 403). Probe the already documented
+        # BrawlTrack player endpoint only for optional progression fields.
+        if not all(progression.get(k) is not None for k in ("estimated_hours", "clip_level", "clip_points", "account_created_year")):
+            try:
+                bt = brawltrack_player(tag)
+                if isinstance(bt, dict):
+                    bt = bt.get("player") or bt.get("data") or bt
+                if isinstance(bt, dict):
+                    aliases = {
+                        "estimated_hours": ("estimatedHours", "hoursPlayed", "playTimeHours", "playtimeHours"),
+                        "clip_level": ("recordLevel", "clipLevel"),
+                        "clip_points": ("recordPoints", "recordScore", "clipPoints"),
+                        "account_created_year": ("accountCreatedYear", "createdYear"),
+                    }
+                    for target, keys in aliases.items():
+                        if progression.get(target) is None:
+                            for key in keys:
+                                value = _number(bt.get(key))
+                                if value is not None:
+                                    progression[target] = value
+                                    break
+                    print("BRAWLTRACK PROGRESSION:", tag, {k: progression.get(k) for k in aliases}, "keys=", sorted(bt.keys()), flush=True)
+            except Exception as error:
+                print("BRAWLTRACK PROGRESSION ERROR:", tag, type(error).__name__, flush=True)
 
         power_levels = {}
         prestige_levels = {}
