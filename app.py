@@ -3158,7 +3158,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Hard-route full player profiles immediately. This prevents any later
         # premium/community/legacy handler from returning the compact card.
         profile_match = re.fullmatch(
-            r"(?:tag|stats|statistiche|profilo|scheda|status(?:\\s+(?:del\\s+)?giocatore)?|stato(?:\\s+(?:del\\s+)?giocatore)?)\\s*(?:di\\s+)?#?([0289PYLQGRJCUV]{3,15})",
+            r"(?:tag|stats|statistiche|profilo|scheda|status(?:\s+(?:del\s+)?giocatore)?|stato(?:\s+(?:del\s+)?giocatore)?)\s*(?:di\s+)?#?([0289PYLQGRJCUV]{3,15})",
             _raw_command.strip(), re.I,
         )
         if profile_match:
