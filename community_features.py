@@ -2706,23 +2706,63 @@ class CommunityFeatures:
                     ranked_season_peak = player.get("ranked_season_peak")
                     club_name = player.get("club_name") or "Senza club / non disponibile"
 
-                    if ranked_current and ranked_peak:
-                        await message.reply_text(
-                            f"Account collegato: {player['name']} {player['tag']} - "
-                            f"{self.number_formatter(player['trophies'])} trofei.\n"
-                            f"Club: {club_name}\n"
-                            f"Ranked attuale: {ranked_current}\n"
-                            f"Ranked massima raggiunta nella stagione: {ranked_season_peak or 'Non disponibile'}\n"
-                            f"Ranked massima raggiunta in carriera: {ranked_peak}"
-                        )
-                    else:
-                        context.user_data["registration_stage"] = "ranked_current"
-                        await message.reply_text(
-                            f"Account collegato: {player['name']} {player['tag']} - "
-                            f"{self.number_formatter(player['trophies'])} trofei.\n"
-                            f"Club: {club_name}\n\n"
-                            f"Qual è il tuo livello Ranked attuale?"
-                        )
+                    def fmt(value):
+                        return self.number_formatter(value) if value is not None else "Non disponibile"
+
+                    owned_brawlers = int(player.get("brawlers") or 0)
+                    total_brawlers = player.get("brawlers_total")
+                    brawler_text = f"{fmt(owned_brawlers)}/{fmt(total_brawlers)}" if total_brawlers else fmt(owned_brawlers)
+                    level_lines = []
+                    for level, count in sorted((player.get("power_levels") or {}).items(), key=lambda item: int(item[0])):
+                        if count:
+                            level_lines.append(f"Livello {level}: {fmt(count)}/{fmt(owned_brawlers)}")
+                    prestige_lines = []
+                    for level, count in sorted((player.get("prestige_levels") or {}).items(), key=lambda item: int(item[0])):
+                        if count:
+                            prestige_lines.append(f"Prestigio {level}: {fmt(count)}/{fmt(owned_brawlers)}")
+                    def owned_total(owned_key, total_key):
+                        owned = player.get(owned_key)
+                        total = player.get(total_key)
+                        return f"{fmt(owned)}/{fmt(total)}" if total is not None else fmt(owned)
+                    fame_text = player.get("fame_tier") or "Non disponibile"
+                    if player.get("fame") is not None:
+                        fame_text += f" — {fmt(player.get('fame'))}"
+                    lines = [
+                        f"ACCOUNT COLLEGATO: {str(player.get('name') or '').upper()}",
+                        f"Tag: {player.get('tag')}",
+                        f"Club: {club_name}",
+                        f"Tag club: {player.get('club_tag') or 'Non disponibile'}", "",
+                        "PROFILO",
+                        f"Trofei: {fmt(player.get('trophies'))}",
+                        f"Brawler: {brawler_text}",
+                        f"Livello: {fmt(player.get('level'))}",
+                        f"Punti esperienza: {fmt(player.get('exp_points'))}",
+                        f"Fama: {fame_text}",
+                        f"Livello Clip: {fmt(player.get('clip_level'))}",
+                        f"Punti Clip: {fmt(player.get('clip_points'))}",
+                        f"Account creato nel: {fmt(player.get('account_created_year'))}",
+                        f"Qualificazione Championship: {'Qualificato' if player.get('championship_qualified') else 'Mai qualificato'}", "",
+                        "RANKED",
+                        f"Ranked attuale: {ranked_current or 'Non disponibile'}",
+                        f"Record stagione: {ranked_season_peak or 'Non disponibile'}",
+                        f"Record massimo: {ranked_peak or 'Non disponibile'}", "",
+                        "VITTORIE",
+                        f"3v3: {fmt(player.get('wins_3v3'))}",
+                        f"Solo: {fmt(player.get('wins_solo'))}",
+                        f"Duo: {fmt(player.get('wins_duo'))}", "",
+                        "COLLEZIONE",
+                        f"Gadget: {owned_total('gadgets_owned','gadgets_total')}",
+                        f"Abilità stellari: {owned_total('star_powers_owned','star_powers_total')}",
+                        f"Equipaggiamenti: {owned_total('gears_owned','gears_total')}",
+                        f"Overdrive: {owned_total('hypercharges_owned','hypercharges_total')}",
+                        f"Buffie: {owned_total('buffies_owned','buffies_total')}", "",
+                        "LIVELLI BRAWLER", *level_lines, "",
+                        "PRESTIGIO BRAWLER",
+                        f"Prestigi totali: {fmt(player.get('prestige'))}", *prestige_lines, "",
+                        "TEMPO DI GIOCO",
+                        f"Ore giocate stimate: {fmt(player.get('estimated_hours'))} h" if player.get("estimated_hours") is not None else "Ore giocate stimate: Non disponibile",
+                    ]
+                    await message.reply_text("\n".join(lines))
             except Exception as exc:
                 print("ERRORE REGISTRAZIONE:", repr(exc), flush=True)
                 await message.reply_text("Non riesco a salvare la registrazione. Verifica che lo schema community sia stato creato su Supabase.")
