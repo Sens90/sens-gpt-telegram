@@ -640,7 +640,7 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             "hypercharges_total": catalog_totals.get("hypercharges") or None,
             "gears_total": max_cost["gears_total"],
             "buffies_total": collection.get("buffies_total") or None,
-            "estimated_hours": progression.get("estimated_hours"),
+            "estimated_hours": progression.get("estimated_hours") if progression.get("estimated_hours") is not None else (int(round(_number(data.get("expPoints")) / 220.0)) if _number(data.get("expPoints")) is not None else None),
             "account_created_year": progression.get("account_created_year"),
             "clip_level": progression.get("clip_level"),
             "clip_points": progression.get("clip_points"),
