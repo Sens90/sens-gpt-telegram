@@ -696,21 +696,31 @@ class CommunityFeatures:
                     lines.append(f"{key}: {have}/{total}")
                 return "\n".join(lines)
             title = brawler_title or str(rows[0].get("brawler_name") or brawler_name).upper()
-            if mode == "count":
-                return f"{title} — SKIN ACCOUNT\nPossedute: {len(owned)}/{len(rows)}\nMancanti: {len(missing)}"
-            lines = [f"{title} — SKIN ACCOUNT", f"Totale: {len(owned)}/{len(rows)}"]
             groups = {}
             for row in rows:
                 groups.setdefault(self._skin_category_label(row), []).append(row)
-            for key, group in sorted(groups.items()):
-                have = [r for r in group if r["_owned"]]
-                miss = [r for r in group if not r["_owned"]]
-                lines += ["", f"{key}: {len(have)}/{len(group)}"]
-                if have:
-                    lines.append("Possedute: " + ", ".join(name(r) for r in have))
-                if miss:
-                    lines.append("Mancanti: " + ", ".join(name(r) for r in miss))
-            return "\n".join(lines)
+            # Brawler summary is deliberately statistics-only. Names are returned
+            # only by the explicit owned/missing subcommands; images only by an
+            # explicit photo/image request.
+            if mode in ("count", "full", "summary"):
+                lines = [
+                    f"{title} — SKIN",
+                    f"Possedute: {len(owned)}/{len(rows)}",
+                    f"Mancanti: {len(missing)}",
+                ]
+                if rows:
+                    lines.append(f"Completamento: {len(owned) * 100.0 / len(rows):.1f}%")
+                lines += ["", "PER RARITÀ"]
+                for key, group in sorted(groups.items()):
+                    have = sum(1 for r in group if r["_owned"])
+                    lines.append(f"{key}: {have}/{len(group)} — mancanti {len(group) - have}")
+                lines += [
+                    "",
+                    f"Per i nomi: «skin di {brawler_name} possedute» oppure «skin di {brawler_name} mancanti».",
+                    "Le foto vengono inviate solo se richieste esplicitamente.",
+                ]
+                return "\n".join(lines)
+            return "Comando skin non riconosciuto."
         except Exception as exc:
             print("ERRORE SKIN ACCOUNT:", repr(exc), flush=True)
             return "Non riesco a leggere la tua Skin Collection in questo momento."
