@@ -3232,6 +3232,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "COSTO PER MAXARE L'ACCOUNT",
                 f"Monete mancanti: {format_number_it(player.get('max_cost_coins'))}",
                 f"Punti energia mancanti: {format_number_it(player.get('max_cost_power_points'))}",
+                f"Costo Equipaggiamenti mancanti: {format_number_it(player.get('gears_missing_cost'))} monete",
                 "",
                 "ANDAMENTO TROFEI", f"Oggi: {format_trophy_change(changes.get('today'))}", f"7 giorni: {format_trophy_change(changes.get('7d'))}", f"15 giorni: {format_trophy_change(changes.get('15d'))}", f"30 giorni: {format_trophy_change(changes.get('30d'))}", f"90 giorni: {format_trophy_change(changes.get('90d'))}"
             ])
