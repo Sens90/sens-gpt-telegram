@@ -540,7 +540,7 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
                                     break
                     print("BRAWLTRACK PROGRESSION:", tag, {k: progression.get(k) for k in aliases}, "keys=", sorted(bt.keys()), flush=True)
             except Exception as error:
-                print("BRAWLTRACK PROGRESSION ERROR:", tag, type(error).__name__, flush=True)
+                print("BRAWLTRACK PROGRESSION ERROR:", tag, type(error).__name__, repr(error), flush=True)
 
         power_levels = {}
         prestige_levels = {}
