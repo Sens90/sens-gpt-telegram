@@ -443,6 +443,9 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
         if club_tag:
             club_display = f"{club_display}\nTag club: {club_tag}"
 
+        catalog_totals = _collection_totals_from_catalog(_official_brawler_catalog(timeout=min(timeout, 20)))
+        progression = _brawltime_progression(tag, timeout=min(timeout, 15))
+
         power_levels = {}
         collection = {"gadgets": 0, "star_powers": 0, "gears": 0, "hypercharges": 0, "buffies": 0}
         for brawler in brawlers:
