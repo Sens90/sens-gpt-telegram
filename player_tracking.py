@@ -511,15 +511,23 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             "clip_points": progression.get("clip_points"),
             "exp_points": _number(data.get("expPoints")),
             "championship_qualified": bool(data.get("isQualifiedFromChampionshipChallenge", False)),
+            "ranked_current": data.get("rankedRankName") or None,
+            "ranked_current_elo": _number(data.get("rankedElo")),
+            "ranked_season_peak": data.get("highestSeasonRankedRankName") or None,
+            "ranked_season_peak_elo": _number(data.get("highestSeasonRankedElo")),
+            "ranked_career_peak": data.get("highestAllTimeRankedRankName") or None,
+            "ranked_career_peak_elo": _number(data.get("highestAllTimeRankedElo")),
             "source": "Supercell Official API",
         }
-        # Ranked/Prestigio are not supplied by the official player endpoint.
-        if enrich_ranked:
-            enrichment = _legacy_enrichment(tag, timeout=min(timeout, 15))
+        # Ranked is now exposed directly by the official player endpoint.
+        # Use BrawlZone only when official Ranked fields are actually absent, so
+        # a slow third-party request can never block an otherwise complete profile.
+        if enrich_ranked and not any((result.get("ranked_current"), result.get("ranked_season_peak"), result.get("ranked_career_peak"))):
+            enrichment = _legacy_enrichment(tag, timeout=min(timeout, 4))
             for key, value in enrichment.items():
                 if value is not None:
                     result[key] = value
-            normalize_ranked_fields(result)
+        normalize_ranked_fields(result)
         print("SUPERCELL OFFICIAL PLAYER:", tag, club_name, club_tag, flush=True)
         return result
     except Exception as error:
