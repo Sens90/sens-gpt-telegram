@@ -4571,6 +4571,8 @@ async def _send_auto_ranking_slot(context, slot):
                 continue
             text = await asyncio.to_thread(community.ranking_text, chat_id, 0)
             await context.bot.send_message(chat_id=chat_id, text=text)
+            club_text = await asyncio.to_thread(community.club_trophy_ranking_text, chat_id, 0)
+            await context.bot.send_message(chat_id=chat_id, text=club_text)
             await asyncio.to_thread(
                 community._patch, "community_settings",
                 {"last_auto_ranking_slot": key},
