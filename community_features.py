@@ -713,7 +713,13 @@ class CommunityFeatures:
                 if rows:
                     lines.append(f"Completamento: {len(owned) * 100.0 / len(rows):.1f}%")
                 lines += ["", "PER RARITÀ"]
-                for key, group in sorted(groups.items()):
+                category_order = {
+                    "Rare": 10, "Super rare": 20, "Epiche": 30, "Mitiche": 40,
+                    "Leggendarie": 50, "Skin Overdrive": 60, "Pass Pro": 70,
+                    "Brawl Pass": 80, "Collezione": 90, "Senza rarità": 100,
+                    "Argento": 1000, "Oro 24 carati": 1001,
+                }
+                for key, group in sorted(groups.items(), key=lambda item: (category_order.get(item[0], 500), item[0])):
                     have = sum(1 for r in group if r["_owned"])
                     lines.append(f"{key}: {have}/{len(group)}")
                 return "\\n".join(lines)
