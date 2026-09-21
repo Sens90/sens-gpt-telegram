@@ -264,8 +264,11 @@ def _fallback_brawltrack_player(tag, timeout=15, enrich_ranked=True):
         # Optional enrichments must never hold an official Supercell profile for
         # tens of seconds. Keep tight independent budgets; missing enrichment is
         # rendered as unavailable while all official fields are returned now.
-        catalog_totals = _collection_totals_from_catalog(_official_brawler_catalog(timeout=min(timeout, 4)))
-        progression = _brawltime_progression(tag, timeout=min(timeout, 4))
+        # Interactive profile path must return as soon as official Supercell data
+        # is available. Optional web/catalog enrichment is intentionally excluded
+        # from this synchronous request path.
+        catalog_totals = {}
+        progression = {}
 
         result = {
             "name": data.get("name"),
