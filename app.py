@@ -3194,7 +3194,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             collection=[f"Gadget: {owned_total('gadgets_owned','gadgets_total')}",f"Abilità stellari: {owned_total('star_powers_owned','star_powers_total')}",f"Equipaggiamenti: {owned_total('gears_owned','gears_total')}",f"Overdrive: {owned_total('hypercharges_owned','hypercharges_total')}"]
             if player.get("buffies_owned") is not None:collection.append(f"Buffie: {owned_total('buffies_owned','buffies_total')}")
             brawler_text=owned_total("brawlers","brawlers_total")
-            text = "\\n".join([
+            text = "\n".join([
                 str(player["name"]).upper(), f"Tag: {player['tag']}", f"Club: {profile_club}", f"Tag club: {profile_club_tag or 'Non disponibile'}", "",
                 "PROFILO", f"Trofei: {format_number_it(player['trophies'])}", f"Brawler: {brawler_text}", f"Livello: {format_number_it(player.get('level'))}", f"Punti esperienza: {format_number_it(player.get('exp_points'))}", f"Fama: {fame_text}", f"Livello Clip: {format_number_it(player.get('clip_level'))}", f"Punti Clip: {format_number_it(player.get('clip_points'))}", f"Account creato nel: {format_number_it(player.get('account_created_year'))}", f"Qualificazione Championship: {'Qualificato' if player.get('championship_qualified') else 'Mai qualificato'}", "",
                 "RANKED", f"Ranked attuale: {ranked_current}", f"Record stagione: {ranked_season_peak}", f"Record massimo: {ranked_peak}", "",
