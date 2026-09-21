@@ -368,12 +368,27 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
         if club_tag:
             club_display = f"{club_display}\nTag club: {club_tag}"
 
+        power_levels = {}
+        collection = {"gadgets": 0, "star_powers": 0, "gears": 0, "hypercharges": 0, "buffies": 0}
+        for brawler in brawlers:
+            if not isinstance(brawler, dict):
+                continue
+            power = _number(brawler.get("power"))
+            if power and 1 <= power <= 11:
+                power_levels[power] = power_levels.get(power, 0) + 1
+            collection["gadgets"] += len(brawler.get("gadgets") or [])
+            collection["star_powers"] += len(brawler.get("starPowers") or [])
+            collection["gears"] += len(brawler.get("gears") or [])
+            collection["hypercharges"] += len(brawler.get("hyperCharges") or [])
+            collection["buffies"] += len(brawler.get("buffies") or [])
+
         result = {
             "name": data.get("name"),
             "tag": _clean_tag(data.get("tag")) or f"#{tag}",
             "trophies": _number(data.get("trophies")),
             "brawlers": len(brawlers),
             "level": _number(data.get("expLevel")),
+            "prestige": _number(data.get("totalPrestigeLevel")),
             "wins_3v3": _number(data.get("3vs3Victories")),
             "wins_solo": _number(data.get("soloVictories")),
             "wins_duo": _number(data.get("duoVictories")),
@@ -382,6 +397,12 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             "club_tag": club_tag,
             "icon_id": icon_id,
             "icon_url": icon_url,
+            "power_levels": power_levels,
+            "gadgets_owned": collection["gadgets"],
+            "star_powers_owned": collection["star_powers"],
+            "gears_owned": collection["gears"],
+            "hypercharges_owned": collection["hypercharges"],
+            "buffies_owned": collection["buffies"],
             "source": "Supercell Official API",
         }
         # Ranked/Prestigio are not supplied by the official player endpoint.
