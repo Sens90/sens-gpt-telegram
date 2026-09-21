@@ -3758,7 +3758,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for level in range(1, 12):
             count = int((player.get("power_levels") or {}).get(level, 0) or 0)
             if count > 0:
-                power_lines.append(f"Lv {level}: {count}/{total_brawlers}")
+                power_lines.append(f"Livello {level}: {count}/{total_brawlers}")
         collection_lines = [
             f"Gadget: {format_number_it(player.get('gadgets_owned'))}",
             f"Abilità stellari: {format_number_it(player.get('star_powers_owned'))}",
