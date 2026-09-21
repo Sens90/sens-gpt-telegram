@@ -3772,13 +3772,16 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Brawler: {_owned_total('brawlers', 'brawlers_total')}",
             f"Gadget: {_owned_total('gadgets_owned', 'gadgets_total')}",
             f"Abilità stellari: {_owned_total('star_powers_owned', 'star_powers_total')}",
-            f"Equipaggiamenti: {format_number_it(player.get('gears_owned'))}",
+            f"Equipaggiamenti: {_owned_total('gears_owned', 'gears_total')}",
             f"Overdrive: {_owned_total('hypercharges_owned', 'hypercharges_total')}",
         ]
         if player.get("buffies_owned") is not None:
-            collection_lines.append(f"Buffie: {format_number_it(player.get('buffies_owned'))}")
+            collection_lines.append(f"Buffie: {_owned_total('buffies_owned', 'buffies_total')}")
         collection_text = "COLLEZIONE\n" + "\n".join(collection_lines)
         levels_text = "LIVELLI BRAWLER\n" + ("\n".join(power_lines) if power_lines else "Non disponibili")
+        play_time_text = ""
+        if player.get("estimated_hours") is not None:
+            play_time_text = f"\n\nTEMPO DI GIOCO\nOre giocate stimate: {format_number_it(player.get('estimated_hours'))} h"
 
         text = (
             f"{player['name']}\n"
@@ -3797,7 +3800,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"- Solo: {format_number_it(player['wins_solo'])}\n"
             f"- Duo: {format_number_it(player['wins_duo'])}\n\n"
             f"{collection_text}\n\n"
-            f"{levels_text}\n\n"
+            f"{levels_text}"
+            f"{play_time_text}\n\n"
             f"Andamento trofei:\n"
             f"- Oggi: {format_trophy_change(changes.get('today'))}\n"
             f"- 7 giorni: {format_trophy_change(changes.get('7d'))}\n"
