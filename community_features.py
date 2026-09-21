@@ -1351,7 +1351,7 @@ class CommunityFeatures:
         lines = [title, ""]
         for index, (club, data) in enumerate(ranked, 1):
             delta = data["delta"]; sign = "+" if delta > 0 else ""
-            lines.append(f"{index}. {club} - {sign}{self.number_formatter(delta)}")
+            lines.append(f"{index}. {club} - {sign}{self.number_formatter(delta)} ({len(data['players'])} giocatori)")
         return "\\n".join(lines)
 
     def global_monthly_ranking_text(self, chat_id):
