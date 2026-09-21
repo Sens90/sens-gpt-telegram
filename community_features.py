@@ -1767,6 +1767,15 @@ class CommunityFeatures:
             # guard documents that it must never fall through to the generic AI.
             pass
 
+        # Rankings requested in a private chat must read the community roster,
+        # not the user's private Telegram chat id. Resolve the registered member's
+        # original community chat while keeping the reply in the current private chat.
+        _ranking_chat_id = message.chat_id
+        if getattr(message.chat, "type", None) == "private":
+            _ranking_member = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
+            if _ranking_member and _ranking_member.get("chat_id") is not None:
+                _ranking_chat_id = int(_ranking_member["chat_id"])
+
         # Trophy leaderboard commands are common and can be expensive: route them
         # before Skin Account/user registration lookups so they cannot be delayed
         # by unrelated per-user database work.
@@ -1775,26 +1784,26 @@ class CommunityFeatures:
         if re.fullmatch(r"classifica\s+globale\s+(?:di\s+)?oggi", q0, re.I):
             await context.bot.send_message(
                 chat_id=message.chat_id,
-                text=self.global_ranking_text(message.chat_id, 0),
+                text=self.global_ranking_text(_ranking_chat_id, 0),
             )
             return True
         if re.fullmatch(r"classifica\s+globale\s+club\s+(?:di\s+)?oggi", q0, re.I):
-            await context.bot.send_message(chat_id=message.chat_id, text=self.global_club_ranking_text(message.chat_id, monthly=False))
+            await context.bot.send_message(chat_id=message.chat_id, text=self.global_club_ranking_text(_ranking_chat_id, monthly=False))
             return True
         if re.fullmatch(r"classifica\s+globale\s+mensile", q0, re.I):
-            await context.bot.send_message(chat_id=message.chat_id, text=self.global_monthly_ranking_text(message.chat_id))
+            await context.bot.send_message(chat_id=message.chat_id, text=self.global_monthly_ranking_text(_ranking_chat_id))
             return True
         if re.fullmatch(r"classifica\s+globale\s+club\s+mensile", q0, re.I):
-            await context.bot.send_message(chat_id=message.chat_id, text=self.global_club_ranking_text(message.chat_id, monthly=True))
+            await context.bot.send_message(chat_id=message.chat_id, text=self.global_club_ranking_text(_ranking_chat_id, monthly=True))
             return True
         if re.fullmatch(r"classifica\s+(?:dei\s+)?club\s+(?:di\s+)?oggi", q0, re.I):
             await context.bot.send_message(
                 chat_id=message.chat_id,
-                text=self.club_trophy_ranking_text(message.chat_id, 0),
+                text=self.club_trophy_ranking_text(_ranking_chat_id, 0),
             )
             return True
         if re.fullmatch(r"classifica(?:\s+(?:della\s+community))?(?:\s+di)?\s+oggi", q0, re.I):
-            await context.bot.send_message(chat_id=message.chat_id, text=self.ranking_text(message.chat_id, 0))
+            await context.bot.send_message(chat_id=message.chat_id, text=self.ranking_text(_ranking_chat_id, 0))
             return True
         _club_default_fast = re.fullmatch(
             r"classific(?:a|he)\\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)",
@@ -1802,7 +1811,7 @@ class CommunityFeatures:
         )
         if _club_default_fast:
             _club_name = self.CLUB_ALIASES[_club_default_fast.group(1).lower()]
-            await context.bot.send_message(chat_id=message.chat_id, text=self.stat_ranking_text(message.chat_id, "trofei", _club_name))
+            await context.bot.send_message(chat_id=message.chat_id, text=self.stat_ranking_text(_ranking_chat_id, "trofei", _club_name))
             return True
 
         registered = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
@@ -2800,24 +2809,24 @@ class CommunityFeatures:
             "record classificata carriera":"classificata carriera", "record ranked carriera":"classificata carriera",
         }
         if ql in ("statistiche","stats community","statistiche community","tutte le statistiche","tutte le classifiche"):
-            await message.reply_text(self.all_stats_text(message.chat_id)); return True
+            await message.reply_text(self.all_stats_text(_ranking_chat_id)); return True
         club_all=re.fullmatch(r"(?:statistiche|stats|tutte le statistiche|tutte le classifiche)(?:\s+(?:del|dei|di))?\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)",q,re.I)
         if club_all:
-            await message.reply_text(self.all_stats_text(message.chat_id,self.CLUB_ALIASES[club_all.group(1).lower()])); return True
+            await message.reply_text(self.all_stats_text(_ranking_chat_id,self.CLUB_ALIASES[club_all.group(1).lower()])); return True
         stat=re.fullmatch(r"classific(?:a|he)(?:\s+(?:player|giocatori))?(?:\s+(?:della\s+)?community)?(?:\s+(?:per|di))?\s+(3v3|vittorie 3v3|solo|vittorie solo|duo|vittorie duo|trofei|coppe|brawlers?|livello(?: account)?|prestigio|classificata(?: attuale| stagione| carriera)?|ranked(?: attuale| stagione| carriera)?|record classificata (?:stagione|carriera)|record ranked (?:stagione|carriera))",q,re.I)
         if stat:
-            await message.reply_text(self.stat_ranking_text(message.chat_id, stat_aliases[stat.group(1).lower()])); return True
+            await message.reply_text(self.stat_ranking_text(_ranking_chat_id, stat_aliases[stat.group(1).lower()])); return True
         club_default=re.fullmatch(r"classific(?:a|he)\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)",q,re.I)
         if club_default:
             club_name=self.CLUB_ALIASES[club_default.group(1).lower()]
-            await message.reply_text(self.stat_ranking_text(message.chat_id, "trofei", club_name))
+            await message.reply_text(self.stat_ranking_text(_ranking_chat_id, "trofei", club_name))
             return True
         clubstat=re.fullmatch(r"classific(?:a|he)\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)(?:\s+(?:per|di))?\s+(3v3|vittorie 3v3|solo|vittorie solo|duo|vittorie duo|trofei|coppe|brawlers?|livello(?: account)?|prestigio|classificata(?: attuale| stagione| carriera)?|ranked(?: attuale| stagione| carriera)?|record classificata (?:stagione|carriera)|record ranked (?:stagione|carriera))",q,re.I)
         if clubstat:
-            await message.reply_text(self.stat_ranking_text(message.chat_id, stat_aliases[clubstat.group(2).lower()], self.CLUB_ALIASES[clubstat.group(1).lower()])); return True
+            await message.reply_text(self.stat_ranking_text(_ranking_chat_id, stat_aliases[clubstat.group(2).lower()], self.CLUB_ALIASES[clubstat.group(1).lower()])); return True
         if re.search(r"\bclassific(?:a|he)\b",ql) and "3v3" in ql:
             club_name=next((v for k,v in self.CLUB_ALIASES.items() if k in ql),None)
-            await message.reply_text(self.stat_ranking_text(message.chat_id, "3v3", club_name)); return True
+            await message.reply_text(self.stat_ranking_text(_ranking_chat_id, "3v3", club_name)); return True
         ranked_delta = re.fullmatch(
             r"classific(?:a|he)(?:\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?))?\s+(?:elo\s+)?(?:ranked|classificata)(?:\s+(oggi|7|15|30)(?:\s+giorni)?)?",
             q, re.I,
@@ -2827,13 +2836,13 @@ class CommunityFeatures:
             club_name = self.CLUB_ALIASES.get(club_key.lower()) if club_key else None
             period = ranked_delta.group(2) or "oggi"
             days = 0 if period.lower() == "oggi" else int(period)
-            await message.reply_text(self.ranked_elo_ranking_text(message.chat_id, days, club_name))
+            await message.reply_text(self.ranked_elo_ranking_text(_ranking_chat_id, days, club_name))
             return True
 
         if re.search(r"\bclassific(?:a|he)\b", ql) and re.search(r"\b(?:classificata|ranked)\b", ql):
             club_name=next((v for k,v in self.CLUB_ALIASES.items() if k in ql),None)
             stat_key="classificata carriera" if "carriera" in ql else ("classificata stagione" if "stagione" in ql else "classificata")
-            await message.reply_text(self.stat_ranking_text(message.chat_id, stat_key, club_name)); return True
+            await message.reply_text(self.stat_ranking_text(_ranking_chat_id, stat_key, club_name)); return True
 
         if ql == "classifica":
             await message.reply_text(
@@ -2852,7 +2861,7 @@ class CommunityFeatures:
             re.I,
         )
         if match:
-            await message.reply_text(self.ranking_text(message.chat_id, 0))
+            await message.reply_text(self.ranking_text(_ranking_chat_id, 0))
             return True
 
         match = re.fullmatch(
@@ -2862,7 +2871,7 @@ class CommunityFeatures:
         )
         if match:
             days = int(match.group(1))
-            await message.reply_text(self.ranking_text(message.chat_id, days))
+            await message.reply_text(self.ranking_text(_ranking_chat_id, days))
             return True
 
         if ql in ("club", "profilo club", "stato club"):
