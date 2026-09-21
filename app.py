@@ -420,6 +420,7 @@ def supercell_proxy_audit():
             out[name] = entry
         except Exception as exc:
             out[name] = {"error": type(exc).__name__}
+    print("SUPERCELL PROXY AUDIT:", json.dumps(out, ensure_ascii=False, sort_keys=True), flush=True)
     return {"ok": True, "tests": out}
 
 
