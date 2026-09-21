@@ -4584,6 +4584,22 @@ async def _send_auto_ranking_slot(context, slot):
     ), flush=True)
 
 
+async def log_automatic_ranking_schedule(context):
+    """Log resolved APScheduler run times after JobQueue has actually started."""
+    try:
+        jobs = context.job_queue.jobs()
+        for job in jobs:
+            if str(job.name or "").startswith("classifica_oggi_"):
+                print(
+                    "CLASSIFICA OGGI ACTIVE SCHEDULE: name=%s next=%s" % (
+                        job.name, getattr(job.job, "next_run_time", None)
+                    ),
+                    flush=True,
+                )
+    except Exception as exc:
+        print("CLASSIFICA OGGI ACTIVE SCHEDULE ERROR:", repr(exc), flush=True)
+
+
 async def automatic_today_ranking_job(context):
     """Send the current scheduled trophy ranking once per configured chat."""
     now = datetime.now(ROME)
@@ -4644,6 +4660,11 @@ def main():
             name="ranked_catalog_sync"
         )
         application.job_queue.run_once(automatic_today_ranking_catchup_job, when=15, name="classifica_oggi_catchup")
+        application.job_queue.run_once(
+            log_automatic_ranking_schedule,
+            when=20,
+            name="classifica_oggi_schedule_probe",
+        )
         # Watchdog: if an exact daily slot is missed, recover it from Supabase.
         # _send_auto_ranking_slot is idempotent via last_auto_ranking_slot.
         application.job_queue.run_repeating(
