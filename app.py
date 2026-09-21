@@ -3229,6 +3229,15 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"Possedute: {skin_owned_pct:.2f}%".replace(".", ","),
                     f"Mancanti: {skin_missing_pct:.2f}%".replace(".", ","),
                 ])
+            skin_value_gems = player.get("skin_value_gems")
+            skin_value_eur = player.get("skin_value_eur")
+            if skin_value_gems is not None:
+                skin_lines.append(f"Valore skin: {format_number_it(int(skin_value_gems))} gemme")
+            if skin_value_eur is not None:
+                skin_lines.append(
+                    f"Valore equivalente: {float(skin_value_eur):,.2f} €"
+                    .replace(",", "X").replace(".", ",").replace("X", ".")
+                )
             collection=[*skin_lines,"",f"Gadget: {owned_total('gadgets_owned','gadgets_total')}",f"Abilità stellari: {owned_total('star_powers_owned','star_powers_total')}",f"Equipaggiamenti: {owned_total('gears_owned','gears_total')}",f"Overdrive: {owned_total('hypercharges_owned','hypercharges_total')}"]
             if player.get("buffies_owned") is not None:collection.append(f"Buffie: {owned_total('buffies_owned','buffies_total')}")
             brawler_text=owned_total("brawlers","brawlers_total")
