@@ -1287,6 +1287,38 @@ class CommunityFeatures:
             )
         return "\n".join(lines)
 
+    def club_trophy_ranking_text(self, chat_id, days=0):
+        """Rank the four community clubs by summed trophy movement from stored snapshots."""
+        clubs = list(self.CLUB_TAGS.keys())
+        totals = {club: {"delta": 0, "players": 0} for club in clubs}
+        for member in self.members(chat_id):
+            club = str(member.get("club_name") or "").strip().upper()
+            if club not in totals or not member.get("player_tag"):
+                continue
+            current = self._member_current_trophies(member)
+            if current is None:
+                continue
+            history = self.history_fetcher(member["player_tag"], days=max(days + 2, 10))
+            changes = self.change_calculator(history, current)
+            key = "today" if days == 0 else {7: "7d", 15: "15d", 30: "30d", 90: "90d"}.get(days, "7d")
+            delta = changes.get(key)
+            if delta is None:
+                continue
+            totals[club]["delta"] += int(delta)
+            totals[club]["players"] += 1
+
+        rows = [
+            (club, data["delta"], data["players"])
+            for club, data in totals.items()
+        ]
+        rows.sort(key=lambda row: (row[1], row[2]), reverse=True)
+        label = "OGGI" if days == 0 else f"{days} GIORNI"
+        lines = [f"CLASSIFICA CLUB - TROFEI {label}", ""]
+        for index, (club, delta, players) in enumerate(rows, 1):
+            sign = "+" if delta > 0 else ""
+            lines.append(f"{index}. {club} - {sign}{self.number_formatter(delta)} ({players} giocatori)")
+        return "\n".join(lines)
+
     def club_summary_text(self, chat_id):
         members = self.members(chat_id)
         registered = [m for m in members if m.get("player_tag")]
