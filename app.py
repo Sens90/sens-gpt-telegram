@@ -3621,7 +3621,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     stats_match = re.fullmatch(
-        r"(?:stats|statistiche|profilo|scheda|status(?:\s+(?:del\s+)?giocatore)?|stato(?:\s+(?:del\s+)?giocatore)?)\s*(?:di\s+)?#?([0289PYLQGRJCUV]{3,15})",
+        r"(?:tag|stats|statistiche|profilo|scheda|status(?:\s+(?:del\s+)?giocatore)?|stato(?:\s+(?:del\s+)?giocatore)?)\s*(?:di\s+)?#?([0289PYLQGRJCUV]{3,15})",
         question.strip(),
         re.I
     )
@@ -3629,7 +3629,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Natural-language safety net: a player tag plus a clear profile intent
         # must never be sent to Gemini.
         tag_match = re.search(r"#([0289PYLQGRJCUV]{3,15})", question, re.I)
-        intent = re.search(r"\b(status|stato|statistiche|stats|profilo|scheda|giocatore)\b", question, re.I)
+        intent = re.search(r"\b(tag|status|stato|statistiche|stats|profilo|scheda|giocatore)\b", question, re.I)
         if tag_match and intent:
             stats_match = tag_match
 
