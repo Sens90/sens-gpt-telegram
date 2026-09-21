@@ -3247,7 +3247,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "RANKED", f"Ranked attuale: {ranked_current}", f"Record stagione: {ranked_season_peak}", f"Record massimo: {ranked_peak}", "",
                 "VITTORIE", f"3v3: {format_number_it(player.get('wins_3v3'))}", f"Solo: {format_number_it(player.get('wins_solo'))}", f"Duo: {format_number_it(player.get('wins_duo'))}", "",
                 "COLLEZIONE", *collection, "", "LIVELLI BRAWLER", *(level_lines or ["Non disponibili"]), "", "PRESTIGIO BRAWLER", f"Prestigi totali: {format_number_it(player.get('prestige'))}/{format_number_it((player.get('brawlers') or 0) * 3)}", *(prestige_lines or ["Distribuzione non disponibile"]), "",
-                "TEMPO DI GIOCO", (f"Ore giocate stimate: {format_number_it(player.get('estimated_hours'))} h" if player.get("estimated_hours") is not None else "Ore giocate stimate: Non disponibile"), "",
+                "TEMPO DI GIOCO", (f"Ore giocate stimate: {format_number_it(player.get('estimated_hours'))} h — {int(player.get('estimated_hours')) // 24} giorni e {int(player.get('estimated_hours')) % 24} ore effettivi" if player.get("estimated_hours") is not None else "Ore giocate stimate: Non disponibile"), "",
                 "COSTO PER MAXARE L'ACCOUNT",
                 *(["ACCOUNT MAXATO"] if all(player.get(key) == 0 for key in ("max_cost_coins", "max_cost_power_points", "gears_missing_cost")) else [
                     f"Monete mancanti: {format_number_it(player.get('max_cost_coins'))}",
@@ -3910,7 +3910,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         play_time_text = ""
         if player.get("estimated_hours") is not None:
-            play_time_text = f"\n\nTEMPO DI GIOCO\nOre giocate stimate: {format_number_it(player.get('estimated_hours'))} h"
+            play_time_text = f"\n\nTEMPO DI GIOCO\nOre giocate stimate: {format_number_it(player.get('estimated_hours'))} h — {int(player.get('estimated_hours')) // 24} giorni e {int(player.get('estimated_hours')) % 24} ore effettivi"
 
         text = (
             f"{str(player['name']).upper()}\n"
