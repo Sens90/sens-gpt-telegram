@@ -1868,7 +1868,7 @@ class CommunityFeatures:
         registered = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
 
         # Skin Account: totals, category queries, owned/missing lists and per-Brawler details.
-        category_rx = r"(rare|super\\s+rare|epiche|mitiche|leggendarie|(?:skin\\s+)?overdrive|ipercharge|collezione|collector|pass\\s+pro|brawl\\s+pass|argento|oro(?:\\s+24\\s+carati)?|speciali|senza\\s+rarit[àa])"
+        category_rx = r"(rare|super\s+rare|epiche|mitiche|leggendarie|(?:skin\s+)?overdrive|ipercharge|collezione|collector|pass\s+pro|brawl\s+pass|argento|oro(?:\s+24\s+carati)?|speciali|senza\s+rarit[àa])"
         rarity_aliases = {
             "rare":"Rare", "super rare":"Super rare", "epiche":"Epiche", "mitiche":"Mitiche",
             "leggendarie":"Leggendarie", "overdrive":"Skin Overdrive", "skin overdrive":"Skin Overdrive",
@@ -1877,9 +1877,9 @@ class CommunityFeatures:
             "oro":"Oro 24 carati", "oro 24 carati":"Oro 24 carati", "speciali":"Senza rarità",
             "senza rarità":"Senza rarità", "senza rarita":"Senza rarità",
         }
-        cat = lambda raw: rarity_aliases[re.sub(r"\\s+", " ", raw.lower()).strip()]
+        cat = lambda raw: rarity_aliases[re.sub(r"\s+", " ", raw.lower()).strip()]
 
-        skin_chart_q = re.fullmatch(r"(?:fammi\\s+)?grafico\\s+skin(?:\\s+"+category_rx+r")?(?:\\s+(7|15|30|60|90|180|365)(?:\\s+giorni)?)?", q_skin, re.I)
+        skin_chart_q = re.fullmatch(r"(?:fammi\s+)?grafico\s+skin(?:\s+"+category_rx+r")?(?:\s+(7|15|30|60|90|180|365)(?:\s+giorni)?)?", q_skin, re.I)
         if skin_chart_q:
             chart_category = cat(skin_chart_q.group(1)) if skin_chart_q.group(1) else "Totale"
             chart_days = int(skin_chart_q.group(2) or 30)
@@ -1891,25 +1891,25 @@ class CommunityFeatures:
             return True
 
         skin_image_q = re.fullmatch(
-            r"(?:mostrami|fammi\\s+vedere|immagine(?:\\s+di)?|foto(?:\\s+di)?)\\s+(?:la\\s+skin\\s+)?(.+?)\\s+(?:di|del|della)\\s+(.+)",
+            r"(?:mostrami|fammi\s+vedere|immagine(?:\s+di)?|foto(?:\s+di)?)\s+(?:la\s+skin\s+)?(.+?)\s+(?:di|del|della)\s+(.+)",
             q_skin, re.I,
         )
-        category_brawler_list_q = re.fullmatch(r"quali\\s+skin\\s+"+category_rx+r"\\s+(?:di|del|della)\\s+(.+?)\\s+(mi\\s+mancano|ho|possiedo)", q_skin, re.I)
-        category_list_q = re.fullmatch(r"quali\\s+skin\\s+"+category_rx+r"\\s+(mi\\s+mancano|ho|possiedo)", q_skin, re.I)
-        category_brawler_count_q = re.fullmatch(r"quante\\s+skin\\s+"+category_rx+r"\\s+(?:ha|di|del|della)\\s+(.+)", q_skin, re.I)
-        category_count_q = re.fullmatch(r"quante\\s+skin\\s+"+category_rx+r"(?:\\s+(?:ho|possiedo))?", q_skin, re.I)
-        missing_brawler_q = re.fullmatch(r"(?:quali\\s+)?skin\\s+(?:di|del|della)\\s+(.+?)\\s+(?:mi\\s+)?mancano", q_skin, re.I) or re.fullmatch(r"(?:quali\\s+)?skin\\s+(?:mi\\s+)?mancano\\s+(?:di|del|della)\\s+(.+)", q_skin, re.I)
-        owned_brawler_q = re.fullmatch(r"(?:quali\\s+)?skin\\s+(?:di|del|della)\\s+(.+?)\\s+(?:ho|possiedo)", q_skin, re.I)
-        account_brawler_q = re.fullmatch(r"(?:fammi\\s+)?skin\\s+account\\s+(?:di\\s+)?(.+)", q_skin, re.I)
+        category_brawler_list_q = re.fullmatch(r"quali\s+skin\s+"+category_rx+r"\s+(?:di|del|della)\s+(.+?)\s+(mi\s+mancano|ho|possiedo)", q_skin, re.I)
+        category_list_q = re.fullmatch(r"quali\s+skin\s+"+category_rx+r"\s+(mi\s+mancano|ho|possiedo)", q_skin, re.I)
+        category_brawler_count_q = re.fullmatch(r"quante\s+skin\s+"+category_rx+r"\s+(?:ha|di|del|della)\s+(.+)", q_skin, re.I)
+        category_count_q = re.fullmatch(r"quante\s+skin\s+"+category_rx+r"(?:\s+(?:ho|possiedo))?", q_skin, re.I)
+        missing_brawler_q = re.fullmatch(r"(?:quali\s+)?skin\s+(?:di|del|della)\s+(.+?)\s+(?:mi\s+)?mancano", q_skin, re.I) or re.fullmatch(r"(?:quali\s+)?skin\s+(?:mi\s+)?mancano\s+(?:di|del|della)\s+(.+)", q_skin, re.I)
+        owned_brawler_q = re.fullmatch(r"(?:quali\s+)?skin\s+(?:di|del|della)\s+(.+?)\s+(?:ho|possiedo)", q_skin, re.I)
+        account_brawler_q = re.fullmatch(r"(?:fammi\s+)?skin\s+account\s+(?:di\s+)?(.+)", q_skin, re.I)
         skin_brawler_count_q = re.fullmatch(r"quante\s+skin\s+(?:ho\s+)?(?:di|del|della)\s+(.+)", q_skin, re.I) or re.fullmatch(r"quante\s+skin\s+ha\s+(.+)", q_skin, re.I)
-        skin_all_q = re.fullmatch(r"(?:quante\\s+)?skin(?:\\s+(?:ho|possiedo))?", q_skin, re.I)
+        skin_all_q = re.fullmatch(r"(?:quante\s+)?skin(?:\s+(?:ho|possiedo))?", q_skin, re.I)
 
         answer = None
         # Conversational Skin Account follow-up: remember the last Brawler scope.
         # Example: "Quante skin ho di Moe?" -> "Quali ho?" / "Quali mi mancano?"
         last_skin = context.user_data.get("skin_account_context") or {}
-        follow_owned = re.fullmatch(r"(?:quali(?:\\s+skin)?\\s+)?(?:ho|possiedo|ho io)", q_skin, re.I) or re.fullmatch(r"quali\\s+ho", q_skin, re.I)
-        follow_missing = re.fullmatch(r"(?:quali(?:\\s+skin)?\\s+)?(?:mi\\s+mancano|mancano)", q_skin, re.I) or re.fullmatch(r"quali\\s+mi\\s+mancano", q_skin, re.I)
+        follow_owned = re.fullmatch(r"(?:quali(?:\s+skin)?\s+)?(?:ho|possiedo|ho io)", q_skin, re.I) or re.fullmatch(r"quali\s+ho", q_skin, re.I)
+        follow_missing = re.fullmatch(r"(?:quali(?:\s+skin)?\s+)?(?:mi\s+mancano|mancano)", q_skin, re.I) or re.fullmatch(r"quali\s+mi\s+mancano", q_skin, re.I)
         if (follow_owned or follow_missing) and last_skin.get("brawler"):
             answer = self.skin_account_text(
                 registered,
