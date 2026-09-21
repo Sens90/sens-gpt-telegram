@@ -480,7 +480,9 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             collection["star_powers"] += len(brawler.get("starPowers") or [])
             collection["gears"] += len(brawler.get("gears") or [])
             collection["hypercharges"] += len(brawler.get("hyperCharges") or [])
-            collection["buffies"] += len(brawler.get("buffies") or [])
+            # Supercell's buffies array contains multiple component records per
+            # brawler, not a reliable count of owned Buffies. Do not present that
+            # array length as an ownership total until ownership semantics are verified.
 
         result = {
             "name": data.get("name"),
@@ -505,7 +507,7 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             "star_powers_owned": collection["star_powers"],
             "gears_owned": collection["gears"],
             "hypercharges_owned": collection["hypercharges"],
-            "buffies_owned": collection["buffies"],
+            "buffies_owned": None,
             "brawlers_total": catalog_totals.get("brawlers") or None,
             "gadgets_total": catalog_totals.get("gadgets") or None,
             "star_powers_total": catalog_totals.get("star_powers") or None,
