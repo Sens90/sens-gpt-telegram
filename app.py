@@ -3146,7 +3146,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # because they need the enriched live profile (including BrawlZone Ranked).
     # Registration/monitoring deliberately keep using the lightweight fetcher.
     _full_profile_route = bool(re.fullmatch(
-        r"(?:tag|stats|statistiche|profilo|scheda|status(?:\\s+(?:del\\s+)?giocatore)?|stato(?:\\s+(?:del\\s+)?giocatore)?)\\s*(?:di\\s+)?#?[0289PYLQGRJCUV]{3,15}",
+        r"(?:tag|stats|statistiche|profilo|scheda|status(?:\s+(?:del\s+)?giocatore)?|stato(?:\s+(?:del\s+)?giocatore)?)\s*(?:di\s+)?#?[0289PYLQGRJCUV]{3,15}",
         _raw_command.strip(),
         re.I,
     ))
