@@ -354,6 +354,42 @@ def _brawltime_progression(player_tag, timeout=15):
         return {}
 
 
+
+def _brawlytix_progression(player_tag, timeout=5):
+    """Optional public profile enrichment. Never authoritative over Supercell."""
+    tag = str(player_tag or "").upper().replace("#", "").strip()
+    if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
+        return {}
+    try:
+        response = requests.get(
+            "https://brawlytix.com/player/" + tag,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; SensGPT/1.0)"},
+            timeout=timeout,
+        )
+        if response.status_code != 200:
+            print("BRAWLYTIX PROGRESSION HTTP:", tag, response.status_code, flush=True)
+            return {}
+        page = html.unescape(response.text)
+        patterns = {
+            "estimated_hours": [r"([\d,.]+)\s*Hours Spent"],
+            "clip_level": [r"([\d,.]+)\s*Records Level"],
+            "clip_points": [r"([\d,.]+)\s*Records Points"],
+            "skins_owned": [r"([\d,.]+)\s*Skins Unlocked"],
+        }
+        result = {}
+        for key, variants in patterns.items():
+            for pattern in variants:
+                match = re.search(pattern, page, re.I | re.S)
+                if match:
+                    result[key] = _number(match.group(1))
+                    break
+        print("BRAWLYTIX PROGRESSION:", tag, result, "bytes=", len(page), flush=True)
+        return result
+    except Exception as error:
+        print("BRAWLYTIX PROGRESSION ERROR:", tag, type(error).__name__, repr(error), flush=True)
+        return {}
+
+
 def _official_brawler_catalog(timeout=20):
     token = str(os.environ.get("BRAWL_PROXY_API_KEY") or "").strip()
     if not token:
@@ -541,6 +577,11 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
                     print("BRAWLTRACK PROGRESSION:", tag, {k: progression.get(k) for k in aliases}, "keys=", sorted(bt.keys()), flush=True)
             except Exception as error:
                 print("BRAWLTRACK PROGRESSION ERROR:", tag, type(error).__name__, repr(error), flush=True)
+        if not all(progression.get(k) is not None for k in ("estimated_hours", "clip_level", "clip_points")):
+            brawlytix = _brawlytix_progression(tag, timeout=min(timeout, 5))
+            for key in ("estimated_hours", "clip_level", "clip_points", "skins_owned"):
+                if progression.get(key) is None and brawlytix.get(key) is not None:
+                    progression[key] = brawlytix[key]
 
         power_levels = {}
         prestige_levels = {}
