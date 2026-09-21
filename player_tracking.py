@@ -407,7 +407,9 @@ def _max_account_cost(brawlers, collection):
     coins += max(0, total * 2 - int(collection.get("gadgets") or 0)) * 1000
     coins += max(0, total * 2 - int(collection.get("star_powers") or 0)) * 2000
     coins += max(0, total - int(collection.get("hypercharges") or 0)) * 5000
-    return {"coins": coins, "power_points": power_points}
+    gears_total = total * 6
+    gears_missing_cost = max(0, gears_total - int(collection.get("gears") or 0)) * 1000
+    return {"coins": coins, "power_points": power_points, "gears_total": gears_total, "gears_missing_cost": gears_missing_cost}
 
 
 def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
@@ -542,7 +544,7 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             "gadgets_total": catalog_totals.get("gadgets") or None,
             "star_powers_total": catalog_totals.get("star_powers") or None,
             "hypercharges_total": catalog_totals.get("hypercharges") or None,
-            "gears_total": progression.get("gears_total"),
+            "gears_total": max_cost["gears_total"],
             "buffies_total": progression.get("buffies_total"),
             "estimated_hours": progression.get("estimated_hours"),
             "account_created_year": progression.get("account_created_year"),
@@ -552,6 +554,7 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             "championship_qualified": bool(data.get("isQualifiedFromChampionshipChallenge", False)),
             "max_cost_coins": max_cost["coins"],
             "max_cost_power_points": max_cost["power_points"],
+            "gears_missing_cost": max_cost["gears_missing_cost"],
             "ranked_current": translate_rank(data.get("rankedRankName")) or None,
             "ranked_current_elo": _number(data.get("rankedElo")),
             "ranked_season_peak": translate_rank(data.get("highestSeasonRankedRankName")) or None,
