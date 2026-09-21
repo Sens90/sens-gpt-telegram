@@ -452,13 +452,13 @@ def _brawlytix_progression(player_tag, timeout=8, retry_missing=True):
                     result[key] = value
         skin_context = str(contexts.get("skins_unlocked") or "")
         silver_gold_coins = None
-        match = re.search(r"([0-9][0-9,.]*)\\s*Total Silver/Gold Cost", skin_context, re.I)
+        match = re.search(r"([0-9][0-9,.]*)\s*Total Silver/Gold Cost", skin_context, re.I)
         if match:
             silver_gold_coins = _number(match.group(1))
             if silver_gold_coins is not None:
                 result["skin_silver_gold_coins"] = silver_gold_coins
         if result.get("skin_value_gems") is None:
-            match = re.search(r"([0-9][0-9,.]*)\\s*Total Skin Gem Value", skin_context, re.I)
+            match = re.search(r"([0-9][0-9,.]*)\s*Total Skin Gem Value", skin_context, re.I)
             if match:
                 result["skin_value_gems"] = _number(match.group(1))
         # Economic reference chosen for stats: 2,000 gems = EUR 119.99;
@@ -472,15 +472,15 @@ def _brawlytix_progression(player_tag, timeout=8, retry_missing=True):
             result["skin_value_eur"] = round(gem_eur + coin_eur, 2)
         if not result.get("skin_rarity_counts"):
             rarity_patterns = {
-                "rare": r"([0-9][0-9,.]*)\\s*Rare Skins",
-                "super rare": r"([0-9][0-9,.]*)\\s*Super Rare Skins",
-                "epic": r"([0-9][0-9,.]*)\\s*Epic Skins",
-                "mythic": r"([0-9][0-9,.]*)\\s*Mythic Skins",
-                "legendary": r"([0-9][0-9,.]*)\\s*Legendary Skins",
-                "hypercharge": r"([0-9][0-9,.]*)\\s*Hypercharge Skins",
-                "ranked": r"([0-9][0-9,.]*)\\s*Ranked Skins",
-                "true silver": r"([0-9][0-9,.]*)\\s*True Silver Skins",
-                "true gold": r"([0-9][0-9,.]*)\\s*True Gold Skins",
+                "rare": r"([0-9][0-9,.]*)\s*Rare Skins",
+                "super rare": r"([0-9][0-9,.]*)\s*Super Rare Skins",
+                "epic": r"([0-9][0-9,.]*)\s*Epic Skins",
+                "mythic": r"([0-9][0-9,.]*)\s*Mythic Skins",
+                "legendary": r"([0-9][0-9,.]*)\s*Legendary Skins",
+                "hypercharge": r"([0-9][0-9,.]*)\s*Hypercharge Skins",
+                "ranked": r"([0-9][0-9,.]*)\s*Ranked Skins",
+                "true silver": r"([0-9][0-9,.]*)\s*True Silver Skins",
+                "true gold": r"([0-9][0-9,.]*)\s*True Gold Skins",
             }
             cleaned = {}
             for rarity, pattern in rarity_patterns.items():
