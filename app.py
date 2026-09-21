@@ -4569,10 +4569,21 @@ async def _send_auto_ranking_slot(context, slot):
             chat_id = int(row["chat_id"])
             if row.get("last_auto_ranking_slot") == key:
                 continue
+            # Compute the slot payload before sending. At 23:59 this freezes all
+            # end-of-day texts while "today" still points to the closing Rome day,
+            # so a Telegram send crossing midnight cannot reset the calculation.
             text = await asyncio.to_thread(community.ranking_text, chat_id, 0)
+            final_slot = slot.hour == 23 and slot.minute == 59
+            club_text = None
+            global_text = None
+            if final_slot:
+                club_text = await asyncio.to_thread(community.club_trophy_ranking_text, chat_id, 0)
+                global_text = await asyncio.to_thread(community.global_ranking_text, chat_id, 0)
+
             await context.bot.send_message(chat_id=chat_id, text=text)
-            club_text = await asyncio.to_thread(community.club_trophy_ranking_text, chat_id, 0)
-            await context.bot.send_message(chat_id=chat_id, text=club_text)
+            if final_slot:
+                await context.bot.send_message(chat_id=chat_id, text=club_text)
+                await context.bot.send_message(chat_id=chat_id, text=global_text)
             await asyncio.to_thread(
                 community._patch, "community_settings",
                 {"last_auto_ranking_slot": key},
