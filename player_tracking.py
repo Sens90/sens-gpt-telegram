@@ -46,7 +46,8 @@ def translate_rank(rank):
     if not rank: return None
     parts = rank.split(" ", 1)
     translated = RANK_NAMES_IT.get(parts[0].casefold(), parts[0])
-    return f"{translated} {parts[1]}" if len(parts) > 1 else translated
+    suffix = parts[1] if len(parts) > 1 else ""
+    return f"{translated} {suffix}".strip()
 
 
 def _clean_tag(value):
