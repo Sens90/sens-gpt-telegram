@@ -527,7 +527,10 @@ def _max_account_cost(brawlers, collection, catalog=None):
             coins += gold
     coins += max(0, int(catalog.get("gadgets") or total * 2) - int(collection.get("gadgets") or 0)) * 1000
     coins += max(0, int(catalog.get("star_powers") or total * 2) - int(collection.get("star_powers") or 0)) * 2000
-    coins += max(0, int(catalog.get("hypercharges") or total) - int(collection.get("hypercharges") or 0)) * 5000
+    # Max-account cost is based on one Overdrive slot per Brawler, even when
+    # fewer Overdrives have been released in the live collection catalog.
+    # The collection display still uses the released catalog total separately.
+    coins += max(0, total - int(collection.get("hypercharges") or 0)) * 5000
     buffies_missing = max(0, int(collection.get("buffies_total") or 0) - int(collection.get("buffies") or 0))
     coins += buffies_missing * 1000
     power_points += buffies_missing * 2000
