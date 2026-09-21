@@ -359,7 +359,21 @@ def _brawltime_progression(player_tag, timeout=15):
 
 
 
-def _brawlytix_progression(player_tag, timeout=8):
+_PROGRESSION_CACHE = {}
+
+def _merge_progression_cache(tag, result):
+    """Keep the last valid optional progression fields for transient source gaps."""
+    cached = _PROGRESSION_CACHE.get(tag) or {}
+    merged = dict(cached)
+    for key, value in (result or {}).items():
+        if value is not None:
+            merged[key] = value
+    if merged:
+        _PROGRESSION_CACHE[tag] = merged
+    return merged
+
+
+def _brawlytix_progression(player_tag, timeout=8, retry_missing=True):
     """Optional Brawlytix enrichment routed through the authenticated Netsons bridge."""
     tag = str(player_tag or "").upper().replace("#", "").strip()
     if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
@@ -424,6 +438,16 @@ def _brawlytix_progression(player_tag, timeout=8):
                     result[key] = value
         if safe_meta:
             print("PROGRESSION BRIDGE META:", tag, safe_meta, flush=True)
+
+        # Brawlytix can return HTTP 200 while a single metric says
+        # "API unavailable". Retry once for missing skin data, then preserve
+        # the last valid value seen by this process instead of replacing it
+        # with Non disponibile.
+        if result.get("skins_owned") is None and retry_missing:
+            retry_result = _brawlytix_progression(tag, timeout=timeout, retry_missing=False)
+            if retry_result.get("skins_owned") is not None:
+                result["skins_owned"] = retry_result["skins_owned"]
+        result = _merge_progression_cache(tag, result)
         print("BRAWLYTIX PROGRESSION PROXY:", tag, result, flush=True)
         return result
     except Exception as error:
