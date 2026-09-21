@@ -3219,7 +3219,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         progress = max(0, int(fame_value) - level_start)
                         fame_text += f" — {format_number_it(progress)}/{format_number_it(per_level)}"
                     break
-            collection=[f"Gadget: {owned_total('gadgets_owned','gadgets_total')}",f"Abilità stellari: {owned_total('star_powers_owned','star_powers_total')}",f"Equipaggiamenti: {owned_total('gears_owned','gears_total')}",f"Overdrive: {owned_total('hypercharges_owned','hypercharges_total')}"]
+            collection=[f"Skin: {owned_total('skins_owned','skins_total')}",f"Gadget: {owned_total('gadgets_owned','gadgets_total')}",f"Abilità stellari: {owned_total('star_powers_owned','star_powers_total')}",f"Equipaggiamenti: {owned_total('gears_owned','gears_total')}",f"Overdrive: {owned_total('hypercharges_owned','hypercharges_total')}"]
             if player.get("buffies_owned") is not None:collection.append(f"Buffie: {owned_total('buffies_owned','buffies_total')}")
             brawler_text=owned_total("brawlers","brawlers_total")
             text = "\n".join([
