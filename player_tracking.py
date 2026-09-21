@@ -466,6 +466,8 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             "trophies": _number(data.get("trophies")),
             "brawlers": len(brawlers),
             "level": _number(data.get("expLevel")),
+            "fame": _number(data.get("fame")),
+            "fame_tier": data.get("fameTierName") or None,
             "prestige": _number(data.get("totalPrestigeLevel")),
             "wins_3v3": _number(data.get("3vs3Victories")),
             "wins_solo": _number(data.get("soloVictories")),
