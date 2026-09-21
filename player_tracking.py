@@ -355,40 +355,49 @@ def _brawltime_progression(player_tag, timeout=15):
 
 
 
-def _brawlytix_progression(player_tag, timeout=5):
-    """Optional public profile enrichment. Never authoritative over Supercell."""
+def _brawlytix_progression(player_tag, timeout=8):
+    """Optional Brawlytix enrichment routed through the authenticated Netsons bridge."""
     tag = str(player_tag or "").upper().replace("#", "").strip()
     if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
         return {}
+    proxy_url = (os.environ.get("BRAWL_OFFICIAL_PROXY_URL") or "").strip()
+    proxy_key = (os.environ.get("BRAWL_OFFICIAL_PROXY_KEY") or "").strip()
+    if not proxy_url or not proxy_key:
+        print("BRAWLYTIX PROGRESSION PROXY NON CONFIGURATO:", tag, flush=True)
+        return {}
     try:
         response = requests.get(
-            "https://brawlytix.com/player/" + tag,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; SensGPT/1.0)"},
+            proxy_url,
+            params={"action": "progression", "tag": tag},
+            headers={
+                "X-Sens-Key": proxy_key,
+                "Accept": "application/json",
+                "User-Agent": "SensGPT-TitaniAbusivi/1.0",
+            },
             timeout=timeout,
         )
         if response.status_code != 200:
-            print("BRAWLYTIX PROGRESSION HTTP:", tag, response.status_code, flush=True)
+            upstream = None
+            try:
+                payload = response.json()
+                upstream = payload.get("upstream_status") if isinstance(payload, dict) else None
+            except Exception:
+                pass
+            print("BRAWLYTIX PROGRESSION PROXY HTTP:", tag, response.status_code, "upstream=", upstream, flush=True)
             return {}
-        page = html.unescape(response.text)
-        patterns = {
-            "estimated_hours": [r"([\d,.]+)\s*Hours Spent"],
-            "clip_level": [r"([\d,.]+)\s*Records Level"],
-            "clip_points": [r"([\d,.]+)\s*Records Points"],
-            "skins_owned": [r"([\d,.]+)\s*Skins Unlocked"],
-        }
+        payload = response.json()
+        if not isinstance(payload, dict):
+            return {}
         result = {}
-        for key, variants in patterns.items():
-            for pattern in variants:
-                match = re.search(pattern, page, re.I | re.S)
-                if match:
-                    result[key] = _number(match.group(1))
-                    break
-        print("BRAWLYTIX PROGRESSION:", tag, result, "bytes=", len(page), flush=True)
+        for key in ("estimated_hours", "clip_level", "clip_points", "skins_owned"):
+            value = _number(payload.get(key))
+            if value is not None:
+                result[key] = value
+        print("BRAWLYTIX PROGRESSION PROXY:", tag, result, flush=True)
         return result
     except Exception as error:
-        print("BRAWLYTIX PROGRESSION ERROR:", tag, type(error).__name__, repr(error), flush=True)
+        print("BRAWLYTIX PROGRESSION PROXY ERROR:", tag, type(error).__name__, repr(error), flush=True)
         return {}
-
 
 def _official_brawler_catalog(timeout=20):
     token = str(os.environ.get("BRAWL_PROXY_API_KEY") or "").strip()
