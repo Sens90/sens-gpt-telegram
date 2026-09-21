@@ -1361,9 +1361,10 @@ class CommunityFeatures:
         ]
         for member, days, kick_risk in rows[:30]:
             name = member.get("display_name") or member.get("telegram_username") or str(member.get("telegram_user_id"))
-            status = "RISCHIO KICK" if kick_risk else "AVVISO"
+            status = "DA VALUTARE PER KICK" if kick_risk else "AVVISO"
             lines.append(f"- {name}: {days} giorni - {status}")
-        lines.append("\nNota: il bot misura l'ultima attività vista nel gruppo, non l'ultimo accesso privato a Telegram.")
+        lines.append("\nIl kick non è automatico: anche dopo 30 giorni serve sempre la conferma dell'amministratore.")
+        lines.append("Nota: il bot misura l'ultima attività vista nel gruppo, non l'ultimo accesso privato a Telegram.")
         return "\n".join(lines)
 
     def set_vacation(self, chat_id, user_id, days):
@@ -1381,8 +1382,8 @@ class CommunityFeatures:
     def get_settings(self, chat_id):
         defaults = {
             "chat_id": int(chat_id),
-            "inactivity_warn_days": 5,
-            "inactivity_kick_days": 10,
+            "inactivity_warn_days": 10,
+            "inactivity_kick_days": 30,
             "auto_kick": False,
             "daily_report_enabled": False,
             "weekly_report_enabled": False,
