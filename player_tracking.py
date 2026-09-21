@@ -399,7 +399,7 @@ POWER_UP_COSTS = {
 }
 
 
-def _max_account_cost(brawlers, collection):
+def _max_account_cost(brawlers, collection, catalog=None):
     """Cost still missing for Power 11 and gameplay progression items.
 
     Gears stay separate. Buffies count only for Brawlers whose gameplay Buffies
@@ -413,10 +413,19 @@ def _max_account_cost(brawlers, collection):
             pp, gold = POWER_UP_COSTS[target]
             power_points += pp
             coins += gold
-    total = len(brawlers or [])
-    coins += max(0, total * 2 - int(collection.get("gadgets") or 0)) * 1000
-    coins += max(0, total * 2 - int(collection.get("star_powers") or 0)) * 2000
-    coins += max(0, total - int(collection.get("hypercharges") or 0)) * 5000
+    owned_total = len(brawlers or [])
+    catalog = catalog or {}
+    total = int(catalog.get("brawlers") or owned_total)
+    missing_brawlers = max(0, total - owned_total)
+    # A locked/missing Brawler still needs the full Power 1 -> 11 progression.
+    for _ in range(missing_brawlers):
+        for target in range(2, 12):
+            pp, gold = POWER_UP_COSTS[target]
+            power_points += pp
+            coins += gold
+    coins += max(0, int(catalog.get("gadgets") or total * 2) - int(collection.get("gadgets") or 0)) * 1000
+    coins += max(0, int(catalog.get("star_powers") or total * 2) - int(collection.get("star_powers") or 0)) * 2000
+    coins += max(0, int(catalog.get("hypercharges") or total) - int(collection.get("hypercharges") or 0)) * 5000
     buffies_missing = max(0, int(collection.get("buffies_total") or 0) - int(collection.get("buffies") or 0))
     coins += buffies_missing * 1000
     power_points += buffies_missing * 2000
@@ -532,7 +541,7 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
                     if buffie_state.get(key) is True
                 )
 
-        max_cost = _max_account_cost(brawlers, collection)
+        max_cost = _max_account_cost(brawlers, collection, catalog_totals)
 
         result = {
             "name": data.get("name"),
