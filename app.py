@@ -2614,8 +2614,8 @@ def get_brawlzone_player(player_tag):
 
 
 def get_registration_player(player_tag):
-    """Registration identity/profile: official Supercell only, no Ranked enrichment."""
-    return get_brawltrack_player(player_tag, timeout=15, enrich_ranked=False)
+    """Registration profile: Supercell first, with BrawlZone Ranked enrichment."""
+    return get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True)
 
 
 def format_number_it(value):
