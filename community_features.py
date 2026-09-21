@@ -1287,6 +1287,43 @@ class CommunityFeatures:
             )
         return "\n".join(lines)
 
+    def global_ranking_text(self, chat_id, days=0):
+        """Global individual ranking across the four community clubs from stored snapshots."""
+        rows = []
+        for member in self.members(chat_id):
+            club = str(member.get("club_name") or "").strip().upper()
+            tag = member.get("player_tag")
+            if club not in self.CLUB_TAGS or not tag:
+                continue
+            current = self._member_current_trophies(member)
+            if current is None:
+                continue
+            history = self.history_fetcher(tag, days=max(days + 2, 10))
+            changes = self.change_calculator(history, current)
+            key = "today" if days == 0 else {7: "7d", 15: "15d", 30: "30d", 90: "90d"}.get(days, "7d")
+            delta = changes.get(key)
+            if delta is None:
+                continue
+            rows.append({
+                "name": member.get("player_name") or member.get("display_name") or tag,
+                "club": club,
+                "current": int(current),
+                "delta": int(delta),
+            })
+        rows.sort(key=lambda row: (row["delta"], row["current"]), reverse=True)
+        label = "OGGI" if days == 0 else f"{days} GIORNI"
+        lines = [f"CLASSIFICA GLOBALE - {label}", ""]
+        if not rows:
+            lines.append("Storico trofei non ancora disponibile.")
+            return "\n".join(lines)
+        for index, row in enumerate(rows[:200], 1):
+            sign = "+" if row["delta"] > 0 else ""
+            lines.append(
+                f"{index}. {row['name']} - {self.number_formatter(row['current'])} "
+                f"({sign}{row['delta']}) - {row['club']}"
+            )
+        return "\n".join(lines)
+
     def club_trophy_ranking_text(self, chat_id, days=0):
         """Rank the four community clubs by summed trophy movement from stored snapshots."""
         clubs = list(self.CLUB_TAGS.keys())
@@ -1680,6 +1717,12 @@ class CommunityFeatures:
         # by unrelated per-user database work.
         # Keep club-vs-club daily ranking distinct from the individual daily ranking.
         # Both are deterministic and must never fall through to Gemini.
+        if re.fullmatch(r"classifica\s+globale\s+(?:di\s+)?oggi", q0, re.I):
+            await context.bot.send_message(
+                chat_id=message.chat_id,
+                text=self.global_ranking_text(message.chat_id, 0),
+            )
+            return True
         if re.fullmatch(r"classifica\s+(?:dei\s+)?club\s+(?:di\s+)?oggi", q0, re.I):
             await context.bot.send_message(
                 chat_id=message.chat_id,
