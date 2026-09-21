@@ -417,10 +417,24 @@ def _brawlytix_progression(player_tag, timeout=8, retry_missing=True):
         if not isinstance(payload, dict):
             return {}
         result = {}
-        for key in ("estimated_hours", "clip_level", "clip_points", "skins_owned"):
+        for key in ("estimated_hours", "clip_level", "clip_points", "skins_owned", "skin_value_gems"):
             value = _number(payload.get(key))
             if value is not None:
                 result[key] = value
+        try:
+            if payload.get("skin_value_eur") is not None:
+                result["skin_value_eur"] = float(payload["skin_value_eur"])
+        except (TypeError, ValueError):
+            pass
+        rarity_counts = payload.get("skin_rarity_counts")
+        if isinstance(rarity_counts, dict):
+            cleaned = {}
+            for rarity, count in rarity_counts.items():
+                value = _number(count)
+                if value is not None:
+                    cleaned[str(rarity).strip().casefold()] = int(value)
+            if cleaned:
+                result["skin_rarity_counts"] = cleaned
         safe_meta = payload.get("diagnostic") if isinstance(payload.get("diagnostic"), dict) else {}
         contexts = safe_meta.get("contexts") if isinstance(safe_meta.get("contexts"), dict) else {}
         for key, context_key, label in (
@@ -713,6 +727,9 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             "buffies_owned": collection["buffies"],
             "skins_owned": progression.get("skins_owned"),
             "skins_total": 1131,
+            "skin_rarity_counts": progression.get("skin_rarity_counts"),
+            "skin_value_gems": progression.get("skin_value_gems"),
+            "skin_value_eur": progression.get("skin_value_eur"),
             "brawlers_total": catalog_totals.get("brawlers") or None,
             "gadgets_total": catalog_totals.get("gadgets") or None,
             "star_powers_total": catalog_totals.get("star_powers") or None,
