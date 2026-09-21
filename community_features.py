@@ -517,6 +517,14 @@ class CommunityFeatures:
     def _skin_category_label(row):
         """Italian display category without inventing a rarity missing from game data."""
         rarity = str(row.get("rarity") or "").upper()
+        tid = str((row.get("source_payload") or {}).get("tid") or "").upper()
+        conf = str((row.get("source_payload") or {}).get("conf") or "").upper()
+        # Collector skins are True Silver/True Gold in the catalog: expose the
+        # actual in-game category instead of the generic "Collezione" bucket.
+        if "TRUE_GOLD" in tid or conf.endswith("GOLD") or conf.endswith("_GOLD"):
+            return "Oro 24 carati"
+        if "TRUE_SILVER" in tid or conf.endswith("SILVER") or conf.endswith("_SILVER"):
+            return "Argento"
         labels = {
             "RARE": "Rare", "SUPER_RARE": "Super rare", "EPIC": "Epiche",
             "MYTHIC": "Mitiche", "LEGENDARY": "Leggendarie",
@@ -525,12 +533,6 @@ class CommunityFeatures:
         }
         if rarity:
             return labels.get(rarity, rarity.replace("_", " ").title())
-        tid = str((row.get("source_payload") or {}).get("tid") or "").upper()
-        conf = str((row.get("source_payload") or {}).get("conf") or "").upper()
-        if "TRUE_GOLD" in tid or conf.endswith("GOLD") or conf.endswith("_GOLD"):
-            return "Oro 24 carati"
-        if "TRUE_SILVER" in tid or conf.endswith("SILVER") or conf.endswith("_SILVER"):
-            return "Argento"
         if "PROPASS_PROGRESSION" in tid:
             return "Brawl Pass"
         return "Senza rarità"
@@ -713,13 +715,8 @@ class CommunityFeatures:
                 lines += ["", "PER RARITÀ"]
                 for key, group in sorted(groups.items()):
                     have = sum(1 for r in group if r["_owned"])
-                    lines.append(f"{key}: {have}/{len(group)} — mancanti {len(group) - have}")
-                lines += [
-                    "",
-                    f"Per i nomi: «skin di {brawler_name} possedute» oppure «skin di {brawler_name} mancanti».",
-                    "Le foto vengono inviate solo se richieste esplicitamente.",
-                ]
-                return "\n".join(lines)
+                    lines.append(f"{key}: {have}/{len(group)}")
+                return "\\n".join(lines)
             return "Comando skin non riconosciuto."
         except Exception as exc:
             print("ERRORE SKIN ACCOUNT:", repr(exc), flush=True)
