@@ -579,35 +579,10 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
 
         catalog_totals = _collection_totals_from_catalog(_official_brawler_catalog(timeout=min(timeout, 20)))
         progression = _brawlytix_progression(tag, timeout=min(timeout, 5))
-        if not all(progression.get(k) is not None for k in ("estimated_hours", "clip_level", "clip_points", "account_created_year")):
-            secondary = _brawltime_progression(tag, timeout=min(timeout, 4))
-            for key, value in secondary.items():
-                if progression.get(key) is None and value is not None:
-                    progression[key] = value
-        # Brawl Time can reject Render (HTTP 403). Probe the already documented
-        # BrawlTrack player endpoint only for optional progression fields.
-        if not all(progression.get(k) is not None for k in ("estimated_hours", "clip_level", "clip_points", "account_created_year")):
-            try:
-                bt = brawltrack_player(tag)
-                if isinstance(bt, dict):
-                    bt = bt.get("player") or bt.get("data") or bt
-                if isinstance(bt, dict):
-                    aliases = {
-                        "estimated_hours": ("estimatedHours", "hoursPlayed", "playTimeHours", "playtimeHours"),
-                        "clip_level": ("recordLevel", "clipLevel"),
-                        "clip_points": ("recordPoints", "recordScore", "clipPoints"),
-                        "account_created_year": ("accountCreatedYear", "createdYear"),
-                    }
-                    for target, keys in aliases.items():
-                        if progression.get(target) is None:
-                            for key in keys:
-                                value = _number(bt.get(key))
-                                if value is not None:
-                                    progression[target] = value
-                                    break
-                    print("BRAWLTRACK PROGRESSION:", tag, {k: progression.get(k) for k in aliases}, "keys=", sorted(bt.keys()), flush=True)
-            except Exception as error:
-                print("BRAWLTRACK PROGRESSION ERROR:", tag, type(error).__name__, repr(error), flush=True)
+        # Brawlytix is the verified source for the optional progression fields
+        # currently shown by the profile. Do not block rendering on known-failing
+        # Brawl Time (403) or BrawlTrack progression (404) calls merely because
+        # account_created_year is unavailable.
         power_levels = {}
         prestige_levels = {}
         collection = {"gadgets": 0, "star_powers": 0, "gears": 0, "hypercharges": 0, "buffies": 0}
