@@ -2772,6 +2772,7 @@ class CommunityFeatures:
                         f"Solo: {fmt(player.get('wins_solo'))}",
                         f"Duo: {fmt(player.get('wins_duo'))}", "",
                         "COLLEZIONE",
+                        f"Skin: {owned_total('skins_owned','skins_total')}",
                         f"Gadget: {owned_total('gadgets_owned','gadgets_total')}",
                         f"Abilità stellari: {owned_total('star_powers_owned','star_powers_total')}",
                         f"Equipaggiamenti: {owned_total('gears_owned','gears_total')}",
