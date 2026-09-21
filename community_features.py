@@ -1363,7 +1363,6 @@ class CommunityFeatures:
             name = member.get("display_name") or member.get("telegram_username") or str(member.get("telegram_user_id"))
             status = "DA VALUTARE PER KICK" if kick_risk else "AVVISO"
             lines.append(f"- {name}: {days} giorni - {status}")
-        lines.append("\nIl kick non è automatico: anche dopo 30 giorni serve sempre la conferma dell'amministratore.")
         lines.append("Nota: il bot misura l'ultima attività vista nel gruppo, non l'ultimo accesso privato a Telegram.")
         return "\n".join(lines)
 
