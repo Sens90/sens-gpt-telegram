@@ -1820,14 +1820,16 @@ class CommunityFeatures:
         # by unrelated per-user database work.
         # Keep club-vs-club daily ranking distinct from the individual daily ranking.
         # Both are deterministic and must never fall through to Gemini.
-        if re.fullmatch(r"classifica\s+globale\s+(?:di\s+)?oggi", q0, re.I):
+        # "oggi" is optional in the natural manual forms.
+        # Route the more specific club command first.
+        if re.fullmatch(r"classifica\s+globale\s+club(?:\s+(?:di\s+)?oggi)?", q0, re.I):
+            await context.bot.send_message(chat_id=message.chat_id, text=self.global_club_ranking_text(_ranking_chat_id, monthly=False))
+            return True
+        if re.fullmatch(r"classifica\s+globale(?:\s+(?:di\s+)?oggi)?", q0, re.I):
             await context.bot.send_message(
                 chat_id=message.chat_id,
                 text=self.global_ranking_text(_ranking_chat_id, 0),
             )
-            return True
-        if re.fullmatch(r"classifica\s+globale\s+club\s+(?:di\s+)?oggi", q0, re.I):
-            await context.bot.send_message(chat_id=message.chat_id, text=self.global_club_ranking_text(_ranking_chat_id, monthly=False))
             return True
         if re.fullmatch(r"classifica\s+globale\s+mensile", q0, re.I):
             await context.bot.send_message(chat_id=message.chat_id, text=self.global_monthly_ranking_text(_ranking_chat_id))
