@@ -260,6 +260,8 @@ def _fallback_brawltrack_player(tag, timeout=15, enrich_ranked=True):
         club_display = club_name or "Senza club"
         if club_tag:
             club_display = f"{club_display}\nTag club: {club_tag}"
+        catalog_totals = _collection_totals_from_catalog(_official_brawler_catalog(timeout=min(timeout, 20)))
+
         result = {
             "name": data.get("name"),
             "tag": resolved_tag,
@@ -287,6 +289,36 @@ def _fallback_brawltrack_player(tag, timeout=15, enrich_ranked=True):
     except (BrawlTrackError, ValueError, TypeError) as error:
         print("BRAWLTRACK PLAYER FALLBACK ERROR:", tag, type(error).__name__, flush=True)
         return _fallback_brawlzone_player(tag, timeout=timeout, enrich_ranked=enrich_ranked)
+
+
+def _official_brawler_catalog(timeout=20):
+    token = str(os.environ.get("BRAWL_PROXY_API_KEY") or "").strip()
+    if not token:
+        return []
+    try:
+        response = requests.get(
+            "https://bsproxy.royaleapi.dev/v1/brawlers",
+            headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return payload.get("items") if isinstance(payload, dict) and isinstance(payload.get("items"), list) else []
+    except Exception as error:
+        print("ERRORE CATALOGO SUPERCELL PROXY:", repr(error), flush=True)
+        return []
+
+
+def _collection_totals_from_catalog(items):
+    totals = {"brawlers": 0, "gadgets": 0, "star_powers": 0, "hypercharges": 0}
+    for brawler in items or []:
+        if not isinstance(brawler, dict):
+            continue
+        totals["brawlers"] += 1
+        totals["gadgets"] += len(brawler.get("gadgets") or [])
+        totals["star_powers"] += len(brawler.get("starPowers") or [])
+        totals["hypercharges"] += len(brawler.get("hyperCharges") or [])
+    return totals
 
 
 def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
@@ -403,6 +435,10 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             "gears_owned": collection["gears"],
             "hypercharges_owned": collection["hypercharges"],
             "buffies_owned": collection["buffies"],
+            "brawlers_total": catalog_totals.get("brawlers") or None,
+            "gadgets_total": catalog_totals.get("gadgets") or None,
+            "star_powers_total": catalog_totals.get("star_powers") or None,
+            "hypercharges_total": catalog_totals.get("hypercharges") or None,
             "source": "Supercell Official API",
         }
         # Ranked/Prestigio are not supplied by the official player endpoint.
