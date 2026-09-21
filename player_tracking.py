@@ -370,24 +370,34 @@ def _brawlytix_progression(player_tag, timeout=8):
         print("BRAWLYTIX PROGRESSION PROXY NON CONFIGURATO:", tag, flush=True)
         return {}
     try:
-        response = requests.get(
-            proxy_url,
-            params={"action": "progression", "tag": tag},
-            headers={
-                "X-Sens-Key": proxy_key,
-                "Accept": "application/json",
-                "User-Agent": "SensGPT-TitaniAbusivi/1.0",
-            },
-            timeout=timeout,
-        )
-        if response.status_code != 200:
+        response = None
+        for attempt in range(2):
+            response = requests.get(
+                proxy_url,
+                params={"action": "progression", "tag": tag},
+                headers={
+                    "X-Sens-Key": proxy_key,
+                    "Accept": "application/json",
+                    "User-Agent": "SensGPT-TitaniAbusivi/1.0",
+                },
+                timeout=timeout,
+            )
+            if response.status_code == 200:
+                break
             upstream = None
             try:
-                payload = response.json()
-                upstream = payload.get("upstream_status") if isinstance(payload, dict) else None
+                error_payload = response.json()
+                upstream = error_payload.get("upstream_status") if isinstance(error_payload, dict) else None
             except Exception:
                 pass
-            print("BRAWLYTIX PROGRESSION PROXY HTTP:", tag, response.status_code, "upstream=", upstream, flush=True)
+            print(
+                "BRAWLYTIX PROGRESSION PROXY HTTP:",
+                tag, response.status_code, "upstream=", upstream, "attempt=", attempt + 1,
+                flush=True,
+            )
+            if response.status_code < 500:
+                return {}
+        if response is None or response.status_code != 200:
             return {}
         payload = response.json()
         if not isinstance(payload, dict):
