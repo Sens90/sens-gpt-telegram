@@ -510,18 +510,29 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             collection["star_powers"] += len(brawler.get("starPowers") or [])
             collection["gears"] += len(brawler.get("gears") or [])
             collection["hypercharges"] += len(brawler.get("hyperCharges") or [])
-            # Safe temporary diagnostic: field names + primitive values only.
-            buffie_records = brawler.get("buffies") or []
+            # Safe temporary diagnostic: Buffie payload shape only.
+            buffie_records = brawler.get("buffies")
             if buffie_records:
+                if isinstance(buffie_records, dict):
+                    iterable = list(buffie_records.values())[:4]
+                    top_keys = list(buffie_records.keys())[:12]
+                elif isinstance(buffie_records, (list, tuple)):
+                    iterable = list(buffie_records)[:4]
+                    top_keys = []
+                else:
+                    iterable = [buffie_records]
+                    top_keys = []
                 safe_records = []
-                for record in buffie_records[:4]:
+                for record in iterable:
                     if isinstance(record, dict):
                         safe_records.append({key: value for key, value in record.items()
                                              if isinstance(value, (str, int, float, bool, type(None)))})
                     else:
-                        safe_records.append({"type": type(record).__name__})
+                        safe_records.append({"type": type(record).__name__, "value": record
+                                             if isinstance(record, (str, int, float, bool, type(None))) else None})
                 print("BUFFIE SCHEMA:", str(brawler.get("name") or brawler.get("id") or "unknown")[:40],
-                      safe_records, flush=True)
+                      "container=", type(buffie_records).__name__, "keys=", top_keys,
+                      "records=", safe_records, flush=True)
 
         max_cost = _max_account_cost(brawlers, collection)
 
