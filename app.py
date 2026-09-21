@@ -3102,7 +3102,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # because they need the enriched live profile (including BrawlZone Ranked).
     # Registration/monitoring deliberately keep using the lightweight fetcher.
     _full_profile_route = bool(re.fullmatch(
-        r"(?:stats|statistiche|profilo|scheda|status(?:\\s+(?:del\\s+)?giocatore)?|stato(?:\\s+(?:del\\s+)?giocatore)?)\\s*(?:di\\s+)?#?[0289PYLQGRJCUV]{3,15}",
+        r"(?:tag|stats|statistiche|profilo|scheda|status(?:\\s+(?:del\\s+)?giocatore)?|stato(?:\\s+(?:del\\s+)?giocatore)?)\\s*(?:di\\s+)?#?[0289PYLQGRJCUV]{3,15}",
         _raw_command.strip(),
         re.I,
     ))
@@ -3320,6 +3320,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "inattivi", "inattivita", "inattività", "assenza ", "eventi",
         "partecipo ", "evento crea ", "reclutamento", "candidature",
         "report", "autokick ", "soglie inattività ", "soglie inattivita ",
+        "tag ", "profilo ", "scheda ", "status ", "stato giocatore ", "stato del giocatore ",
         "club", "profilo club", "stato club", "regole", "faq", "regolamento",
         "sito", "website", "discord", "comandi", "aiuto", "help", "funzioni",
         "skin", "quante skin", "quali skin", "counter ", "chi countera ",
