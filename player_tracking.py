@@ -382,6 +382,34 @@ def _collection_totals_from_catalog(items):
     return totals
 
 
+POWER_UP_COSTS = {
+    1: (0, 0), 2: (20, 20), 3: (30, 35), 4: (50, 75), 5: (80, 140),
+    6: (130, 290), 7: (210, 480), 8: (340, 800), 9: (550, 1250),
+    10: (890, 1875), 11: (1440, 2800),
+}
+
+
+def _max_account_cost(brawlers, collection):
+    """Cost still missing for Power 11 plus reliably countable kit.
+
+    Buffies and Gears are excluded until their ownership/pricing semantics are
+    verified well enough to avoid inventing a total.
+    """
+    coins = 0
+    power_points = 0
+    for brawler in brawlers or []:
+        power = _number((brawler or {}).get("power")) or 1
+        for target in range(max(2, power + 1), 12):
+            pp, gold = POWER_UP_COSTS[target]
+            power_points += pp
+            coins += gold
+    total = len(brawlers or [])
+    coins += max(0, total * 2 - int(collection.get("gadgets") or 0)) * 1000
+    coins += max(0, total * 2 - int(collection.get("star_powers") or 0)) * 2000
+    coins += max(0, total - int(collection.get("hypercharges") or 0)) * 5000
+    return {"coins": coins, "power_points": power_points}
+
+
 def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
     """Runtime player source. Supercell official is authoritative for every field it exposes."""
     tag = str(player_tag or "").upper().replace("#", "").strip()
@@ -520,6 +548,8 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             "clip_points": progression.get("clip_points"),
             "exp_points": _number(data.get("expPoints")),
             "championship_qualified": bool(data.get("isQualifiedFromChampionshipChallenge", False)),
+            "max_cost_coins": max_cost["coins"],
+            "max_cost_power_points": max_cost["power_points"],
             "ranked_current": translate_rank(data.get("rankedRankName")) or None,
             "ranked_current_elo": _number(data.get("rankedElo")),
             "ranked_season_peak": translate_rank(data.get("highestSeasonRankedRankName")) or None,
