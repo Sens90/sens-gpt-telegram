@@ -2330,7 +2330,7 @@ def automatic_trophy_monitor():
 
             for tag in tags:
                 try:
-                    player = get_registration_player(tag)
+                    player = get_monitor_player(tag)
 
                     if player:
                         save_trophy_snapshot(
@@ -2614,8 +2614,13 @@ def get_brawlzone_player(player_tag):
 
 
 def get_registration_player(player_tag):
-    """Registration profile: Supercell first, with BrawlZone Ranked enrichment."""
+    """Interactive registration/profile fetch: include BrawlZone Ranked enrichment."""
     return get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True)
+
+
+def get_monitor_player(player_tag):
+    """Background trophy monitor: identity/trophies only, never fetch Ranked."""
+    return get_brawltrack_player(player_tag, timeout=15, enrich_ranked=False)
 
 
 def format_number_it(value):
