@@ -522,7 +522,7 @@ class CommunityFeatures:
         # Collector skins are True Silver/True Gold in the catalog: expose the
         # actual in-game category instead of the generic "Collezione" bucket.
         if "TRUE_GOLD" in tid or conf.endswith("GOLD") or conf.endswith("_GOLD"):
-            return "Oro 24 carati"
+            return "Oro"
         if "TRUE_SILVER" in tid or conf.endswith("SILVER") or conf.endswith("_SILVER"):
             return "Argento"
         labels = {
@@ -717,7 +717,7 @@ class CommunityFeatures:
                     "Rare": 10, "Super rare": 20, "Epiche": 30, "Mitiche": 40,
                     "Leggendarie": 50, "Skin Overdrive": 60, "Pass Pro": 70,
                     "Brawl Pass": 80, "Collezione": 90, "Senza rarità": 100,
-                    "Argento": 1000, "Oro 24 carati": 1001,
+                    "Argento": 1000, "Oro": 1001,
                 }
                 for key, group in sorted(groups.items(), key=lambda item: (category_order.get(item[0], 500), item[0])):
                     have = sum(1 for r in group if r["_owned"])
@@ -1877,7 +1877,7 @@ class CommunityFeatures:
             "leggendarie":"Leggendarie", "overdrive":"Skin Overdrive", "skin overdrive":"Skin Overdrive",
             "ipercharge":"Skin Overdrive", "collezione":"Collezione", "collector":"Collezione",
             "pass pro":"Pass Pro", "brawl pass":"Brawl Pass", "argento":"Argento",
-            "oro":"Oro 24 carati", "oro 24 carati":"Oro 24 carati", "speciali":"Senza rarità",
+            "oro":"Oro", "oro 24 carati":"Oro", "speciali":"Senza rarità",
             "senza rarità":"Senza rarità", "senza rarita":"Senza rarità",
         }
         cat = lambda raw: rarity_aliases[re.sub(r"\s+", " ", raw.lower()).strip()]
