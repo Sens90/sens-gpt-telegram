@@ -12,6 +12,10 @@ RANK_NAMES_IT = {
     "masters": "Campione", "master": "Campione", "pro": "Pro",
 }
 BRAWLZONE_BASE_URL = "https://brawlzone.net/player"
+CURRENT_BRAWLER_TOTAL = 108
+CURRENT_GADGET_TOTAL = 216
+CURRENT_STAR_POWER_TOTAL = 216
+CURRENT_HYPERCHARGE_TOTAL = 106
 
 
 # Ranked seasons reset monthly. If the enrichment source reports Unranked/Unknown,
@@ -608,6 +612,15 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             club_display = f"{club_display}\nTag club: {club_tag}"
 
         catalog_totals = _collection_totals_from_catalog(_official_brawler_catalog(timeout=min(timeout, 20)))
+        # The live catalog endpoint can fail independently from the player endpoint
+        # (for example during RoyaleAPI 5xx/52x bursts). Never shrink account
+        # completion/cost denominators to the number of Brawlers the player owns.
+        # These are the currently verified September 2026 global totals and act
+        # only as a floor; a larger live catalog automatically wins.
+        catalog_totals["brawlers"] = max(int(catalog_totals.get("brawlers") or 0), CURRENT_BRAWLER_TOTAL)
+        catalog_totals["gadgets"] = max(int(catalog_totals.get("gadgets") or 0), CURRENT_GADGET_TOTAL)
+        catalog_totals["star_powers"] = max(int(catalog_totals.get("star_powers") or 0), CURRENT_STAR_POWER_TOTAL)
+        catalog_totals["hypercharges"] = max(int(catalog_totals.get("hypercharges") or 0), CURRENT_HYPERCHARGE_TOTAL)
         progression = _brawlytix_progression(tag, timeout=min(timeout, 5))
         # Brawlytix is the verified source for the optional progression fields
         # currently shown by the profile. Do not block rendering on known-failing
