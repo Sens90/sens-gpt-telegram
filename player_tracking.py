@@ -382,6 +382,16 @@ def _collection_totals_from_catalog(items):
     return totals
 
 
+# Gameplay Buffies released through the September 2026 update.
+# Sources: Supercell release/support notes. Cosmetic Bling Buffies are excluded.
+BUFFIE_BRAWLERS = {
+    "COLT", "SHELLY", "SPIKE", "MORTIS", "FRANK", "EMZ",
+    "CROW", "BIBI", "BULL", "NITA", "LEON", "BO",
+    "COLETTE", "GRIFF", "EDGAR",
+    "RICO", "MAX", "SURGE", "BROCK", "8-BIT", "MEG",
+    "POCO", "EL PRIMO", "AMBER", "GUS", "CHUCK", "SHADE",
+}
+
 POWER_UP_COSTS = {
     1: (0, 0), 2: (20, 20), 3: (30, 35), 4: (50, 75), 5: (80, 140),
     6: (130, 290), 7: (210, 480), 8: (340, 800), 9: (550, 1250),
@@ -390,10 +400,10 @@ POWER_UP_COSTS = {
 
 
 def _max_account_cost(brawlers, collection):
-    """Cost still missing for Power 11 plus reliably countable kit.
+    """Cost still missing for Power 11 and gameplay progression items.
 
-    Buffies and Gears are excluded until their ownership/pricing semantics are
-    verified well enough to avoid inventing a total.
+    Gears stay separate. Buffies count only for Brawlers whose gameplay Buffies
+    have actually been released; cosmetic Bling Buffies are excluded.
     """
     coins = 0
     power_points = 0
@@ -407,6 +417,9 @@ def _max_account_cost(brawlers, collection):
     coins += max(0, total * 2 - int(collection.get("gadgets") or 0)) * 1000
     coins += max(0, total * 2 - int(collection.get("star_powers") or 0)) * 2000
     coins += max(0, total - int(collection.get("hypercharges") or 0)) * 5000
+    buffies_missing = max(0, int(collection.get("buffies_total") or 0) - int(collection.get("buffies") or 0))
+    coins += buffies_missing * 1000
+    power_points += buffies_missing * 2000
     gears_total = total * 6
     gears_missing_cost = max(0, gears_total - int(collection.get("gears") or 0)) * 1000
     return {"coins": coins, "power_points": power_points, "gears_total": gears_total, "gears_missing_cost": gears_missing_cost}
@@ -510,29 +523,14 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             collection["star_powers"] += len(brawler.get("starPowers") or [])
             collection["gears"] += len(brawler.get("gears") or [])
             collection["hypercharges"] += len(brawler.get("hyperCharges") or [])
-            # Safe temporary diagnostic: Buffie payload shape only.
-            buffie_records = brawler.get("buffies")
-            if buffie_records:
-                if isinstance(buffie_records, dict):
-                    iterable = list(buffie_records.values())[:4]
-                    top_keys = list(buffie_records.keys())[:12]
-                elif isinstance(buffie_records, (list, tuple)):
-                    iterable = list(buffie_records)[:4]
-                    top_keys = []
-                else:
-                    iterable = [buffie_records]
-                    top_keys = []
-                safe_records = []
-                for record in iterable:
-                    if isinstance(record, dict):
-                        safe_records.append({key: value for key, value in record.items()
-                                             if isinstance(value, (str, int, float, bool, type(None)))})
-                    else:
-                        safe_records.append({"type": type(record).__name__, "value": record
-                                             if isinstance(record, (str, int, float, bool, type(None))) else None})
-                print("BUFFIE SCHEMA:", str(brawler.get("name") or brawler.get("id") or "unknown")[:40],
-                      "container=", type(buffie_records).__name__, "keys=", top_keys,
-                      "records=", safe_records, flush=True)
+            buffie_state = brawler.get("buffies")
+            brawler_name = str(brawler.get("name") or "").strip().upper()
+            if brawler_name in BUFFIE_BRAWLERS and isinstance(buffie_state, dict):
+                collection["buffies_total"] = int(collection.get("buffies_total") or 0) + 3
+                collection["buffies"] += sum(
+                    1 for key in ("gadget", "starPower", "hyperCharge")
+                    if buffie_state.get(key) is True
+                )
 
         max_cost = _max_account_cost(brawlers, collection)
 
@@ -559,13 +557,13 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             "star_powers_owned": collection["star_powers"],
             "gears_owned": collection["gears"],
             "hypercharges_owned": collection["hypercharges"],
-            "buffies_owned": None,
+            "buffies_owned": collection["buffies"],
             "brawlers_total": catalog_totals.get("brawlers") or None,
             "gadgets_total": catalog_totals.get("gadgets") or None,
             "star_powers_total": catalog_totals.get("star_powers") or None,
             "hypercharges_total": catalog_totals.get("hypercharges") or None,
             "gears_total": max_cost["gears_total"],
-            "buffies_total": progression.get("buffies_total"),
+            "buffies_total": collection.get("buffies_total") or None,
             "estimated_hours": progression.get("estimated_hours"),
             "account_created_year": progression.get("account_created_year"),
             "clip_level": progression.get("clip_level"),
