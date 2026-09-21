@@ -380,6 +380,49 @@ def home():
     return "Sens GPT - TITANI ABUSIVI ONLINE"
 
 
+@app.route("/internal/supercell-proxy-audit")
+def supercell_proxy_audit():
+    """Temporary-safe endpoint audit: status/shape only, never exposes the API token."""
+    token = str(os.environ.get("BRAWL_PROXY_API_KEY") or "").strip()
+    if not token:
+        return {"ok": False, "error": "BRAWL_PROXY_API_KEY missing"}, 503
+    headers = {"Authorization": "Bearer " + token, "Accept": "application/json"}
+    tests = {
+        "player": "/v1/players/%232LVRCLV8LV",
+        "battlelog": "/v1/players/%232LVRCLV8LV/battlelog",
+        "club": "/v1/clubs/%2320CR900P9",
+        "club_members": "/v1/clubs/%2320CR900P9/members",
+        "events": "/v1/events/rotation",
+        "brawlers": "/v1/brawlers",
+        "ranking_players_it": "/v1/rankings/IT/players?limit=3",
+        "ranking_clubs_it": "/v1/rankings/IT/clubs?limit=3",
+        "skins_candidate": "/v1/players/%232LVRCLV8LV/skins",
+    }
+    out = {}
+    for name, path in tests.items():
+        try:
+            response = requests.get("https://bsproxy.royaleapi.dev" + path, headers=headers, timeout=20)
+            entry = {"status": response.status_code}
+            try:
+                payload = response.json()
+                if isinstance(payload, dict):
+                    entry["keys"] = sorted(payload.keys())[:30]
+                    if isinstance(payload.get("items"), list):
+                        entry["items_count"] = len(payload["items"])
+                    if name == "player":
+                        entry["brawlers_count"] = len(payload.get("brawlers") or [])
+                        first = (payload.get("brawlers") or [{}])[0] if payload.get("brawlers") else {}
+                        entry["brawler_keys"] = sorted(first.keys()) if isinstance(first, dict) else []
+                elif isinstance(payload, list):
+                    entry["list_count"] = len(payload)
+            except Exception:
+                entry["body"] = str(response.text)[:120]
+            out[name] = entry
+        except Exception as exc:
+            out[name] = {"error": type(exc).__name__}
+    return {"ok": True, "tests": out}
+
+
 def needs_web_search(question):
     if not TAVILY_ENABLED or not TAVILY_API_KEY:
         return False
