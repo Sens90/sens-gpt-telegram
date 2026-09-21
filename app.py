@@ -3785,6 +3785,24 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         collection_text = "COLLEZIONE\n" + "\n".join(collection_lines)
         levels_text = "LIVELLI BRAWLER\n" + ("\n".join(power_lines) if power_lines else "Non disponibili")
         prestige_text = "PRESTIGIO BRAWLER\n" + f"Prestigi totali: {format_number_it(player.get('prestige'))}\n" + ("\n".join(prestige_lines) if prestige_lines else "Distribuzione non disponibile")
+        fame_caps = {
+            "global": 2000, "lunar": 3200, "martian": 4500, "saturnian": 8000,
+            "solar": 12000, "meteoric": 20000, "alien": 50000, "starr force": 75000,
+        }
+        fame_tier = str(player.get("fame_tier") or "").strip()
+        fame_points = player.get("fame")
+        fame_cap = None
+        fame_key = fame_tier.casefold()
+        for tier_name, tier_cap in fame_caps.items():
+            if tier_name in fame_key:
+                fame_cap = tier_cap
+                break
+        fame_text = fame_tier or "Non disponibile"
+        if fame_points is not None:
+            fame_text += f" — {format_number_it(fame_points)}"
+            if fame_cap is not None:
+                fame_text += f"/{format_number_it(fame_cap)}"
+
         play_time_text = ""
         if player.get("estimated_hours") is not None:
             play_time_text = f"\n\nTEMPO DI GIOCO\nOre giocate stimate: {format_number_it(player.get('estimated_hours'))} h"
@@ -3798,7 +3816,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Trofei: {format_number_it(player['trophies'])}\n"
             f"Brawler: {_owned_total('brawlers', 'brawlers_total')}\n"
             f"Livello: {format_number_it(player['level'])}\n"
-            f"Fama: {player.get('fame_tier') or 'Non disponibile'}\n\n"
+            f"Fama: {fame_text}\n\n"
             f"RANKED\n"
             f"Ranked attuale: {ranked_current}\n"
             f"Record stagione: {ranked_season_peak}\n"
