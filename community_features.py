@@ -1133,6 +1133,15 @@ class CommunityFeatures:
         "talenti": "TALENTI ABUSIVI", "talenti abusivi": "TALENTI ABUSIVI",
     }
 
+    # Official community club tags. Keep this mapping as the single source of
+    # truth for census/profile fallbacks when live sources return only a club name.
+    CLUB_TAGS = {
+        "TITANI ABUSIVI": "#UG9Q8PC",
+        "TAMARRI ABUSIVI": "#20CR900P9",
+        "TORNADI ABUSIVI": "#80LUCQYGJ",
+        "TALENTI ABUSIVI": "#82PQGGCVP",
+    }
+
     # Graphic ranking cards use the matching Brawl Stars stat artwork when available.
     # URLs are resolved at runtime by the card renderer; text output remains the fallback.
     STAT_ICON_KEYS = {
