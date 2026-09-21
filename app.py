@@ -3168,10 +3168,20 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not player:
                 await message.reply_text("Non riesco a trovare questo giocatore. Controlla che il tag sia corretto e riprova.")
                 return
-            # Do not block the interactive profile on Supabase history writes/reads.
-            # The background monitor owns persistence; stats must render immediately.
-            history = []
-            changes = {"today": None, "7d": None, "15d": None, "30d": None, "90d": None}
+            # Persist the fresh snapshot in the background. Trophy history is useful,
+            # but it must never hold the interactive profile hostage.
+            asyncio.create_task(asyncio.to_thread(
+                save_trophy_snapshot, player["tag"], player["name"], player["trophies"]
+            ))
+            try:
+                history = await asyncio.wait_for(
+                    asyncio.to_thread(get_trophy_history, player["tag"], 91),
+                    timeout=3.0,
+                )
+            except (asyncio.TimeoutError, Exception) as exc:
+                print("FULL PROFILE HISTORY OPTIONAL:", player_tag, type(exc).__name__, flush=True)
+                history = []
+            changes = calculate_trophy_changes(history, player["trophies"])
             member_data = None
             profile_club = player.get("club_name") or player.get("club") or (member_data or {}).get("club_name") or "Senza club / non disponibile"
             profile_club_tag = player.get("club_tag") or CommunityFeatures.CLUB_TAGS.get(str(profile_club).strip().upper())
@@ -3185,12 +3195,30 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 owned,total=player.get(owned_key),player.get(total_key)
                 if owned is None:return "Non disponibile"
                 return format_number_it(owned) if total is None else f"{format_number_it(owned)}/{format_number_it(total)}"
-            fame_caps={"global":2000,"lunar":3200,"martian":4500,"saturnian":8000,"solar":12000,"meteoric":20000,"alien":50000,"starr force":75000}
-            fame_tier=str(player.get("fame_tier") or "").strip(); fame_text=fame_tier or "Non disponibile"; fame_cap=None
-            for key,cap in fame_caps.items():
-                if key in fame_tier.casefold():fame_cap=cap;break
-            if player.get("fame") is not None:
-                fame_text += f" — {format_number_it(player.get('fame'))}" + (f"/{format_number_it(fame_cap)}" if fame_cap else "")
+            fame_levels = {
+                "global": ("Fama globale", 0, 2000),
+                "lunar": ("Fama lunare", 6000, 3200),
+                "martian": ("Fama marziana", 15600, 4500),
+                "saturnian": ("Fama saturniana", 29100, 8000),
+                "solar": ("Fama solare", 53100, 12000),
+                "meteoric": ("Fama meteorica", 89100, 20000),
+                "alien": ("Fama aliena", 149100, 50000),
+                "starr force": ("Fama Starr Force", 299100, 75000),
+            }
+            fame_tier = str(player.get("fame_tier") or "").strip()
+            fame_text = fame_tier or "Non disponibile"
+            fame_value = player.get("fame")
+            for key, (label, tier_start, per_level) in fame_levels.items():
+                if key in fame_tier.casefold():
+                    roman_match = re.search(r"\b(I{1,3})\b", fame_tier, re.I)
+                    roman = (roman_match.group(1).upper() if roman_match else "I")
+                    level_index = {"I": 0, "II": 1, "III": 2}.get(roman, 0)
+                    fame_text = f"{label} {roman}"
+                    if fame_value is not None:
+                        level_start = tier_start + (level_index * per_level)
+                        progress = max(0, int(fame_value) - level_start)
+                        fame_text += f" — {format_number_it(progress)}/{format_number_it(per_level)}"
+                    break
             collection=[f"Gadget: {owned_total('gadgets_owned','gadgets_total')}",f"Abilità stellari: {owned_total('star_powers_owned','star_powers_total')}",f"Equipaggiamenti: {owned_total('gears_owned','gears_total')}",f"Overdrive: {owned_total('hypercharges_owned','hypercharges_total')}"]
             if player.get("buffies_owned") is not None:collection.append(f"Buffie: {owned_total('buffies_owned','buffies_total')}")
             brawler_text=owned_total("brawlers","brawlers_total")
