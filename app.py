@@ -3258,7 +3258,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             brawler_text=owned_total("brawlers","brawlers_total")
             text = "\n".join([
                 str(player["name"]).upper(), f"Tag: {player['tag']}", f"Club: {profile_club}", f"Tag club: {profile_club_tag or 'Non disponibile'}", "",
-                "PROFILO", f"Trofei: {format_number_it(player['trophies'])}", f"Brawler: {brawler_text}", f"Livello: {format_number_it(player.get('level'))}", f"Punti esperienza: {format_number_it(player.get('exp_points'))}", f"Fama: {fame_text}", f"Livello Clip: {format_number_it(player.get('clip_level'))}", f"Punti Clip: {format_number_it(player.get('clip_points'))}", f"Account creato nel: {format_number_it(player.get('account_created_year'))}", f"Qualificazione Championship: {'Qualificato' if player.get('championship_qualified') else 'Mai qualificato'}", "",
+                "PROFILO", f"Trofei: {format_number_it(player['trophies'])}", f"Brawler: {brawler_text}", f"Livello: {format_number_it(player.get('level'))}", f"Punti esperienza: {format_number_it(player.get('exp_points'))}", f"Fama: {fame_text}", f"Livello Clip: {format_number_it(player.get('clip_level'))}", f"Punti Clip: {format_number_it(player.get('clip_points'))}", *([f"Account creato nel: {format_number_it(player.get('account_created_year'))}"] if player.get("account_created_year") is not None else []), f"Qualificazione Championship: {'Qualificato' if player.get('championship_qualified') else 'Mai qualificato'}", "",
                 "RANKED", f"Ranked attuale: {ranked_current}", f"Record stagione: {ranked_season_peak}", f"Record massimo: {ranked_peak}", "",
                 "VITTORIE", f"3v3: {format_number_it(player.get('wins_3v3'))}", f"Solo: {format_number_it(player.get('wins_solo'))}", f"Duo: {format_number_it(player.get('wins_duo'))}", "",
                 "COLLEZIONE", *collection, "", "LIVELLI BRAWLER", *(level_lines or ["Non disponibili"]), "", "PRESTIGIO BRAWLER", f"Prestigi totali: {format_number_it(player.get('prestige'))}/{format_number_it((player.get('brawlers') or 0) * 3)}", *(prestige_lines or ["Distribuzione non disponibile"]), "",
@@ -3926,6 +3926,9 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         play_time_text = ""
         if player.get("estimated_hours") is not None:
             play_time_text = f"\n\nTEMPO DI GIOCO\nOre giocate stimate: {format_number_it(player.get('estimated_hours'))} h — {int(player.get('estimated_hours')) // 24} giorni e {int(player.get('estimated_hours')) % 24} ore effettivi"
+        account_created_text = ""
+        if player.get("account_created_year") is not None:
+            account_created_text = f"Account creato nel: {format_number_it(player.get('account_created_year'))}\n"
 
         text = (
             f"{str(player['name']).upper()}\n"
@@ -3940,7 +3943,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Fama: {fame_text}\n"
             f"Livello Clip: {format_number_it(player.get('clip_level')) if player.get('clip_level') is not None else 'Non disponibile'}\n"
             f"Punti Clip: {format_number_it(player.get('clip_points')) if player.get('clip_points') is not None else 'Non disponibile'}\n"
-            f"Account creato nel: {format_number_it(player.get('account_created_year')) if player.get('account_created_year') is not None else 'Non disponibile'}\n"
+            f"{account_created_text}"
             f"Qualificazione Championship: {'Qualificato' if player.get('championship_qualified') else 'Mai qualificato'}\n\n"
             f"RANKED\n"
             f"Ranked attuale: {ranked_current}\n"
