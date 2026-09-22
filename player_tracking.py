@@ -514,7 +514,11 @@ def _brawlytix_progression(player_tag, timeout=8, retry_missing=True):
         return result
     except Exception as error:
         print("BRAWLYTIX PROGRESSION PROXY ERROR:", tag, type(error).__name__, repr(error), flush=True)
-        return {}
+        # Preserve the last valid optional progression on transient timeouts.
+        cached = dict(_PROGRESSION_CACHE.get(tag) or {})
+        if cached:
+            print("BRAWLYTIX PROGRESSION CACHE FALLBACK:", tag, cached, flush=True)
+        return cached
 
 def _official_brawler_catalog(timeout=20):
     token = str(os.environ.get("BRAWL_PROXY_API_KEY") or "").strip()
