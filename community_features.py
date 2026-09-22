@@ -502,16 +502,26 @@ class CommunityFeatures:
         response=requests.get(proxy_url,params={"action":"skins","tag":tag},headers={"X-Sens-Key":proxy_key,"Accept":"application/json","User-Agent":"SensGPT/1.0"},timeout=20)
         response.raise_for_status()
         payload=response.json()
-        items=payload.get("items") if isinstance(payload,dict) else None
-        if not isinstance(items,list):
-            raise RuntimeError("Official skins payload missing items")
+        if not isinstance(payload,dict):
+            raise RuntimeError("Skins payload is not an object")
+        # New bridge contract: progression/skins may expose the account's exact
+        # cosmetic IDs.  Keep accepting the old nested items shape during rollout.
         owned=set()
-        for brawler in items:
-            if not isinstance(brawler,dict): continue
-            for skin in brawler.get("skins") or []:
-                if isinstance(skin,dict) and skin.get("id") is not None:
-                    try: owned.add(int(skin["id"]))
-                    except (TypeError,ValueError): pass
+        direct_ids = payload.get("owned_skin_ids") or payload.get("skin_ids")
+        if isinstance(direct_ids,list):
+            for skin_id in direct_ids:
+                try: owned.add(int(skin_id))
+                except (TypeError,ValueError): pass
+        items=payload.get("items")
+        if isinstance(items,list):
+            for brawler in items:
+                if not isinstance(brawler,dict): continue
+                for skin in brawler.get("skins") or []:
+                    if isinstance(skin,dict) and skin.get("id") is not None:
+                        try: owned.add(int(skin["id"]))
+                        except (TypeError,ValueError): pass
+        if not owned:
+            raise RuntimeError("Skins payload missing owned skin IDs")
         return owned
 
     @staticmethod
