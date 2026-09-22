@@ -2878,7 +2878,7 @@ class CommunityFeatures:
                         f"Fama: {fame_text}",
                         f"Livello Clip: {fmt(player.get('clip_level'))}",
                         f"Punti Clip: {fmt(player.get('clip_points'))}",
-                        f"Account creato nel: {fmt(player.get('account_created_year'))}",
+                        *([f"Account creato nel: {fmt(player.get('account_created_year'))}"] if player.get("account_created_year") is not None else []),
                         f"Qualificazione Championship: {'Qualificato' if player.get('championship_qualified') else 'Mai qualificato'}", "",
                         "RANKED",
                         f"Ranked attuale: {ranked_current or 'Non disponibile'}",
