@@ -6,6 +6,7 @@ import requests
 
 from brawltrack_client import BrawlTrackError, player as brawltrack_player
 
+from urllib.parse import urlsplit
 RANK_NAMES_IT = {
     "bronze": "Bronzo", "silver": "Argento", "gold": "Oro",
     "diamond": "Diamante", "mythic": "Mito", "legendary": "Leggenda",
