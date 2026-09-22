@@ -417,9 +417,15 @@ def _brawlytix_progression(player_tag, timeout=8, retry_missing=True):
                 flush=True,
             )
             if response.status_code < 500:
-                return {}
+                cached = dict(_PROGRESSION_CACHE.get(tag) or {})
+                if cached:
+                    print("BRAWLYTIX PROGRESSION CACHE FALLBACK:", tag, cached, flush=True)
+                return cached
         if response is None or response.status_code != 200:
-            return {}
+            cached = dict(_PROGRESSION_CACHE.get(tag) or {})
+            if cached:
+                print("BRAWLYTIX PROGRESSION CACHE FALLBACK:", tag, cached, flush=True)
+            return cached
         payload = response.json()
         if not isinstance(payload, dict):
             return {}
