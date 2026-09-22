@@ -1,0 +1,29 @@
+name: Wake Render before ranking slots
+
+on:
+  schedule:
+    # GitHub cron uses UTC. Europe/Rome is UTC+2 during CEST.
+    # Wake 10 minutes before 06:00, 12:00, 18:00 and 23:59 local.
+    - cron: '50 3,9,15 * * *'
+    - cron: '49 21 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wake-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wake Sens GPT
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://sens-gpt-telegram.onrender.com/"
+          echo "Waking Render service..."
+          curl --fail --silent --show-error \
+            --retry 4 --retry-delay 15 --retry-all-errors \
+            --connect-timeout 20 --max-time 120 \
+            "$url" -o /dev/null
+          echo "Wake request completed."
