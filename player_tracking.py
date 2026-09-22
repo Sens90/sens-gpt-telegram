@@ -384,7 +384,13 @@ def _brawlytix_progression(player_tag, timeout=8, retry_missing=True):
     if not proxy_url or not proxy_key:
         print("BRAWLYTIX PROGRESSION PROXY NON CONFIGURATO:", tag, flush=True)
         return {}
-    # Safe diagnostic: log only scheme/host/path, never query parameters or credentials.\n    try:\n        _proxy_parts = urlsplit(proxy_url)\n        print("BRAWLYTIX PROXY TARGET:", f"{_proxy_parts.scheme}://{_proxy_parts.netloc}{_proxy_parts.path}", flush=True)\n    except Exception:\n        print("BRAWLYTIX PROXY TARGET: <unparseable>", flush=True)\n    try:
+    # Safe diagnostic: log only scheme/host/path, never query parameters or credentials.
+    try:
+        _proxy_parts = urlsplit(proxy_url)
+        print("BRAWLYTIX PROXY TARGET:", f"{_proxy_parts.scheme}://{_proxy_parts.netloc}{_proxy_parts.path}", flush=True)
+    except Exception:
+        print("BRAWLYTIX PROXY TARGET: <unparseable>", flush=True)
+    try:
         response = None
         for attempt in range(2):
             response = requests.get(
