@@ -3367,7 +3367,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Remove the bot mention case-insensitively. Telegram usernames are
         # case-insensitive, while str.replace() is not.
         question = re.sub(
-            r"@" + re.escape(bot_username) + r"\\b",
+            r"@" + re.escape(bot_username) + r"\b",
             "",
             question,
             flags=re.IGNORECASE,
