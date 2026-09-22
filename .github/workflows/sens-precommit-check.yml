@@ -1,0 +1,38 @@
+name: Sens precommit check
+on:
+  push:
+    branches:
+      - sens-precommit-check
+    paths:
+      - '.github/workflows/sens-precommit-check.yml'
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile current Python files
+        run: |
+          python -m py_compile community_features.py
+          python -m py_compile app.py
+      - name: Skin and ranking smoke checks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path("community_features.py").read_text()
+          required=[
+              "def skin_account_text",
+              "def _skin_category_label",
+              "def _daily_baseline_tags",
+              "SKIN ACCOUNT",
+              "VALORE SKIN",
+          ]
+          missing=[x for x in required if x not in s]
+          if missing:
+              raise SystemExit("missing required blocks: "+", ".join(missing))
+          # Ensure regex literals in the source at least compile when extracted by Python itself.
+          compile(s, "community_features.py", "exec")
+          print("PRECOMMIT BASELINE OK")
+          PY
