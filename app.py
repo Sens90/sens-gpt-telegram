@@ -5132,6 +5132,20 @@ async def automatic_today_ranking_catchup_job(context):
             latest.strftime("%Y-%m-%d %H:%M"), now.strftime("%Y-%m-%d %H:%M:%S")
         ), flush=True)
         return
+    # _send_auto_ranking_slot is persisted/idempotent. Avoid logging a
+    # "CATCHUP" attempt every minute after the slot has already been sent;
+    # only log when at least one configured chat still needs this slot.
+    key = latest.strftime("%Y-%m-%d-%H%M")
+    try:
+        rows = await asyncio.to_thread(
+            community._get, "community_settings",
+            {"select": "chat_id,last_auto_ranking_slot"}
+        )
+    except Exception as exc:
+        print("CLASSIFICA OGGI AUTO CATCHUP CHECK ERROR:", repr(exc), flush=True)
+        return
+    if not any(row.get("last_auto_ranking_slot") != key for row in (rows or [])):
+        return
     print("CLASSIFICA OGGI AUTO CATCHUP: slot=%s local=%s" % (
         latest.strftime("%Y-%m-%d %H:%M"), now.strftime("%Y-%m-%d %H:%M:%S")
     ), flush=True)
