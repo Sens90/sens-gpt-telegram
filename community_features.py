@@ -502,10 +502,6 @@ class CommunityFeatures:
         response=requests.get(proxy_url,params={"action":"skincollection","tag":tag},headers={"X-Sens-Key":proxy_key,"Accept":"application/json","User-Agent":"SensGPT-TitaniAbusivi/1.0"},timeout=20)
         if not response.ok:
             # Diagnostic only: log bridge response body, never request headers or secrets.
-            body=(response.text or "").replace("\\r"," ").replace("\\n"," ")[:1500]
-            print("SKINCOLLECTION BRIDGE ERROR:",tag,"status=",response.status_code,"body=",body,flush=True)
-            if not response.ok:
-            # Diagnostic only: log bridge response body, never request headers or secrets.
             body=(response.text or "").replace("\r"," ").replace("\n"," ")[:1500]
             print("SKINCOLLECTION BRIDGE ERROR:",tag,"status=",response.status_code,"body=",body,flush=True)
             response.raise_for_status()
