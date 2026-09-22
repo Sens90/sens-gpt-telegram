@@ -4,6 +4,7 @@ on:
     branches:
       - sens-precommit-check
       - fix-ranking-telegram-timeout
+      - netsons-skincollection
 permissions:
   contents: read
 jobs:
