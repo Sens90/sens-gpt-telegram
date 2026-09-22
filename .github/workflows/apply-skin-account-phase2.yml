@@ -1,0 +1,170 @@
+name: Apply skin account phase 2 on test branch
+on:
+  push:
+    branches:
+      - sens-precommit-check
+    paths:
+      - '.github/workflows/apply-skin-account-phase2.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: sens-precommit-check
+      - name: Patch skin account
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("community_features.py")
+          s=p.read_text()
+
+          old='''        # Collector skins are True Silver/True Gold in the catalog: expose the
+        # actual in-game category instead of the generic "Collezione" bucket.
+        if "TRUE_GOLD" in tid or conf.endswith("GOLD") or conf.endswith("_GOLD"):
+            return "Oro"
+        if "TRUE_SILVER" in tid or conf.endswith("SILVER") or conf.endswith("_SILVER"):
+            return "Argento"
+        labels = {
+'''
+          new='''        # True Silver/Gold must be identified by verified catalog metadata.
+        # A generic conf ending in Gold/Silver can be a normal named skin.
+        acquisition_type = str(row.get("acquisition_type") or "").lower()
+        acquisition_note = str(row.get("acquisition_note") or "")
+        if "TRUE_GOLD" in tid or (acquisition_type == "coins" and int(row.get("price_coins") or 0) == 25000):
+            return "Oro"
+        if "TRUE_SILVER" in tid or (acquisition_type == "coins" and int(row.get("price_coins") or 0) == 10000):
+            return "Argento"
+        if "Skin Overdrive Pass Pro" in acquisition_note:
+            return "Skin Overdrive Pass Pro"
+        if acquisition_type == "brawl_pass":
+            return "Brawl Pass"
+        labels = {
+'''
+          if old not in s: raise SystemExit("category target not found")
+          s=s.replace(old,new,1)
+
+          s=s.replace(
+            '"select": "external_id,name_en,name_it,brawler_name",',
+            '"select": "external_id,name_en,name_it,brawler_name,image_verified",',1
+          )
+          old='''            row = matches[0]
+            image_url = self._brawlvalue_skin_image(canonical_brawler, row.get("name_en") or row.get("name_it"))
+'''
+          new='''            row = matches[0]
+            if row.get("image_verified") is not True:
+                return "La skin è nel catalogo, ma la sua immagine non è ancora verificata."
+            image_url = self._brawlvalue_skin_image(canonical_brawler, row.get("name_en") or row.get("name_it"))
+'''
+          if old not in s: raise SystemExit("image target not found")
+          s=s.replace(old,new,1)
+
+          old='"select": "external_id,brawler_id,name_en,name_it,rarity,brawler_name,source_payload,price_gems,price_coins,acquisition_type,availability_status",'
+          new='"select": "external_id,brawler_id,name_en,name_it,rarity,brawler_name,source_payload,price_gems,price_coins,acquisition_type,availability_status,acquisition_note",'
+          if old not in s: raise SystemExit("catalog select target not found")
+          s=s.replace(old,new,1)
+
+          old='''            order = {"Rare":10,"Super rare":20,"Epiche":30,"Mitiche":40,"Leggendarie":50,"Skin Overdrive":60,"Pass Pro":70,"Brawl Pass":80,"Collezione":90,"Senza rarità":100,"Argento":1000,"Oro":1001}
+'''
+          new='''            order = {"Rare":10,"Super rare":20,"Epiche":30,"Mitiche":40,"Leggendarie":50,"Skin Overdrive":60,"Skin Overdrive Pass Pro":65,"Pass Pro":70,"Brawl Pass":80,"Collezione":90,"Senza rarità":100,"Argento":1000,"Oro":1001}
+'''
+          if old not in s: raise SystemExit("order target not found")
+          s=s.replace(old,new,1)
+
+          old='''                for key,(have,total) in sorted(groups.items(), key=lambda x:(order.get(x[0],500),x[0])): lines.append(f"{key}: {have}/{total}")
+                add_values(lines, owned, "POSSEDUTE"); add_values(lines, missing, "MANCANTI")
+'''
+          new='''                for key,(have,total) in sorted(groups.items(), key=lambda x:(order.get(x[0],500),x[0])): lines.append(f"{key}: {have}/{total}")
+
+                # Compact account overview for every Brawler.
+                brawler_names = {}
+                try:
+                    for br in self._get("brawlers_catalog", {"select":"brawler_id,name_en,name_it"}) or []:
+                        if br.get("brawler_id") is not None:
+                            brawler_names[int(br["brawler_id"])] = str(br.get("name_it") or br.get("name_en") or br["brawler_id"])
+                except Exception as exc:
+                    print("ERRORE NOMI BRAWLER SKIN:", repr(exc), flush=True)
+                per_brawler = {}
+                for r in rows:
+                    bid = r.get("brawler_id")
+                    key = int(bid) if bid is not None else self._skin_key(r.get("brawler_name"))
+                    d = per_brawler.setdefault(key, [0, 0, str(r.get("brawler_name") or key)])
+                    d[1] += 1
+                    if r["_owned"]: d[0] += 1
+                lines += ["", "PER BRAWLER"]
+                display_rows = []
+                for key,(have,total,fallback) in per_brawler.items():
+                    name = brawler_names.get(key, fallback) if isinstance(key, int) else fallback
+                    display_rows.append((self._skin_key(name), name, have, total))
+                for _,name,have,total in sorted(display_rows):
+                    pct = have * 100.0 / total if total else 0.0
+                    lines.append(f"{name}: {have}/{total} — {pct:.1f}%")
+                add_values(lines, owned, "POSSEDUTE"); add_values(lines, missing, "MANCANTI")
+'''
+          if old not in s: raise SystemExit("summary target not found")
+          s=s.replace(old,new,1)
+
+          old='''        category_rx = r"(rare|super\\s+rare|epiche|mitiche|leggendarie|(?:skin\\s+)?overdrive|ipercharge|collezione|collector|pass\\s+pro|brawl\\s+pass|argento|oro(?:\\s+24\\s+carati)?|speciali|senza\\s+rarit[àa])"
+'''
+          new='''        category_rx = r"(rare|super\\s+rare|epiche|mitiche|leggendarie|skin\\s+overdrive\\s+pass\\s+pro|(?:skin\\s+)?overdrive|ipercharge|collezione|collector|pass\\s+pro|brawl\\s+pass|argento|oro(?:\\s+24\\s+carati)?|speciali|senza\\s+rarit[àa])"
+'''
+          if old not in s: raise SystemExit("category regex target not found")
+          s=s.replace(old,new,1)
+
+          old='''            "pass pro":"Pass Pro", "brawl pass":"Brawl Pass", "argento":"Argento",
+'''
+          new='''            "skin overdrive pass pro":"Skin Overdrive Pass Pro", "pass pro":"Pass Pro", "brawl pass":"Brawl Pass", "argento":"Argento",
+'''
+          if old not in s: raise SystemExit("aliases target not found")
+          s=s.replace(old,new,1)
+
+          old='''        account_brawler_q = re.fullmatch(r"(?:fammi\\s+)?skin\\s+account\\s+(?:di\\s+)?(.+)", q_skin, re.I)
+        skin_brawler_count_q = re.fullmatch(r"quante\\s+skin\\s+(?:ho\\s+)?(?:di|del|della)\\s+(.+)", q_skin, re.I) or re.fullmatch(r"quante\\s+skin\\s+ha\\s+(.+)", q_skin, re.I)
+'''
+          new='''        account_brawler_q = re.fullmatch(r"(?:fammi\\s+)?skin\\s+account\\s+(?:di\\s+)?(.+)", q_skin, re.I)
+        simple_skin_brawler_q = re.fullmatch(r"skin\\s+(.+?)(?:\\s+(possedute|posseduti|ho|mancanti|mancano))?", q_skin, re.I)
+        skin_brawler_count_q = re.fullmatch(r"quante\\s+skin\\s+(?:ho\\s+)?(?:di|del|della)\\s+(.+)", q_skin, re.I) or re.fullmatch(r"quante\\s+skin\\s+ha\\s+(.+)", q_skin, re.I)
+'''
+          if old not in s: raise SystemExit("simple alias declaration target not found")
+          s=s.replace(old,new,1)
+
+          old='''        elif account_brawler_q:
+            answer = self.skin_account_text(registered, brawler_name=account_brawler_q.group(1).strip(), mode="full")
+        elif skin_brawler_count_q:
+'''
+          new='''        elif account_brawler_q:
+            answer = self.skin_account_text(registered, brawler_name=account_brawler_q.group(1).strip(), mode="full")
+        elif simple_skin_brawler_q and self._skin_key(simple_skin_brawler_q.group(1)) not in ("account",):
+            _skin_mode = (simple_skin_brawler_q.group(2) or "").lower()
+            _mode = "missing" if _skin_mode in ("mancanti","mancano") else ("owned" if _skin_mode in ("possedute","posseduti","ho") else "full")
+            answer = self.skin_account_text(registered, brawler_name=simple_skin_brawler_q.group(1).strip(), mode=_mode)
+        elif skin_brawler_count_q:
+'''
+          if old not in s: raise SystemExit("simple alias handler target not found")
+          s=s.replace(old,new,1)
+
+          p.write_text(s)
+          PY
+          python -m py_compile community_features.py
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path("community_features.py").read_text()
+          assert "PER BRAWLER" in s
+          assert "Skin Overdrive Pass Pro" in s
+          assert 'row.get("image_verified") is not True' in s
+          assert 'conf.endswith("GOLD")' not in s
+          assert 'conf.endswith("SILVER")' not in s
+          rx=re.compile(r"skin\s+(.+?)(?:\s+(possedute|posseduti|ho|mancanti|mancano))?$",re.I)
+          for q,want in [("Skin Moe",("Moe",None)),("Skin Moe possedute",("Moe","possedute")),("Skin Moe mancanti",("Moe","mancanti"))]:
+              m=rx.fullmatch(q)
+              assert m and (m.group(1),m.group(2))==want,(q,m.groups() if m else None)
+          print("SKIN PHASE 2 TESTS OK")
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add community_features.py
+          git commit -m 'Improve skin account categories and brawler summary'
+          git push origin HEAD:sens-precommit-check
