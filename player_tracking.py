@@ -782,6 +782,14 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
             "tag": _clean_tag(data.get("tag")) or f"#{tag}",
             "trophies": _number(data.get("trophies")),
             "brawlers": len(brawlers),
+            "brawler_trophies": [
+                {
+                    "name": str(brawler.get("name") or "").strip(),
+                    "trophies": _number(brawler.get("trophies")) or 0,
+                    "prestige_level": _number(brawler.get("prestigeLevel")),
+                }
+                for brawler in brawlers if isinstance(brawler, dict)
+            ],
             "level": _number(data.get("expLevel")),
             "fame": _number(data.get("fame")),
             "fame_tier": data.get("fameTierName") or None,
