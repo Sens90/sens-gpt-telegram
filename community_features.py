@@ -2,6 +2,7 @@ import os
 import re
 import logging
 import io
+import asyncio
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -1818,6 +1819,23 @@ class CommunityFeatures:
                 lines.append(f"- {name}: {inactive_days} giorni{' - RISCHIO KICK' if risk else ''}")
         return "\n".join(lines)
 
+    async def _send_ranking_message(self, context, chat_id, text):
+        """Deliver ranking replies with bounded retries on transient Telegram timeouts."""
+        from telegram.error import NetworkError, RetryAfter, TelegramError, TimedOut
+        for attempt in range(3):
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=text, connect_timeout=20, read_timeout=30, write_timeout=30, pool_timeout=20)
+                return True
+            except RetryAfter as exc:
+                delay = exc.retry_after.total_seconds() if hasattr(exc.retry_after, "total_seconds") else float(exc.retry_after)
+            except (TimedOut, NetworkError):
+                delay = 2 ** attempt
+            except TelegramError as exc:
+                LOG.error("RANKING TELEGRAM SEND FAILED chat=%s error=%r", chat_id, exc); return False
+            LOG.warning("RANKING TELEGRAM RETRY chat=%s attempt=%s", chat_id, attempt + 1)
+            if attempt < 2: await asyncio.sleep(max(1, delay))
+        LOG.error("RANKING TELEGRAM SEND EXHAUSTED chat=%s", chat_id); return False
+
     async def handle_command(self, message, context, question):
         q_skin = question.strip()
         # Deterministic community commands must be handled before Skin/AI-like parsing.
@@ -1848,7 +1866,7 @@ class CommunityFeatures:
         # "oggi" is optional in the natural manual forms.
         # Route the more specific club command first.
         if re.fullmatch(r"classifica\s+globale\s+club(?:\s+(?:di\s+)?oggi)?", q0, re.I):
-            await context.bot.send_message(chat_id=message.chat_id, text=self.global_club_ranking_text(_ranking_chat_id, monthly=False))
+            await self._send_ranking_message(context, message.chat_id, self.global_club_ranking_text(_ranking_chat_id, monthly=False))
             return True
         if re.fullmatch(r"classifica\s+globale(?:\s+(?:di\s+)?oggi)?", q0, re.I):
             await context.bot.send_message(
@@ -1857,10 +1875,10 @@ class CommunityFeatures:
             )
             return True
         if re.fullmatch(r"classifica\s+globale\s+mensile", q0, re.I):
-            await context.bot.send_message(chat_id=message.chat_id, text=self.global_monthly_ranking_text(_ranking_chat_id))
+            await self._send_ranking_message(context, message.chat_id, self.global_monthly_ranking_text(_ranking_chat_id))
             return True
         if re.fullmatch(r"classifica\s+globale\s+club\s+mensile", q0, re.I):
-            await context.bot.send_message(chat_id=message.chat_id, text=self.global_club_ranking_text(_ranking_chat_id, monthly=True))
+            await self._send_ranking_message(context, message.chat_id, self.global_club_ranking_text(_ranking_chat_id, monthly=True))
             return True
         if re.fullmatch(r"classifica\s+(?:dei\s+)?club\s+(?:di\s+)?oggi", q0, re.I):
             await context.bot.send_message(
@@ -1869,7 +1887,7 @@ class CommunityFeatures:
             )
             return True
         if re.fullmatch(r"classifica(?:\s+(?:della\s+community))?(?:\s+di)?\s+oggi", q0, re.I):
-            await context.bot.send_message(chat_id=message.chat_id, text=self.ranking_text(_ranking_chat_id, 0))
+            await self._send_ranking_message(context, message.chat_id, self.ranking_text(_ranking_chat_id, 0))
             return True
         _club_default_fast = re.fullmatch(
             r"classific(?:a|he)\\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)",
