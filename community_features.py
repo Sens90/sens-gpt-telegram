@@ -2850,21 +2850,24 @@ class CommunityFeatures:
                         owned = player.get(owned_key)
                         total = player.get(total_key)
                         return f"{fmt(owned)}/{fmt(total)}" if total is not None else fmt(owned)
-                    fame_text = player.get("fame_tier") or "Non disponibile"
-                    fame_caps = {
-                        "global": 2000, "lunar": 3200, "martian": 4500, "saturnian": 8000,
-                        "solar": 12000, "meteoric": 20000, "alien": 50000, "starr force": 75000,
+                    fame_tier = str(player.get("fame_tier") or "").strip()
+                    fame_text = fame_tier or "Non disponibile"
+                    fame_levels = {
+                        "global": (0, 2000), "lunar": (6000, 3200), "martian": (15600, 4500),
+                        "saturnian": (29100, 8000), "solar": (53100, 12000),
+                        "meteoric": (89100, 20000), "alien": (149100, 50000),
+                        "starr force": (299100, 75000),
                     }
-                    fame_cap = None
-                    fame_key = str(player.get("fame_tier") or "").casefold()
-                    for tier_name, tier_cap in fame_caps.items():
-                        if tier_name in fame_key:
-                            fame_cap = tier_cap
+                    fame_value = player.get("fame")
+                    for tier_name, (tier_start, per_level) in fame_levels.items():
+                        if tier_name in fame_tier.casefold():
+                            roman_match = re.search(r"\\b(I{1,3})\\b", fame_tier, re.I)
+                            roman = roman_match.group(1).upper() if roman_match else "I"
+                            level_index = {"I": 0, "II": 1, "III": 2}.get(roman, 0)
+                            if fame_value is not None:
+                                progress = max(0, int(fame_value) - tier_start - (level_index * per_level))
+                                fame_text += f" — {fmt(progress)}/{fmt(per_level)}"
                             break
-                    if player.get("fame") is not None:
-                        fame_text += f" — {fmt(player.get('fame'))}"
-                        if fame_cap is not None:
-                            fame_text += f"/{fmt(fame_cap)}"
                     lines = [
                         f"ACCOUNT COLLEGATO: {str(player.get('name') or '').upper()}",
                         f"Tag: {player.get('tag')}",
@@ -2880,8 +2883,8 @@ class CommunityFeatures:
                         f"Punti Clip: {fmt(player.get('clip_points'))}",
                         *([f"Account creato nel: {fmt(player.get('account_created_year'))}"] if player.get("account_created_year") is not None else []),
                         f"Qualificazione Championship: {'Qualificato' if player.get('championship_qualified') else 'Mai qualificato'}", "",
-                        "RANKED",
-                        f"Ranked attuale: {ranked_current or 'Non disponibile'}",
+                        "CLASSIFICATA",
+                        f"Classificata attuale: {ranked_current or 'Non disponibile'}",
                         f"Record stagione: {ranked_season_peak or 'Non disponibile'}",
                         f"Record massimo: {ranked_peak or 'Non disponibile'}", "",
                         "VITTORIE",
@@ -2890,6 +2893,8 @@ class CommunityFeatures:
                         f"Duo: {fmt(player.get('wins_duo'))}", "",
                         "COLLEZIONE",
                         f"Skin: {owned_total('skins_owned','skins_total')}",
+                        *([f"Valore skin: {fmt(int(player.get('skin_value_gems')))} gemme"] if player.get("skin_value_gems") is not None else []),
+                        *([f"Valore equivalente: {float(player.get('skin_value_eur')):,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")] if player.get("skin_value_eur") is not None else []),
                         f"Gadget: {owned_total('gadgets_owned','gadgets_total')}",
                         f"Abilità stellari: {owned_total('star_powers_owned','star_powers_total')}",
                         f"Equipaggiamenti: {owned_total('gears_owned','gears_total')}",
