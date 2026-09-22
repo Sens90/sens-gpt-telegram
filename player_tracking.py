@@ -499,7 +499,25 @@ def _brawlytix_progression(player_tag, timeout=8, retry_missing=True):
             if cleaned:
                 result["skin_rarity_counts"] = cleaned
         if safe_meta:
-            print("PROGRESSION BRIDGE META:", tag, safe_meta, flush=True)
+            # Temporary bounded diagnostic for Brawlytix public client scripts.
+            # Never log the full bridge payload, headers, query parameters or secrets.
+            skin_html = safe_meta.get("skin_html") if isinstance(safe_meta.get("skin_html"), dict) else {}
+            client_js = skin_html.get("client_js") if isinstance(skin_html.get("client_js"), dict) else {}
+            if client_js:
+                bounded_js = {}
+                for asset in ("global", "stats"):
+                    item = client_js.get(asset) if isinstance(client_js.get(asset), dict) else {}
+                    matches = item.get("matches") if isinstance(item.get("matches"), list) else []
+                    bounded_js[asset] = {
+                        "status": item.get("status"),
+                        "bytes": item.get("bytes"),
+                        "content_type": item.get("content_type"),
+                        "effective_host": item.get("effective_host"),
+                        "effective_path": item.get("effective_path"),
+                        "error": item.get("error"),
+                        "matches": matches[:24],
+                    }
+                print("BRAWLYTIX CLIENT JS DIAG:", tag, bounded_js, flush=True)
 
         # Brawlytix can return HTTP 200 while a single metric says
         # "API unavailable". Retry once for missing skin data, then preserve
