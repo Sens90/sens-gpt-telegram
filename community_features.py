@@ -504,6 +504,10 @@ class CommunityFeatures:
             # Diagnostic only: log bridge response body, never request headers or secrets.
             body=(response.text or "").replace("\\r"," ").replace("\\n"," ")[:1500]
             print("SKINCOLLECTION BRIDGE ERROR:",tag,"status=",response.status_code,"body=",body,flush=True)
+            if not response.ok:
+            # Diagnostic only: log bridge response body, never request headers or secrets.
+            body=(response.text or "").replace("\r"," ").replace("\n"," ")[:1500]
+            print("SKINCOLLECTION BRIDGE ERROR:",tag,"status=",response.status_code,"body=",body,flush=True)
             response.raise_for_status()
         payload=response.json()
         if not isinstance(payload,dict):
