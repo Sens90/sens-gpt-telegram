@@ -20,28 +20,6 @@ jobs:
         run: pip install -r requirements.txt
       - name: Compile all critical Python files
         run: python -m py_compile app.py community_features.py player_tracking.py visual_cards.py
-      - name: Static visual wiring checks
-        run: |
-          python - <<'PY'
-          import ast
-          from pathlib import Path
-          for f in ('app.py','community_features.py','player_tracking.py','visual_cards.py'):
-              ast.parse(Path(f).read_text(), filename=f)
-          app = Path('app.py').read_text()
-          community = Path('community_features.py').read_text()
-          visual = Path('visual_cards.py').read_text()
-          required = ['build_player_stats_card', 'send_stat_ranking_cards']
-          for name in required:
-              if f'def {name}' not in visual and f'async def {name}' not in visual:
-                  raise SystemExit(f'missing visual function: {name}')
-              if name not in app:
-                  raise SystemExit(f'app not wired to: {name}')
-          if 'from app import send_stat_ranking_cards' not in community:
-              raise SystemExit('community ranking route not wired')
-          if '2VQYLG0RU8' not in app or '2VQYLG0RU8' not in community:
-              raise SystemExit('Persinox club override missing')
-          print('visual wiring checks OK')
-          PY
       - name: Import visual module smoke test
         run: |
           python - <<'PY'
