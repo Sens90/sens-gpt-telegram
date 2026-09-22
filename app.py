@@ -3145,6 +3145,21 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Full player profile/stat commands are handled by the dedicated block below,
     # because they need the enriched live profile (including BrawlZone Ranked).
     # Registration/monitoring deliberately keep using the lightweight fetcher.
+    _profile_self_alias = bool(re.fullmatch(
+        r"(?:stats|statistiche|profilo|scheda|status|stato)",
+        _raw_command.strip(),
+        re.I,
+    ))
+    if _profile_self_alias:
+        _self_registered = community.get_registered_user(
+            message.from_user.id if message.from_user else None
+        )
+        if not _self_registered or not _self_registered.get("player_tag"):
+            await message.reply_text("Non trovo un tag Brawl Stars collegato al tuo utente Telegram. Registrati prima con: registrami #TAG")
+            return
+        _raw_command = "stats " + str(_self_registered["player_tag"]).strip()
+        print("FULL PROFILE SELF RESOLVED:", message.from_user.id, _raw_command, flush=True)
+
     _full_profile_route = bool(re.fullmatch(
         r"(?:tag|stats|statistiche|profilo|scheda|status(?:\s+(?:del\s+)?giocatore)?|stato(?:\s+(?:del\s+)?giocatore)?)\s*(?:di\s+)?#?[0289PYLQGRJCUV]{3,15}",
         _raw_command.strip(),
