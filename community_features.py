@@ -519,12 +519,17 @@ class CommunityFeatures:
         rarity = str(row.get("rarity") or "").upper()
         tid = str((row.get("source_payload") or {}).get("tid") or "").upper()
         conf = str((row.get("source_payload") or {}).get("conf") or "").upper()
-        # Collector skins are True Silver/True Gold in the catalog: expose the
-        # actual in-game category instead of the generic "Collezione" bucket.
-        if "TRUE_GOLD" in tid or conf.endswith("GOLD") or conf.endswith("_GOLD"):
+        # True Silver/Gold: use verified catalog metadata, not generic names ending in Gold/Silver.
+        acquisition_type = str(row.get("acquisition_type") or "").lower()
+        acquisition_note = str(row.get("acquisition_note") or "")
+        if "TRUE_GOLD" in tid or (acquisition_type == "coins" and int(row.get("price_coins") or 0) == 25000):
             return "Oro"
-        if "TRUE_SILVER" in tid or conf.endswith("SILVER") or conf.endswith("_SILVER"):
+        if "TRUE_SILVER" in tid or (acquisition_type == "coins" and int(row.get("price_coins") or 0) == 10000):
             return "Argento"
+        if "Skin Overdrive Pass Pro" in acquisition_note:
+            return "Skin Overdrive Pass Pro"
+        if acquisition_type == "brawl_pass":
+            return "Brawl Pass"
         labels = {
             "RARE": "Rare", "SUPER_RARE": "Super rare", "EPIC": "Epiche",
             "MYTHIC": "Mitiche", "LEGENDARY": "Leggendarie",
@@ -590,7 +595,7 @@ class CommunityFeatures:
         try:
             canonical_brawler = self._resolve_skin_brawler_name(brawler_name)
             rows = self._get("skins_catalog", {
-                "select": "external_id,name_en,name_it,brawler_name",
+                "select": "external_id,name_en,name_it,brawler_name,image_verified",
                 "verification_status": "eq.structured_verified",
                 "brawler_name": f"eq.{canonical_brawler}",
                 "external_id": "not.in.(29001472,29001473,29001831,29001832,29001833,29001834,29001835,29001836)",
@@ -600,6 +605,8 @@ class CommunityFeatures:
             if len(matches) != 1:
                 return "Non trovo una corrispondenza univoca per questa skin."
             row = matches[0]
+            if row.get("image_verified") is not True:
+                return "La skin è nel catalogo, ma la sua immagine non è ancora verificata."
             image_url = self._brawlvalue_skin_image(canonical_brawler, row.get("name_en") or row.get("name_it"))
             if not image_url:
                 return "Ho trovato la skin nel catalogo, ma Brawl Value non mi ha restituito un'immagine verificabile."
@@ -622,7 +629,7 @@ class CommunityFeatures:
             catalog, offset = [], 0
             while True:
                 page = self._get("skins_catalog", {
-                    "select": "external_id,brawler_id,name_en,name_it,rarity,brawler_name,source_payload,price_gems,price_coins,acquisition_type,availability_status",
+                    "select": "external_id,brawler_id,name_en,name_it,rarity,brawler_name,source_payload,price_gems,price_coins,acquisition_type,availability_status,acquisition_note",
                     "verification_status": "eq.structured_verified",
                     "external_id": "not.in.(29001472,29001473,29001831,29001832,29001833,29001834,29001835,29001836)",
                     "order": "brawler_name.asc,name_en.asc", "limit": "1000", "offset": str(offset),
@@ -658,7 +665,7 @@ class CommunityFeatures:
                 br = self._get("brawlers_catalog", {"select":"brawler_id,name_en,name_it","brawler_id":f"eq.{int(bid)}","limit":"1"}) if bid is not None else []
                 title = str((br[0].get("name_it") if br else None) or brawler_name).upper()
 
-            order = {"Rare":10,"Super rare":20,"Epiche":30,"Mitiche":40,"Leggendarie":50,"Skin Overdrive":60,"Pass Pro":70,"Brawl Pass":80,"Collezione":90,"Senza rarità":100,"Argento":1000,"Oro":1001}
+            order = {"Rare":10,"Super rare":20,"Epiche":30,"Mitiche":40,"Leggendarie":50,"Skin Overdrive":60,"Skin Overdrive Pass Pro":65,"Pass Pro":70,"Brawl Pass":80,"Collezione":90,"Senza rarità":100,"Argento":1000,"Oro":1001}
             def add_values(lines, selected, label):
                 gems = sum(int(r.get("price_gems") or 0) for r in selected if r.get("acquisition_type") == "gems")
                 coins = sum(int(r.get("price_coins") or 0) for r in selected if r.get("acquisition_type") == "coins")
@@ -696,6 +703,29 @@ class CommunityFeatures:
                     key=self._skin_category_label(r); d=groups.setdefault(key,[0,0]); d[1]+=1; d[0]+=1 if r["_owned"] else 0
                 lines=[f"SKIN ACCOUNT\nTotale: {len(owned)}/{len(rows)}", f"Mancanti: {len(missing)}", f"Completamento: {len(owned)*100.0/len(rows):.1f}%", "", "PER RARITÀ"]
                 for key,(have,total) in sorted(groups.items(), key=lambda x:(order.get(x[0],500),x[0])): lines.append(f"{key}: {have}/{total}")
+
+                brawler_names = {}
+                try:
+                    for br in self._get("brawlers_catalog", {"select":"brawler_id,name_en,name_it"}) or []:
+                        if br.get("brawler_id") is not None:
+                            brawler_names[int(br["brawler_id"])] = str(br.get("name_it") or br.get("name_en") or br["brawler_id"])
+                except Exception as exc:
+                    print("ERRORE NOMI BRAWLER SKIN:", repr(exc), flush=True)
+                per_brawler = {}
+                for r in rows:
+                    bid = r.get("brawler_id")
+                    key = int(bid) if bid is not None else self._skin_key(r.get("brawler_name"))
+                    d = per_brawler.setdefault(key, [0, 0, str(r.get("brawler_name") or key)])
+                    d[1] += 1
+                    if r["_owned"]: d[0] += 1
+                lines += ["", "PER BRAWLER"]
+                display_rows = []
+                for key,(have,total,fallback) in per_brawler.items():
+                    name = brawler_names.get(key, fallback) if isinstance(key, int) else fallback
+                    display_rows.append((self._skin_key(name), name, have, total))
+                for _,name,have,total in sorted(display_rows):
+                    pct = have * 100.0 / total if total else 0.0
+                    lines.append(f"{name}: {have}/{total} — {pct:.1f}%")
                 add_values(lines, owned, "POSSEDUTE"); add_values(lines, missing, "MANCANTI")
                 return "\n".join(lines)
 
@@ -1853,12 +1883,12 @@ class CommunityFeatures:
         registered = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
 
         # Skin Account: totals, category queries, owned/missing lists and per-Brawler details.
-        category_rx = r"(rare|super\s+rare|epiche|mitiche|leggendarie|(?:skin\s+)?overdrive|ipercharge|collezione|collector|pass\s+pro|brawl\s+pass|argento|oro(?:\s+24\s+carati)?|speciali|senza\s+rarit[àa])"
+        category_rx = r"(rare|super\s+rare|epiche|mitiche|leggendarie|skin\s+overdrive\s+pass\s+pro|(?:skin\s+)?overdrive|ipercharge|collezione|collector|pass\s+pro|brawl\s+pass|argento|oro(?:\s+24\s+carati)?|speciali|senza\s+rarit[àa])"
         rarity_aliases = {
             "rare":"Rare", "super rare":"Super rare", "epiche":"Epiche", "mitiche":"Mitiche",
             "leggendarie":"Leggendarie", "overdrive":"Skin Overdrive", "skin overdrive":"Skin Overdrive",
             "ipercharge":"Skin Overdrive", "collezione":"Collezione", "collector":"Collezione",
-            "pass pro":"Pass Pro", "brawl pass":"Brawl Pass", "argento":"Argento",
+            "skin overdrive pass pro":"Skin Overdrive Pass Pro", "pass pro":"Pass Pro", "brawl pass":"Brawl Pass", "argento":"Argento",
             "oro":"Oro", "oro 24 carati":"Oro", "speciali":"Senza rarità",
             "senza rarità":"Senza rarità", "senza rarita":"Senza rarità",
         }
@@ -1886,6 +1916,7 @@ class CommunityFeatures:
         missing_brawler_q = re.fullmatch(r"(?:quali\s+)?skin\s+(?:di|del|della)\s+(.+?)\s+(?:mi\s+)?mancano", q_skin, re.I) or re.fullmatch(r"(?:quali\s+)?skin\s+(?:mi\s+)?mancano\s+(?:di|del|della)\s+(.+)", q_skin, re.I)
         owned_brawler_q = re.fullmatch(r"(?:quali\s+)?skin\s+(?:di|del|della)\s+(.+?)\s+(?:ho|possiedo)", q_skin, re.I)
         account_brawler_q = re.fullmatch(r"(?:fammi\s+)?skin\s+account\s+(?:di\s+)?(.+)", q_skin, re.I)
+        simple_skin_brawler_q = re.fullmatch(r"skin\s+(.+?)(?:\s+(possedute|posseduti|ho|mancanti|mancano))?", q_skin, re.I)
         skin_brawler_count_q = re.fullmatch(r"quante\s+skin\s+(?:ho\s+)?(?:di|del|della)\s+(.+)", q_skin, re.I) or re.fullmatch(r"quante\s+skin\s+ha\s+(.+)", q_skin, re.I)
         skin_all_q = re.fullmatch(r"(?:quante\s+)?skin(?:\s+(?:ho|possiedo))?", q_skin, re.I)
 
@@ -1923,6 +1954,10 @@ class CommunityFeatures:
             answer = self.skin_account_text(registered, brawler_name=owned_brawler_q.group(1).strip(), mode="owned")
         elif account_brawler_q:
             answer = self.skin_account_text(registered, brawler_name=account_brawler_q.group(1).strip(), mode="full")
+        elif simple_skin_brawler_q and self._skin_key(simple_skin_brawler_q.group(1)) not in ("account",):
+            _skin_mode = (simple_skin_brawler_q.group(2) or "").lower()
+            _mode = "missing" if _skin_mode in ("mancanti","mancano") else ("owned" if _skin_mode in ("possedute","posseduti","ho") else "full")
+            answer = self.skin_account_text(registered, brawler_name=simple_skin_brawler_q.group(1).strip(), mode=_mode)
         elif skin_brawler_count_q:
             answer = self.skin_account_text(registered, brawler_name=skin_brawler_count_q.group(1).strip(), mode="count")
         elif skin_all_q:
