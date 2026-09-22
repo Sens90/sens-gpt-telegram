@@ -2852,21 +2852,28 @@ class CommunityFeatures:
                         return f"{fmt(owned)}/{fmt(total)}" if total is not None else fmt(owned)
                     fame_tier = str(player.get("fame_tier") or "").strip()
                     fame_text = fame_tier or "Non disponibile"
+                    fame_score_text = None
                     fame_levels = {
-                        "global": (0, 2000), "lunar": (6000, 3200), "martian": (15600, 4500),
-                        "saturnian": (29100, 8000), "solar": (53100, 12000),
-                        "meteoric": (89100, 20000), "alien": (149100, 50000),
-                        "starr force": (299100, 75000),
+                        "global": ("Fama globale", 0, 2000),
+                        "lunar": ("Fama lunare", 6000, 3200),
+                        "martian": ("Fama marziana", 15600, 4500),
+                        "saturnian": ("Fama saturniana", 29100, 8000),
+                        "solar": ("Fama solare", 53100, 12000),
+                        "meteoric": ("Fama meteorica", 89100, 20000),
+                        "alien": ("Fama aliena", 149100, 50000),
+                        "starr force": ("Fama Starr Force", 299100, 75000),
                     }
                     fame_value = player.get("fame")
-                    for tier_name, (tier_start, per_level) in fame_levels.items():
+                    for tier_name, (label, tier_start, per_level) in fame_levels.items():
                         if tier_name in fame_tier.casefold():
                             roman_match = re.search(r"\\b(I{1,3})\\b", fame_tier, re.I)
                             roman = roman_match.group(1).upper() if roman_match else "I"
                             level_index = {"I": 0, "II": 1, "III": 2}.get(roman, 0)
+                            fame_text = f"{label} {roman}"
                             if fame_value is not None:
                                 progress = max(0, int(fame_value) - tier_start - (level_index * per_level))
                                 fame_text += f" — {fmt(progress)}/{fmt(per_level)}"
+                                fame_score_text = f"Punteggio Fama: {fmt(int(fame_value))}"
                             break
                     lines = [
                         f"ACCOUNT COLLEGATO: {str(player.get('name') or '').upper()}",
@@ -2879,6 +2886,7 @@ class CommunityFeatures:
                         f"Livello: {fmt(player.get('level'))}",
                         f"Punti esperienza: {fmt(player.get('exp_points'))}",
                         f"Fama: {fame_text}",
+                        *([fame_score_text] if fame_score_text else []),
                         f"Livello Clip: {fmt(player.get('clip_level'))}",
                         f"Punti Clip: {fmt(player.get('clip_points'))}",
                         *([f"Account creato nel: {fmt(player.get('account_created_year'))}"] if player.get("account_created_year") is not None else []),
