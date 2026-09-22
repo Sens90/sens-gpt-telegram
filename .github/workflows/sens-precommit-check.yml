@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - sens-precommit-check
+      - fix-ranking-telegram-timeout
 permissions:
   contents: read
 jobs:
