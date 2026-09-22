@@ -499,6 +499,9 @@ def _brawlytix_progression(player_tag, timeout=8, retry_missing=True):
             if cleaned:
                 result["skin_rarity_counts"] = cleaned
         if safe_meta:
+            # Temporary bridge-version diagnostic: version only, never payload/secrets.
+            bridge_version = safe_meta.get("bridge_version") or payload.get("bridge_version")
+            print("BRAWLYTIX BRIDGE VERSION:", tag, bridge_version, flush=True)
             # Temporary bounded diagnostic for Brawlytix public client scripts.
             # Never log the full bridge payload, headers, query parameters or secrets.
             skin_html = safe_meta.get("skin_html") if isinstance(safe_meta.get("skin_html"), dict) else {}
