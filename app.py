@@ -3713,7 +3713,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # as the canonical visual reference and treat "cavaliere" as a creative
         # styling instruction, not as the name of an official catalog skin.
         if requested_brawler:
-            creative_skin = re.fullmatch(r"(.+?)\\s+skin\\s+(.+)", requested_brawler, re.I)
+            creative_skin = re.fullmatch(r"(.+?)\s+skin\s+(.+)", requested_brawler, re.I)
             if creative_skin:
                 requested_brawler = creative_skin.group(1).strip()
                 player_creative_style = creative_skin.group(2).strip()
