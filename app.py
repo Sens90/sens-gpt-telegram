@@ -5040,6 +5040,24 @@ async def _send_auto_ranking_slot(context, slot):
             sent += 1
         except Exception as exc:
             print("CLASSIFICA OGGI AUTO SEND ERROR:", row.get("chat_id"), repr(exc), flush=True)
+            # Release only this worker's failed claim so the watchdog can retry.
+            try:
+                chat_id = int(row["chat_id"])
+                rollback_response = await asyncio.to_thread(
+                    requests.patch,
+                    SUPABASE_URL + "/rest/v1/community_settings",
+                    headers={**_supabase_headers(), "Prefer": "return=representation"},
+                    params={"chat_id": f"eq.{chat_id}", "last_auto_ranking_slot": f"eq.{key}", "select": "chat_id"},
+                    json={"last_auto_ranking_slot": previous_slot},
+                    timeout=10,
+                )
+                rollback_response.raise_for_status()
+                if rollback_response.json():
+                    print("CLASSIFICA OGGI AUTO CLAIM RELEASED:", chat_id, key, flush=True)
+                else:
+                    print("CLASSIFICA OGGI AUTO CLAIM RELEASE SKIP:", chat_id, key, flush=True)
+            except Exception as rollback_exc:
+                print("CLASSIFICA OGGI AUTO CLAIM RELEASE ERROR:", row.get("chat_id"), repr(rollback_exc), flush=True)
     print("CLASSIFICA OGGI AUTO: slot=%s sent=%s local=%s" % (
         key, sent, datetime.now(ROME).strftime("%Y-%m-%d %H:%M:%S")
     ), flush=True)
