@@ -1,4 +1,5 @@
 import os
+import html
 import re
 import logging
 import io
@@ -493,25 +494,41 @@ class CommunityFeatures:
         return re.sub(r"[^A-Z0-9]+", "", str(value or "").upper())
 
     def _official_owned_skin_ids(self, player_tag):
-        """Read owned skin IDs from the verified official skins endpoint via our private proxy."""
+        """Resolve exact owned skins from BSInfo and map names to our verified catalog IDs."""
         tag=str(player_tag or "").strip().lstrip("#").upper()
-        proxy_url=(os.environ.get("BRAWL_OFFICIAL_PROXY_URL") or "").strip()
-        proxy_key=(os.environ.get("BRAWL_OFFICIAL_PROXY_KEY") or "").strip()
-        if not tag or not proxy_url or not proxy_key:
-            raise RuntimeError("Official skins proxy is not configured")
-        response=requests.get(proxy_url,params={"action":"skins","tag":tag},headers={"X-Sens-Key":proxy_key,"Accept":"application/json","User-Agent":"SensGPT/1.0"},timeout=20)
+        if not tag:
+            raise RuntimeError("Missing player tag")
+        # BSInfo exposes the player's owned/missing collection in server-rendered HTML.
+        # Map only exact normalized skin names; ambiguous/unmatched names are ignored.
+        url=f"https://bsinfox.com/player/{tag}/skins/?lang=en"
+        response=requests.get(url,headers={"Accept":"text/html","User-Agent":"SensGPT-TitaniAbusivi/1.0"},timeout=20)
         response.raise_for_status()
-        payload=response.json()
-        items=payload.get("items") if isinstance(payload,dict) else None
-        if not isinstance(items,list):
-            raise RuntimeError("Official skins payload missing items")
+        page=response.text
+        marker=re.search(r"Owned Skins\\s+\\d+", page, re.I)
+        missing=re.search(r"Missing Skins\\s+\\d+", page, re.I)
+        if not marker:
+            raise RuntimeError("BSInfo owned skins section missing")
+        owned_html=page[marker.end():missing.start() if missing else len(page)]
+        names=re.findall(r"<h3[^>]*>\\s*([^<]+?)\\s*</h3>", owned_html, re.I|re.S)
+        if not names:
+            # Fallback for markup where skin names are headings without h3.
+            names=re.findall(r"(?:Own\\s*)+([A-Z0-9][A-Z0-9 .:&'’!+\\-]{1,80})", re.sub(r"<[^>]+>"," ",owned_html), re.I)
+        catalog=self._get("skins_catalog",{"select":"external_id,name_en,name_it","external_id":"not.is.null","limit":"2000"}) or []
+        by_key={}
+        for row in catalog:
+            try: sid=int(row.get("external_id"))
+            except (TypeError,ValueError): continue
+            for label in (row.get("name_en"),row.get("name_it")):
+                key=self._skin_key(label)
+                if key: by_key.setdefault(key,set()).add(sid)
         owned=set()
-        for brawler in items:
-            if not isinstance(brawler,dict): continue
-            for skin in brawler.get("skins") or []:
-                if isinstance(skin,dict) and skin.get("id") is not None:
-                    try: owned.add(int(skin["id"]))
-                    except (TypeError,ValueError): pass
+        for name in names:
+            ids=by_key.get(self._skin_key(html.unescape(name)))
+            if ids and len(ids)==1:
+                owned.update(ids)
+        if not owned:
+            raise RuntimeError("BSInfo skins could not be mapped to catalog IDs")
+        print("BSINFO OWNED SKINS:",tag,"names=",len(names),"mapped=",len(owned),flush=True)
         return owned
 
     @staticmethod
