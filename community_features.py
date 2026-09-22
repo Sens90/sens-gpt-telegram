@@ -630,7 +630,7 @@ class CommunityFeatures:
             catalog, offset = [], 0
             while True:
                 page = self._get("skins_catalog", {
-                    "select": "external_id,brawler_id,name_en,name_it,rarity,brawler_name,source_payload,price_gems,price_coins,acquisition_type,availability_status,acquisition_note",
+                    "select": "external_id,brawler_id,name_en,name_it,rarity,brawler_name,source_payload,price_gems,price_coins,acquisition_type,availability_status,acquisition_note,acquisition_group_key,acquisition_group_type,acquisition_group_cost_eur",
                     "verification_status": "eq.structured_verified",
                     "external_id": "not.in.(29001472,29001473,29001831,29001832,29001833,29001834,29001835,29001836)",
                     "order": "brawler_name.asc,name_en.asc", "limit": "1000", "offset": str(offset),
@@ -670,8 +670,18 @@ class CommunityFeatures:
             def add_values(lines, selected, label):
                 gems = sum(int(r.get("price_gems") or 0) for r in selected if r.get("acquisition_type") == "gems")
                 coins = sum(int(r.get("price_coins") or 0) for r in selected if r.get("acquisition_type") == "coins")
-                special = sum(1 for r in selected if r.get("acquisition_type") not in ("gems","coins"))
+                paid_groups = {}
+                for r in selected:
+                    group_key = str(r.get("acquisition_group_key") or "").strip()
+                    group_cost = r.get("acquisition_group_cost_eur")
+                    if group_key and group_cost is not None:
+                        try: paid_groups[group_key] = float(group_cost)
+                        except (TypeError, ValueError): pass
+                euro = sum(paid_groups.values())
+                special = sum(1 for r in selected if r.get("acquisition_type") not in ("gems","coins") and not r.get("acquisition_group_key"))
                 lines += ["", f"VALORE SKIN {label}", f"💎 Gemme: {gems:,}".replace(",","."), f"🪙 Monete: {coins:,}".replace(",",".")]
+                if euro:
+                    lines.append(f"💶 Pass/set: {euro:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
                 if special: lines.append(f"🎟️ Senza prezzo diretto verificato: {special}")
 
             if mode in ("owned","missing"):
