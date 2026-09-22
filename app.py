@@ -3165,7 +3165,14 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _raw_command.strip(),
         re.I,
     ))
-    if not _full_profile_route and await community.handle_command(message, context, _raw_command):
+    # Profile-image commands belong to the dedicated AI image handler below.
+    # Keep them out of the generic community command router/firewall.
+    _profile_ai_route = bool(re.match(
+        r"^(?:profilo ai|profilo grafico|immagine profilo|profile image)\\b",
+        _raw_command.strip(),
+        re.I,
+    ))
+    if not _full_profile_route and not _profile_ai_route and await community.handle_command(message, context, _raw_command):
         print("DETERMINISTIC COMMAND ROUTE:", repr(_raw_command), flush=True)
         return
     if _full_profile_route:
@@ -3484,7 +3491,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "inattivi", "inattivita", "inattività", "assenza ", "eventi",
         "partecipo ", "evento crea ", "reclutamento", "candidature",
         "report", "autokick ", "soglie inattività ", "soglie inattivita ",
-        "tag ", "profilo ", "scheda ", "status ", "stato giocatore ", "stato del giocatore ",
+        "tag ", "scheda ", "status ", "stato giocatore ", "stato del giocatore ",
         "club", "profilo club", "stato club", "regole", "faq", "regolamento",
         "sito", "website", "discord", "comandi", "aiuto", "help", "funzioni",
         "skin", "quante skin", "quali skin", "counter ", "chi countera ",
