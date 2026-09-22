@@ -1,0 +1,36 @@
+name: Sens precommit check
+on:
+  push:
+    branches:
+      - sens-precommit-check
+      - fix-ranking-telegram-timeout
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile current Python files
+        run: |
+          python -m py_compile community_features.py
+          python -m py_compile app.py
+      - name: Skin phase 2 behavior checks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path("community_features.py").read_text()
+          compile(s,"community_features.py","exec")
+          required=["PER BRAWLER","Skin Overdrive Pass Pro",'row.get("image_verified") is not True','acquisition_type == "brawl_pass"',"simple_skin_brawler_q"]
+          assert all(x in s for x in required)
+          assert 'conf.endswith("GOLD")' not in s
+          assert 'conf.endswith("SILVER")' not in s
+          simple=re.compile(r"skin\s+(.+?)(?:\s+(possedute|posseduti|ho|mancanti|mancano))?$",re.I)
+          for q,want in {"Skin Moe":("Moe",None),"Skin Moe possedute":("Moe","possedute"),"Skin Moe mancanti":("Moe","mancanti")}.items():
+              m=simple.fullmatch(q); assert m and m.groups()==want,(q,m.groups() if m else None)
+          category=re.compile(r"(rare|super\s+rare|epiche|mitiche|leggendarie|skin\s+overdrive\s+pass\s+pro|(?:skin\s+)?overdrive|ipercharge|collezione|collector|pass\s+pro|brawl\s+pass|argento|oro(?:\s+24\s+carati)?|speciali|senza\s+rarit[àa])",re.I)
+          for q in ["skin overdrive pass pro","pass pro","brawl pass","oro 24 carati","argento","epiche"]: assert category.fullmatch(q),q
+          assert "def _daily_baseline_tags" in s
+          print("SKIN PHASE 2 PRECOMMIT TESTS OK")
+          PY
