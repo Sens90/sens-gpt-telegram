@@ -3,8 +3,6 @@ on:
   push:
     branches:
       - sens-precommit-check
-    paths:
-      - '.github/workflows/sens-precommit-check.yml'
 permissions:
   contents: read
 jobs:
@@ -20,7 +18,6 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
           s=Path("community_features.py").read_text()
           required=[
               "def skin_account_text",
@@ -32,7 +29,10 @@ jobs:
           missing=[x for x in required if x not in s]
           if missing:
               raise SystemExit("missing required blocks: "+", ".join(missing))
-          # Ensure regex literals in the source at least compile when extracted by Python itself.
           compile(s, "community_features.py", "exec")
-          print("PRECOMMIT BASELINE OK")
+          if "PER BRAWLER" in s:
+              assert 'image_verified' in s
+              assert 'Skin Overdrive Pass Pro' in s
+              assert 'simple_skin_brawler_q' in s
+          print("PRECOMMIT OK")
           PY
