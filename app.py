@@ -3168,7 +3168,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Profile-image commands belong to the dedicated AI image handler below.
     # Keep them out of the generic community command router/firewall.
     _profile_ai_route = bool(re.match(
-        r"^(?:profilo ai|profilo grafico|immagine profilo|profile image)\\b",
+        r"^(?:profilo ai|profilo grafico|immagine profilo|profile image)\b",
         _raw_command.strip(),
         re.I,
     ))
