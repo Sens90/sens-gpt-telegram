@@ -3709,6 +3709,18 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         category = category_map.get(mode_key, "random")
         requested_brawler = (profile_image_match.group(3) or "").strip() or None
         custom_environment = (profile_image_match.group(4) or "").strip() or None
+        # Natural creative syntax: "con Belle skin cavaliere" means use Belle
+        # as the canonical visual reference and treat "cavaliere" as a creative
+        # styling instruction, not as the name of an official catalog skin.
+        if requested_brawler:
+            creative_skin = re.fullmatch(r"(.+?)\\s+skin\\s+(.+)", requested_brawler, re.I)
+            if creative_skin:
+                requested_brawler = creative_skin.group(1).strip()
+                player_creative_style = creative_skin.group(2).strip()
+            else:
+                player_creative_style = None
+        else:
+            player_creative_style = None
         # Backward-compatible natural syntax: `profilo ai ... #TAG al cinema`
         # means environment, never rendering style.
         if requested_brawler and requested_brawler.casefold() == "al cinema" and not custom_environment:
@@ -3758,6 +3770,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         if player_environment:
             player["requested_environment"] = player_environment
+        if player_creative_style:
+            player["ai_creative_style"] = player_creative_style[:160]
         if not reference_ok:
             await send_mode_aware_text(message, context, reference_error or "Riferimento Brawler non disponibile.")
             return
