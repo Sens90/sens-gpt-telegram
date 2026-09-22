@@ -1292,7 +1292,7 @@ class CommunityFeatures:
         club_name = None
         global_registered = scope == "globale"
         if scope not in ("community", "globale"):
-            club_name = self.CLUB_ALIASES.get(scope)
+            club_name = self.CLUB_ALIASES.get(scope) or self.CLUB_ALIASES.get(scope.replace(" abusivi", ""))
             if not club_name:
                 return "Classifica coefficiente non riconosciuta."
         if global_registered:
