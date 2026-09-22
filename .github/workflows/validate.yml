@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
@@ -16,39 +16,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Wire visual renderers once
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          a = Path('app.py')
-          s = a.read_text()
-          imp = 'from visual_cards import build_player_stats_card, send_stat_ranking_cards\n'
-          anchor = 'from live_maps import collect_report, render_report, report_csv\n'
-          if imp not in s:
-              if anchor not in s:
-                  raise SystemExit('app import anchor not found')
-              s = s.replace(anchor, anchor + imp, 1)
-
-          # Resolve the explicit Persinox correction before both graphic and text fallback are built.
-          anchor2 = '        member_data = community.get_member_by_player_tag(\n            message.chat_id,\n            player["tag"]\n        )\n\n'
-          fix = '''        if str(player.get("tag") or "").upper().replace("#", "") == "2VQYLG0RU8":\n            player["club"] = "TALENTI ABUSIVI"\n            player["club_name"] = "TALENTI ABUSIVI"\n\n'''
-          if fix not in s:
-              if anchor2 not in s:
-                  raise SystemExit('stats member-data anchor not found')
-              s = s.replace(anchor2, anchor2 + fix, 1)
-          a.write_text(s)
-
-          c = Path('community_features.py')
-          t = c.read_text()
-          old = '''            actual_club=self._club_name_from_player(player)\n            if club_name and (actual_club or "").casefold()!=club_name.casefold(): continue\n            value=player.get(field)\n            if value is None: continue\n            try: value=int(value)\n            except (TypeError,ValueError): continue\n            rows.append({"name":player.get("name") or member.get("player_name") or member.get("display_name") or tag,"value":value,"tag":tag,"icon_url":player.get("icon_url")})\n'''
-          new = '''            normalized_tag=str(player.get("tag") or tag).upper().replace("#", "")\n            if normalized_tag == "2VQYLG0RU8":\n                player["club"]="TALENTI ABUSIVI"\n                player["club_name"]="TALENTI ABUSIVI"\n            actual_club=self._club_name_from_player(player)\n            if club_name and (actual_club or "").casefold()!=club_name.casefold(): continue\n            value=player.get(field)\n            if value is None: continue\n            try: value=int(value)\n            except (TypeError,ValueError): continue\n            display_value=None\n            if stat_key == "classificata": display_value=player.get("ranked_current") or member.get("ranked_current")\n            elif stat_key == "classificata stagione": display_value=player.get("ranked_season_peak") or member.get("ranked_season_peak")\n            elif stat_key == "classificata carriera": display_value=player.get("ranked_career_peak") or player.get("ranked_peak") or member.get("ranked_career_peak") or member.get("ranked_peak")\n            rows.append({"name":player.get("name") or member.get("player_name") or member.get("display_name") or tag,"value":value,"display_value":display_value,"tag":tag,"icon_url":player.get("icon_url")})\n'''
-          if old in t:
-              t = t.replace(old, new, 1)
-          elif 'display_value=player.get("ranked_current")' not in t:
-              raise SystemExit('stat rows block not found')
-          c.write_text(t)
-          PY
       - name: Install runtime dependencies
         run: pip install -r requirements.txt
       - name: Compile all critical Python files
@@ -86,11 +53,3 @@ jobs:
           assert len(rank.getvalue()) > 1000
           print('visual renderer smoke test OK')
           PY
-      - name: Commit wired sources if changed
-        run: |
-          if git diff --quiet -- app.py community_features.py; then exit 0; fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app.py community_features.py
-          git commit -m 'Wire and validate visual stats renderers'
-          git push
