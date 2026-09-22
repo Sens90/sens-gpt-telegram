@@ -1,5 +1,4 @@
 import os
-import html
 import re
 import logging
 import io
@@ -494,25 +493,20 @@ class CommunityFeatures:
         return re.sub(r"[^A-Z0-9]+", "", str(value or "").upper())
 
     def _official_owned_skin_ids(self, player_tag):
-        """Resolve exact owned skins from BSInfo and map names to our verified catalog IDs."""
+        """Resolve exact owned skins through the authenticated Netsons BSInfo bridge."""
         tag=str(player_tag or "").strip().lstrip("#").upper()
-        if not tag:
-            raise RuntimeError("Missing player tag")
-        # BSInfo exposes the player's owned/missing collection in server-rendered HTML.
-        # Map only exact normalized skin names; ambiguous/unmatched names are ignored.
-        url=f"https://bsinfox.com/player/{tag}/skins/?lang=en"
-        response=requests.get(url,headers={"Accept":"text/html","User-Agent":"SensGPT-TitaniAbusivi/1.0"},timeout=20)
+        proxy_url=(os.environ.get("BRAWL_OFFICIAL_PROXY_URL") or "").strip()
+        proxy_key=(os.environ.get("BRAWL_OFFICIAL_PROXY_KEY") or "").strip()
+        if not tag or not proxy_url or not proxy_key:
+            raise RuntimeError("Skin collection proxy is not configured")
+        response=requests.get(proxy_url,params={"action":"skincollection","tag":tag},headers={"X-Sens-Key":proxy_key,"Accept":"application/json","User-Agent":"SensGPT-TitaniAbusivi/1.0"},timeout=20)
         response.raise_for_status()
-        page=response.text
-        marker=re.search(r"Owned Skins\\s+\\d+", page, re.I)
-        missing=re.search(r"Missing Skins\\s+\\d+", page, re.I)
-        if not marker:
-            raise RuntimeError("BSInfo owned skins section missing")
-        owned_html=page[marker.end():missing.start() if missing else len(page)]
-        names=re.findall(r"<h3[^>]*>\\s*([^<]+?)\\s*</h3>", owned_html, re.I|re.S)
-        if not names:
-            # Fallback for markup where skin names are headings without h3.
-            names=re.findall(r"(?:Own\\s*)+([A-Z0-9][A-Z0-9 .:&'’!+\\-]{1,80})", re.sub(r"<[^>]+>"," ",owned_html), re.I)
+        payload=response.json()
+        if not isinstance(payload,dict):
+            raise RuntimeError("Skin collection payload is not an object")
+        names=payload.get("owned_skin_names")
+        if not isinstance(names,list) or not names:
+            raise RuntimeError("Skin collection payload missing owned skin names")
         catalog=self._get("skins_catalog",{"select":"external_id,name_en,name_it","external_id":"not.is.null","limit":"2000"}) or []
         by_key={}
         for row in catalog:
@@ -522,13 +516,16 @@ class CommunityFeatures:
                 key=self._skin_key(label)
                 if key: by_key.setdefault(key,set()).add(sid)
         owned=set()
+        ambiguous=0
+        unmatched=0
         for name in names:
-            ids=by_key.get(self._skin_key(html.unescape(name)))
-            if ids and len(ids)==1:
-                owned.update(ids)
+            ids=by_key.get(self._skin_key(str(name)))
+            if ids and len(ids)==1: owned.update(ids)
+            elif ids: ambiguous+=1
+            else: unmatched+=1
         if not owned:
-            raise RuntimeError("BSInfo skins could not be mapped to catalog IDs")
-        print("BSINFO OWNED SKINS:",tag,"names=",len(names),"mapped=",len(owned),flush=True)
+            raise RuntimeError("Bridge skins could not be mapped to catalog IDs")
+        print("BSINFO OWNED SKINS:",tag,"names=",len(names),"mapped=",len(owned),"ambiguous=",ambiguous,"unmatched=",unmatched,flush=True)
         return owned
 
     @staticmethod
