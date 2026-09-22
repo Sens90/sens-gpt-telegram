@@ -847,6 +847,8 @@ def get_brawltrack_player(player_tag, timeout=20, enrich_ranked=True):
                     result[key] = value
         normalize_ranked_fields(result)
         print("SUPERCELL OFFICIAL PLAYER:", tag, club_name, club_tag, flush=True)
+        if tag == "2GU9UV2RG":
+            print("COEFFICIENT DIAG:", tag, result.get("brawler_trophies") or [], flush=True)
         return result
     except Exception as error:
         print("ERRORE SUPERCELL OFFICIAL:", tag, repr(error), flush=True)
