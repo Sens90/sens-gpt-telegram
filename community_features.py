@@ -1393,6 +1393,20 @@ class CommunityFeatures:
                     lines.append(f"• {dt_local(ss[0]['battle_time']):%H:%M}–{dt_local(ss[-1]['battle_time']):%H:%M}: {len(ss)} partite, {'+' if sr>0 else ''}{sr} coppe, {'+' if sw>0 else ''}{sw} punti")
         return "\n".join(lines)
 
+    def _publish_telegraph(self, title, lines):
+        token = os.getenv("TELEGRAPH_ACCESS_TOKEN", "").strip()
+        if not token:
+            return None
+        content = [{"tag": "p", "children": [str(line)]} for line in lines if str(line or "").strip()]
+        try:
+            response = requests.post("https://api.telegra.ph/createPage", data={"access_token": token, "title": str(title)[:256], "author_name": "TITANI ABUSIVI", "content": __import__("json").dumps(content, ensure_ascii=False), "return_content": "false"}, timeout=20)
+            response.raise_for_status()
+            payload = response.json()
+            return payload.get("result", {}).get("url") if payload.get("ok") else None
+        except Exception as exc:
+            LOG.error("TELEGRAPH CREATE PAGE ERROR: %r", exc)
+            return None
+
     def progression_brawler_text(self, player_tag, brawler_name):
         """Today's battle-by-battle Progressione log for one Brawler."""
         from trophy_coefficient import TROPHY_COEFFICIENT_BANDS, score_brawler_trophies
