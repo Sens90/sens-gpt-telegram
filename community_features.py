@@ -3754,6 +3754,10 @@ class CommunityFeatures:
                 if isinstance(exc, SkinBridgeBackoff):
                     print("SKIN DAILY SNAPSHOT: upstream circuit open; remaining members deferred", flush=True)
                     break
+                if isinstance(exc, requests.HTTPError):
+                    # _official_owned_skin_ids already emitted the bounded status/failure count.
+                    # Avoid duplicating one red traceback-style line per attempted member.
+                    continue
                 print(f"ERRORE SNAPSHOT SKIN MEMBER {member_id}:", repr(exc), flush=True)
         print(f"SKIN DAILY SNAPSHOT: date={day} saved={saved} skipped={skipped}", flush=True)
         return {"date": day, "saved": saved, "skipped": skipped}
