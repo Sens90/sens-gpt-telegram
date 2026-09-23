@@ -1326,12 +1326,21 @@ class CommunityFeatures:
         def weighted_delta(row):
             t0 = max(0, int(row.get("brawler_trophies_before") or 0))
             d = int(row.get("trophy_change") or 0)
-            # Progression difficulty is earned on positive trophy gains only.
-            # Losses keep their real x1 value so a high band is not penalized twice.
-            if d <= 0:
-                return float(d)
             t1 = max(0, t0 + d)
-            return float(score_brawler_trophies(t1) - score_brawler_trophies(t0))
+            if d >= 0:
+                return float(score_brawler_trophies(t1) - score_brawler_trophies(t0))
+            # Losses use the inverse marginal coefficient: the higher the band,
+            # the smaller the negative Progression penalty. Handle band crossings
+            # piecewise by dividing each lost trophy segment by its band weight.
+            loss = 0.0
+            hi, lo = t0, t1
+            for start, end, weight in TROPHY_COEFFICIENT_BANDS:
+                overlap = max(0, min(hi, end) - max(lo, start))
+                if overlap:
+                    loss += overlap / float(weight)
+            if hi > 3000:
+                loss += max(0, hi - max(lo, 3000))
+            return -loss
 
         def band_labels(lo, hi):
             a, b = sorted((max(0, lo), max(0, hi)))
