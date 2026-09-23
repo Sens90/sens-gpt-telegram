@@ -43,6 +43,15 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
                           report_csv=lambda report: b'full csv payload')
         exec(compile(HELPERS, 'app.py', 'exec'), self.scope)
 
+        async def send_mode_aware_text(message, context, text, disable_web_page_preview=True):
+            await message.reply_text(
+                text, read_timeout=30, write_timeout=60,
+                connect_timeout=20, pool_timeout=20,
+                disable_web_page_preview=disable_web_page_preview,
+            )
+
+        self.scope['send_mode_aware_text'] = send_mode_aware_text
+
     async def test_timeout_retries_only_failed_part_then_finishes(self):
         order = []
         attempted = []
@@ -58,7 +67,7 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
             order.append('CSV')
 
         message = SimpleNamespace(reply_text=text, reply_document=document)
-        await self.scope['deliver_live_map_report'](message, {'maps': [1]}, 'x' * 8000)
+        await self.scope['deliver_live_map_report'](message, SimpleNamespace(), {'maps': [1]}, 'x' * 8000)
         self.assertEqual(order[0], 'CSV')
         self.assertEqual([x.split('\n')[0] for x in order[1:]], ['Parte 1/3', 'Parte 2/3', 'Parte 3/3'])
         self.assertEqual(attempted[1], attempted[2])
@@ -73,7 +82,7 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
                 raise TimedOut()
 
         message = SimpleNamespace(reply_text=text, reply_document=AsyncMock())
-        await self.scope['deliver_live_map_report'](message, {'maps': [1]}, 'x' * 5000)
+        await self.scope['deliver_live_map_report'](message, SimpleNamespace(), {'maps': [1]}, 'x' * 5000)
         self.assertEqual(sum(v.startswith('Parte 1/') for v in attempts), 3)
         self.assertTrue(any(v.startswith('Parte 2/') for v in attempts))
         self.assertIn('non ha confermato', attempts[-1])
@@ -86,7 +95,7 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
             raise TimedOut()
 
         message = SimpleNamespace(reply_text=AsyncMock(), reply_document=document)
-        await self.scope['deliver_live_map_report'](message, {'maps': [1]}, 'report')
+        await self.scope['deliver_live_map_report'](message, SimpleNamespace(), {'maps': [1]}, 'report')
         self.assertEqual(payloads, [b'full csv payload'] * 3)
         self.assertTrue(message.reply_text.call_args_list[0].args[0].startswith('Parte 1/1'))
 

@@ -9,6 +9,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 from live_maps import active_events, brawltrack_pro_map_stats, collect_report, localized, render_report, report_csv, valid_rows
 
@@ -19,8 +20,15 @@ SAMPLE = json.loads((Path(__file__).parent / 'tests/fixtures/planet_live_sample.
 class LiveMapTests(unittest.TestCase):
     def collect(self, data=None, dataset='both'):
         self.fallback_calls = []
-        return collect_report(dataset, NOW, fetch=(data or SAMPLE).get,
-                              secondary=lambda e: self.fallback_calls.append(e['event_map_id']) or 'Secondaria senza dati')
+        with patch('live_maps.get_official_rotation', return_value=None), \
+                patch('live_maps.brawltrack_pro_map_stats', return_value={}), \
+                patch('live_maps.brawltrack_pro_map_image', return_value=None):
+            return collect_report(
+                dataset,
+                NOW,
+                fetch=(data or SAMPLE).get,
+                secondary=lambda e: self.fallback_calls.append(e['event_map_id']) or 'Secondaria senza dati',
+            )
 
     def test_real_rotation_not_catalogue_and_exact_expiry(self):
         active = active_events(SAMPLE['event_rotation.json.gz'], NOW)
@@ -34,7 +42,7 @@ class LiveMapTests(unittest.TestCase):
 
     def test_partial_data_preserves_every_map_and_tries_secondary(self):
         report = self.collect()
-                text = render_report(report)
+        text = render_report(report)
         for event in report['events']:
             self.assertIn(localized(report['names'], 'maps', event['event_map']), text)
         self.assertIn('Miglior StarPlayer', text)

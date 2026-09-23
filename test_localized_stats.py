@@ -86,7 +86,7 @@ class LocalizedStatsTests(unittest.TestCase):
         self.assertLessEqual(len(context), 220000)
         self.assertIn('INDIVIDUALI', context)
         self.assertIn('SQUADRE', context)
-        self.assertIn('FONTE PRIMARIA BRAWL PLANET', context)
+        self.assertIn('FONTE FALLBACK BRAWL PLANET', context)
         self.assertIn('FONTE SECONDARIA', context)
         self.assertEqual(len(sources), 2)
 
@@ -136,7 +136,7 @@ class LocalizedStatsTests(unittest.TestCase):
         bad = 'Footbrawl: Campetto - miglior vittoria Wendy, più scelto Colt.'
         self.assertTrue(validate(bad, manifest, expected_context='both'))
         good = (
-            'Trofei - Individuali: Brawler | Vitt. | Scelta | Stella\n'
+            'Scalata - Individuali: Brawler | Vitt. | Scelta | Stella\n'
             'Trofei - Squadre: Composizione | Vitt.\n'
             'Classificata - Individuali: Brawler | Vitt. | Scelta | Stella\n'
             'Classificata - Squadre: Non disponibile\n'
