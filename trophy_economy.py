@@ -23,9 +23,16 @@ SOLO_SHOWDOWN_BASES = (
     (1800, 1999, (13, 10, 8, 5, 0, -3, -5, -7, -9, -12)),
 )
 
-# Duo remains deliberately limited to repeatedly observed winning placements
-# until its complete 2026 table is available from an authoritative source.
+# Duo remains deliberately limited to repeatedly observed cells.  The public
+# 2026 graphic covers Solo only, so unknown Duo cells must stay unclassified.
 SURVIVAL_PLACEMENT_BASES = {"duoShowdown": {1: 11, 2: 5}}
+DUO_SHOWDOWN_BASES = (
+    (1000, 1099, {3: -1, 4: -6, 5: -5}),
+    # These losses are confirmed by the observed delta plus the maximum +4
+    # Underdog compensation in matches with a much lower-trophy teammate.
+    (1100, 1199, {3: -5, 4: -8}),
+    (1800, 1999, {3: -6}),
+)
 
 # Exact negative deltas repeatedly observed for the same range and placement.
 # Partial coverage is deliberate: possible Underdog reductions remain unknown.
@@ -82,6 +89,10 @@ def classify_trophy_change(mode, result, trophies_before, trophy_change, placeme
                     break
         else:
             base = SURVIVAL_PLACEMENT_BASES.get(mode, {}).get(rank)
+            for lower, upper, placement_bases in DUO_SHOWDOWN_BASES:
+                if lower <= trophies <= upper and rank in placement_bases:
+                    base = placement_bases[rank]
+                    break
         if base is not None and 0 <= trophies <= 1999 and base <= change <= base + 14:
             extra = change - base
             streak_finish = (mode == "soloShowdown" and rank <= 4) or (

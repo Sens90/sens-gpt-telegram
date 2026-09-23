@@ -131,7 +131,22 @@ def test_solo_showdown_excess_is_measured_from_the_correct_band_base():
     assert classify_trophy_change("duoShowdown", None, 1030, -3, 4) == (
         -6, 3, "underdog_observed"
     )
-    assert classify_trophy_change("duoShowdown", None, 1830, -2, 3) == (None, None, None)
+
+
+def test_verified_duo_cells_include_underdog_compensation():
+    from trophy_economy import classify_trophy_change
+
+    assert classify_trophy_change("duoShowdown", None, 1016, -1, 3) == (-1, 0, None)
+    assert classify_trophy_change("duoShowdown", None, 1038, -5, 5) == (-5, 0, None)
+    assert classify_trophy_change("duoShowdown", None, 1141, -1, 3) == (
+        -5, 4, "underdog_observed"
+    )
+    assert classify_trophy_change("duoShowdown", None, 1167, -4, 4) == (
+        -8, 4, "underdog_observed"
+    )
+    assert classify_trophy_change("duoShowdown", None, 1833, -2, 3) == (
+        -6, 4, "underdog_observed"
+    )
 
 
 def test_verified_team_loss_can_expose_a_small_unresolved_bonus():
