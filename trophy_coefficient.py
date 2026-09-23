@@ -8,6 +8,8 @@ a marginal premium by trophy band. The premium is capped at 3000 trophies
 per Brawler; trophies above 3000 continue to contribute at raw weight 1.
 """
 
+from decimal import Decimal, ROUND_HALF_UP
+
 TROPHY_COEFFICIENT_BANDS = (
     (0, 50, 1.0000),
     (50, 100, 1.0250),
@@ -34,6 +36,7 @@ TROPHY_COEFFICIENT_BANDS = (
 )
 
 PREMIUM_CAP = 3000
+WEIGHT_SCALE = 10_000
 
 
 def score_brawler_trophies(trophies):
@@ -43,21 +46,25 @@ def score_brawler_trophies(trophies):
     except (TypeError, ValueError):
         trophies = 0
 
-    score = 0.0
+    # Accumulate scaled integers so every four-decimal band weight is exact.
+    # Using binary floats here made the premium above 3,000 differ from the
+    # expected raw x1 amount by a tiny rounding residue.
+    score_units = 0
     for start, end, weight in TROPHY_COEFFICIENT_BANDS:
         amount = max(0, min(trophies, end) - start)
-        score += amount * weight
+        weight_units = int(Decimal(str(weight)) * WEIGHT_SCALE)
+        score_units += amount * weight_units
 
     if trophies > PREMIUM_CAP:
-        score += trophies - PREMIUM_CAP
-    return score
+        score_units += (trophies - PREMIUM_CAP) * WEIGHT_SCALE
+    return Decimal(score_units) / WEIGHT_SCALE
 
 
 def calculate_trophy_coefficient(brawler_trophies, official_total=None):
     """Return score/coefficient from the current per-Brawler distribution."""
     rows = brawler_trophies if isinstance(brawler_trophies, list) else []
     detail_total = 0
-    weighted_total = 0.0
+    weighted_total = Decimal(0)
 
     for row in rows:
         if not isinstance(row, dict):
@@ -77,9 +84,10 @@ def calculate_trophy_coefficient(brawler_trophies, official_total=None):
     if raw_total > detail_total:
         weighted_total += raw_total - detail_total
 
-    coefficient = weighted_total / raw_total if raw_total else 1.0
+    rounded_score = int(weighted_total.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    coefficient = float(weighted_total / raw_total) if raw_total else 1.0
     return {
-        "score": int(round(weighted_total)),
+        "score": rounded_score,
         "coefficient": round(coefficient, 6),
         "detail_total": detail_total,
         "official_total": raw_total,

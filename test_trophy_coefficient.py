@@ -1,4 +1,10 @@
-from trophy_coefficient import calculate_trophy_coefficient, score_brawler_trophies
+from decimal import Decimal
+
+from trophy_coefficient import (
+    TROPHY_COEFFICIENT_BANDS,
+    calculate_trophy_coefficient,
+    score_brawler_trophies,
+)
 
 
 def test_thresholds_are_monotonic():
@@ -17,6 +23,13 @@ def test_real_trophies_are_never_discounted():
 def test_above_3000_keeps_raw_trophies_without_extra_premium():
     assert score_brawler_trophies(3001) - score_brawler_trophies(3000) == 1
     assert score_brawler_trophies(4000) - score_brawler_trophies(3000) == 1000
+
+
+def test_each_band_uses_its_exact_marginal_weight():
+    for start, end, weight in TROPHY_COEFFICIENT_BANDS:
+        if end <= start:
+            continue
+        assert score_brawler_trophies(start + 1) - score_brawler_trophies(start) == Decimal(str(weight))
 
 
 def test_same_total_distribution_can_score_differently():
