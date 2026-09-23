@@ -3,6 +3,8 @@
 import hashlib
 from datetime import datetime, timezone
 
+from trophy_economy import classify_trophy_change
+
 
 def _battle_time_iso(value):
     raw = str(value or "").strip()
@@ -81,14 +83,17 @@ def observed_battle_rows(player_tag, player_name, payload):
         event = item.get("event") if isinstance(item.get("event"), dict) else {}
         mode = battle.get("mode") or event.get("mode")
         identity = "|".join((clean_tag, battle_time, str(event.get("id") or ""), str(mode or ""), str(brawler_name or ""), str(trophy_change)))
+        expected_base, observed_extra, bonus_type = classify_trophy_change(
+            mode, battle.get("result"), trophies_before, trophy_change
+        )
         rows.append({
             "player_tag": clean_tag, "player_name": player_name,
             "battle_key": hashlib.sha256(identity.encode("utf-8")).hexdigest(),
             "battle_time": battle_time, "brawler_name": brawler_name,
             "brawler_trophies_before": trophies_before, "mode": mode,
             "result": battle.get("result"), "placement": placement,
-            "trophy_change": trophy_change, "expected_base_delta": None,
-            "observed_extra": None, "current_win_streak": streak,
-            "bonus_type": None, "raw_battle": item,
+            "trophy_change": trophy_change, "expected_base_delta": expected_base,
+            "observed_extra": observed_extra, "current_win_streak": streak,
+            "bonus_type": bonus_type, "raw_battle": item,
         })
     return rows

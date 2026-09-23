@@ -1,7 +1,7 @@
 from observed_trophy_battles import observed_battle_rows
 
 
-def test_team_battle_is_normalized_without_inventing_bonus():
+def test_unverified_team_change_stays_unclassified():
     payload = {
         "items": [{
             "battleTime": "20260923T013712.000Z",
@@ -25,6 +25,47 @@ def test_team_battle_is_normalized_without_inventing_bonus():
     assert row["expected_base_delta"] is None
     assert row["observed_extra"] is None
     assert row["bonus_type"] is None
+
+
+def test_verified_team_base_and_unresolved_extra_are_classified():
+    payload = {"items": [{
+        "battleTime": "20260923T013712.000Z",
+        "event": {"mode": "brawlBall"},
+        "battle": {
+            "mode": "brawlBall", "result": "victory", "trophyChange": 17,
+            "teams": [[{"tag": "#2GU9UV2RG", "brawler": {
+                "name": "SHELLY", "trophies": 1200,
+            }}]],
+        },
+    }]}
+    row = observed_battle_rows("2GU9UV2RG", "DeSS", payload)[0]
+    assert row["expected_base_delta"] == 10
+    assert row["observed_extra"] == 7
+    assert row["bonus_type"] == "observed_extra_unresolved"
+
+
+def test_verified_team_loss_is_classified_without_bonus():
+    payload = {"items": [{
+        "battleTime": "20260923T013712.000Z",
+        "event": {"mode": "heist"},
+        "battle": {
+            "mode": "heist", "result": "defeat", "trophyChange": -8,
+            "teams": [[{"tag": "#2GU9UV2RG", "brawler": {
+                "name": "COLT", "trophies": 1400,
+            }}]],
+        },
+    }]}
+    row = observed_battle_rows("2GU9UV2RG", "DeSS", payload)[0]
+    assert row["expected_base_delta"] == -8
+    assert row["observed_extra"] == 0
+    assert row["bonus_type"] is None
+
+
+def test_protected_and_2000_plus_cases_stay_unclassified():
+    from trophy_economy import classify_trophy_change
+
+    assert classify_trophy_change("knockout", "victory", 500, 1) == (None, None, None)
+    assert classify_trophy_change("siege", "victory", 2100, 15) == (None, None, None)
 
 
 def test_missing_trophy_change_is_not_persisted():
