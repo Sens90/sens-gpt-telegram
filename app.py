@@ -5154,9 +5154,10 @@ async def ranked_catalog_job(context):
         print("RANKED CATALOG SYNC ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
 
 _AUTO_RANKING_IN_FLIGHT = set()
+_AUTO_RANKING_PENDING = {}
 
 
-async def _send_auto_ranking_slot(context, slot):
+async def _send_auto_ranking_slot(context, slot, frozen_only=False):
     """Send one automatic ranking slot at most once per chat, persisted in Supabase."""
     key = slot.strftime("%Y-%m-%d-%H%M")
     try:
@@ -5176,33 +5177,44 @@ async def _send_auto_ranking_slot(context, slot):
             continue
         try:
             if row.get("last_auto_ranking_slot") == key:
+                _AUTO_RANKING_PENDING.pop(flight_key, None)
                 continue
             _AUTO_RANKING_IN_FLIGHT.add(flight_key)
             previous_slot = row.get("last_auto_ranking_slot")
-            # Compute the slot payload before sending. At 23:59 this freezes all
-            # end-of-day texts while "today" still points to the closing Rome day,
-            # so a Telegram send crossing midnight cannot reset the calculation.
-            text = await asyncio.to_thread(community.ranking_text, chat_id, 0)
-            progression_text = await asyncio.to_thread(
-                community.coefficient_ranking_text, chat_id, "community", 0
-            )
-            final_slot = slot.hour == 23 and slot.minute == 59
-            club_text = None
-            global_text = None
-            global_club_text = None
-            if final_slot:
-                club_text = await asyncio.to_thread(community.club_trophy_ranking_text, chat_id, 0)
-                global_text = await asyncio.to_thread(community.global_ranking_text, chat_id, 0)
-                global_club_text = await asyncio.to_thread(community.global_club_ranking_text, chat_id, False)
+            pending = _AUTO_RANKING_PENDING.get(flight_key)
+            if pending is None:
+                if frozen_only:
+                    print("CLASSIFICA OGGI AUTO FROZEN PAYLOAD MISSING:", chat_id, key, flush=True)
+                    continue
+                # Freeze every payload before the first send. A failed 23:59
+                # delivery can then resume after midnight without recalculating
+                # "oggi" against the new calendar day.
+                text = await asyncio.to_thread(community.ranking_text, chat_id, 0)
+                progression_text = await asyncio.to_thread(
+                    community.coefficient_ranking_text, chat_id, "community", 0
+                )
+                final_slot = slot.hour == 23 and slot.minute == 59
+                payloads = [("trofei", text), ("progressione", progression_text)]
+                if final_slot:
+                    payloads.extend([
+                        ("club", await asyncio.to_thread(community.club_trophy_ranking_text, chat_id, 0)),
+                        ("globale", await asyncio.to_thread(community.global_ranking_text, chat_id, 0)),
+                        ("club globale", await asyncio.to_thread(community.global_club_ranking_text, chat_id, False)),
+                    ])
+                pending = {"payloads": payloads, "next_index": 0}
+                _AUTO_RANKING_PENDING[flight_key] = pending
+                print("CLASSIFICA OGGI AUTO PAYLOAD FROZEN:", chat_id, key, "reports=", len(payloads), flush=True)
+            else:
+                print(
+                    "CLASSIFICA OGGI AUTO RESUME: chat=%s slot=%s next=%s" % (
+                        chat_id, key, pending["next_index"]
+                    ),
+                    flush=True,
+                )
 
-            payloads = [("trofei", text), ("progressione", progression_text)]
-            if final_slot:
-                payloads.extend([
-                    ("club", club_text),
-                    ("globale", global_text),
-                    ("club globale", global_club_text),
-                ])
-            for label, payload in payloads:
+            payloads = pending["payloads"]
+            for index in range(pending["next_index"], len(payloads)):
+                label, payload = payloads[index]
                 delivered = await community._send_ranking_message(context, chat_id, payload)
                 print(
                     "CLASSIFICA OGGI AUTO DELIVERY: chat=%s slot=%s report=%s ok=%s" % (
@@ -5212,6 +5224,7 @@ async def _send_auto_ranking_slot(context, slot):
                 )
                 if not delivered:
                     raise RuntimeError(f"Telegram delivery failed: {label}")
+                pending["next_index"] = index + 1
 
             # Persist completion only after every Telegram delivery succeeded.
             complete_params = {"chat_id": f"eq.{chat_id}", "select": "chat_id"}
@@ -5230,6 +5243,7 @@ async def _send_auto_ranking_slot(context, slot):
             if not complete_response.json():
                 raise RuntimeError("slot completion update did not match current database state")
             print("CLASSIFICA OGGI AUTO COMPLETED:", chat_id, key, flush=True)
+            _AUTO_RANKING_PENDING.pop(flight_key, None)
             sent += 1
         except Exception as exc:
             print("CLASSIFICA OGGI AUTO SEND ERROR:", row.get("chat_id"), repr(exc), flush=True)
@@ -5300,12 +5314,16 @@ async def automatic_today_ranking_catchup_job(context):
     latest = max(candidates) if candidates else None
     if latest is None or (now-latest).total_seconds() > 10800:
         return
-    # Never replay the 23:59 "oggi" ranking after midnight: ranking_text(..., 0)
-    # would then refer to the new calendar day and could incorrectly show zeros.
+    # Across midnight, retry only a payload frozen during the original 23:59
+    # attempt. Never rebuild it against the new calendar day.
     if latest.date() != now.date():
-        print("CLASSIFICA OGGI AUTO CATCHUP SKIP CROSS-DATE: slot=%s local=%s" % (
+        key = latest.strftime("%Y-%m-%d-%H%M")
+        if not any(slot_key == key for _chat_id, slot_key in _AUTO_RANKING_PENDING):
+            return
+        print("CLASSIFICA OGGI AUTO CATCHUP FROZEN: slot=%s local=%s" % (
             latest.strftime("%Y-%m-%d %H:%M"), now.strftime("%Y-%m-%d %H:%M:%S")
         ), flush=True)
+        await _send_auto_ranking_slot(context, latest, frozen_only=True)
         return
     # _send_auto_ranking_slot is persisted/idempotent. Avoid logging a
     # "CATCHUP" attempt every minute after the slot has already been sent;

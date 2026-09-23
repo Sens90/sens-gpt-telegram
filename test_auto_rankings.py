@@ -16,6 +16,7 @@ with patch("google.genai.Client", return_value=Mock()):
 class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         app._AUTO_RANKING_IN_FLIGHT.clear()
+        app._AUTO_RANKING_PENDING.clear()
         self.context = SimpleNamespace(bot=SimpleNamespace())
         self.settings = [{"chat_id": -100123, "last_auto_ranking_slot": "2026-09-23-1200"}]
 
@@ -84,6 +85,50 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(sender.await_count, 5)
         self.assertEqual(database_patch.call_args.kwargs["json"]["last_auto_ranking_slot"], "2026-09-23-2359")
+        self.assertFalse(app._AUTO_RANKING_PENDING)
+
+    async def test_2359_failure_resumes_frozen_payload_after_midnight(self):
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = [{"chat_id": -100123}]
+        sender = AsyncMock(side_effect=[True, False, True, True, True, True])
+        with (
+            patch.object(app.community, "_get", return_value=self.settings),
+            patch.object(app.community, "ranking_text", return_value="TROFEI") as trophies,
+            patch.object(app.community, "coefficient_ranking_text", return_value="PROGRESSIONE") as progression,
+            patch.object(app.community, "club_trophy_ranking_text", return_value="CLUB") as club,
+            patch.object(app.community, "global_ranking_text", return_value="GLOBALE") as global_ranking,
+            patch.object(app.community, "global_club_ranking_text", return_value="CLUB GLOBALE") as global_club,
+            patch.object(app.community, "_send_ranking_message", new=sender),
+            patch.object(app.requests, "patch", return_value=response) as database_patch,
+        ):
+            slot = datetime(2026, 9, 23, 23, 59, tzinfo=app.ROME)
+            await app._send_auto_ranking_slot(self.context, slot)
+            self.assertEqual(app._AUTO_RANKING_PENDING[(-100123, "2026-09-23-2359")]["next_index"], 1)
+            await app._send_auto_ranking_slot(self.context, slot, frozen_only=True)
+
+        self.assertEqual(sender.await_count, 6)
+        for builder in (trophies, progression, club, global_ranking, global_club):
+            builder.assert_called_once()
+        database_patch.assert_called_once()
+        self.assertFalse(app._AUTO_RANKING_PENDING)
+
+    async def test_watchdog_retries_frozen_2359_payload_after_midnight(self):
+        slot = datetime(2026, 9, 23, 23, 59, tzinfo=app.ROME)
+        key = "2026-09-23-2359"
+        app._AUTO_RANKING_PENDING[(-100123, key)] = {
+            "payloads": [("trofei", "TROFEI")],
+            "next_index": 0,
+        }
+        fake_datetime = Mock()
+        fake_datetime.now.return_value = datetime(2026, 9, 24, 0, 1, tzinfo=app.ROME)
+        with (
+            patch.object(app, "datetime", fake_datetime),
+            patch.object(app, "_send_auto_ranking_slot", new=AsyncMock()) as retry,
+        ):
+            await app.automatic_today_ranking_catchup_job(self.context)
+
+        retry.assert_awaited_once_with(self.context, slot, frozen_only=True)
 
 
 class CompleteRosterRetryTests(unittest.TestCase):

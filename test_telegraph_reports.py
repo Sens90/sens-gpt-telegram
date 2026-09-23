@@ -21,10 +21,12 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         response.status_code = 200
         response.json.return_value = {"ok": True, "result": {"url": "https://telegra.ph/report-09-23"}}
         post.return_value = response
-        with self.assertLogs("community_features", level="INFO") as captured:
+        with patch("builtins.print") as printed:
             url = self.make_features()._publish_telegraph("Report", ["TITOLO", "Dato: 1"])
         self.assertEqual(url, "https://telegra.ph/report-09-23")
-        self.assertNotIn("test-token", "\n".join(captured.output))
+        logs = " ".join(str(call) for call in printed.call_args_list)
+        self.assertIn("TELEGRAPH PAGE CREATED", logs)
+        self.assertNotIn("test-token", logs)
 
     @patch.dict(os.environ, {"TELEGRAPH_ACCESS_TOKEN": "test-token"})
     @patch("community_features.requests.post")
@@ -46,10 +48,12 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         payload = self.make_features()._telegraph_reply(
             ["Riepilogo"], "https://telegra.ph/report-09-23", ["Report completo"]
         )
-        self.assertTrue(await self.make_features()._send_ranking_message(context, 123, payload))
+        with patch("builtins.print") as printed:
+            self.assertTrue(await self.make_features()._send_ranking_message(context, 123, payload))
         kwargs = bot.send_message.await_args.kwargs
         self.assertEqual(kwargs["text"], "Riepilogo")
         self.assertIsNotNone(kwargs["reply_markup"])
+        self.assertIn("TELEGRAPH REPORT DELIVERED", " ".join(str(call) for call in printed.call_args_list))
 
     async def test_plain_ranking_becomes_top_ten_plus_full_report(self):
         obj = self.make_features()

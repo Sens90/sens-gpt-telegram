@@ -1598,7 +1598,7 @@ class CommunityFeatures:
             if not url:
                 LOG.error("TELEGRAPH API ERROR: status=%s error=missing_result_url", response.status_code)
                 return None
-            LOG.info("TELEGRAPH PAGE CREATED: title=%s url=%s", str(title)[:120], url)
+            print("TELEGRAPH PAGE CREATED: title=%s url=%s" % (str(title)[:120], url), flush=True)
             return url
         except Exception as exc:
             LOG.error("TELEGRAPH API ERROR: type=%s message=%s", type(exc).__name__, str(exc)[:300])
@@ -2511,6 +2511,8 @@ class CommunityFeatures:
         for attempt in range(3):
             try:
                 await context.bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, connect_timeout=20, read_timeout=30, write_timeout=30, pool_timeout=20)
+                if report_url:
+                    print("TELEGRAPH REPORT DELIVERED: chat=%s url=%s" % (chat_id, report_url), flush=True)
                 return True
             except RetryAfter as exc:
                 delay = exc.retry_after.total_seconds() if hasattr(exc.retry_after, "total_seconds") else float(exc.retry_after)
