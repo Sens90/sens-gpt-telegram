@@ -83,8 +83,18 @@ def test_verified_survival_positive_placement_bases_are_classified():
     )
     assert classify_trophy_change("soloShowdown", None, 900, 2, 5) == (2, 0, None)
     assert classify_trophy_change("soloShowdown", None, 700, 1, 6) == (1, 0, None)
-    assert classify_trophy_change("soloShowdown", None, 700, -2, 7) == (None, None, None)
+    assert classify_trophy_change("soloShowdown", None, 700, -2, 7) == (-2, 0, None)
     assert classify_trophy_change("soloShowdown", None, 2100, 13, 1) == (None, None, None)
+
+
+def test_only_verified_survival_losses_are_classified():
+    from trophy_economy import classify_trophy_change
+
+    assert classify_trophy_change("soloShowdown", None, 550, -2, 10) == (-2, 0, None)
+    assert classify_trophy_change("soloShowdown", None, 900, -5, 10) == (-5, 0, None)
+    assert classify_trophy_change("duoShowdown", None, 1600, -10, 4) == (-10, 0, None)
+    assert classify_trophy_change("duoShowdown", None, 1030, -3, 4) == (None, None, None)
+    assert classify_trophy_change("duoShowdown", None, 1830, -2, 3) == (None, None, None)
 
 
 def test_missing_trophy_change_is_not_persisted():
