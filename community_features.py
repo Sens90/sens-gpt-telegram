@@ -1774,7 +1774,7 @@ class CommunityFeatures:
                 if max_t is not None:
                     lines.append(f"Massimo squadra: {int(max_t)} 🏆")
             elif str(row.get("mode") or "").casefold() in {"soloshowdown", "solo"}:
-                lines.append("Squadra: non prevista (modalità in singolo).")
+                lines.append("Squadra: Modalità Solo")
             else:
                 lines.append("Squadra: non disponibile nel battle log.")
         report_url = self._publish_telegraph(f"Progressione {brawler} — {name}", lines)

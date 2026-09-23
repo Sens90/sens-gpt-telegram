@@ -174,7 +174,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
 
         payload = obj.progression_brawler_text("2LVRCLV8LV", "El Primo")
 
-        self.assertIn("Squadra: non prevista (modalità in singolo).", payload["fallback"])
+        self.assertIn("Squadra: Modalità Solo", payload["fallback"])
         self.assertNotIn("Squadra: non disponibile", payload["fallback"])
 
     def test_my_accounts_remains_plain_text(self):
