@@ -32,6 +32,11 @@ def test_each_band_uses_its_exact_marginal_weight():
         assert score_brawler_trophies(start + 1) - score_brawler_trophies(start) == Decimal(str(weight))
 
 
+def test_sub_1000_bands_have_distinct_increasing_weights():
+    weights = [Decimal(str(weight)) for start, end, weight in TROPHY_COEFFICIENT_BANDS if end <= 1000]
+    assert weights == sorted(set(weights))
+
+
 def test_same_total_distribution_can_score_differently():
     flat = calculate_trophy_coefficient([{"trophies": 1000}, {"trophies": 1000}], 2000)
     pushed = calculate_trophy_coefficient([{"trophies": 1500}, {"trophies": 500}], 2000)
