@@ -2293,7 +2293,7 @@ class CommunityFeatures:
     async def _send_ranking_message(self, context, chat_id, text):
         """Deliver ranking replies with bounded retries on transient Telegram timeouts."""
         from telegram.error import NetworkError, RetryAfter, TelegramError, TimedOut
-        if isinstance(text, str):
+        if isinstance(text, str) and text.lstrip().upper().startswith("CLASSIFICA"):
             full_lines = text.splitlines()
             numbered = [line for line in full_lines if re.match(r"^\d+\.\s", line.strip())]
             if numbered:

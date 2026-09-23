@@ -63,6 +63,16 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("11. Player 11", kwargs["text"])
         self.assertIsNotNone(kwargs["reply_markup"])
 
+    async def test_numbered_battle_log_is_not_republished_as_ranking(self):
+        obj = self.make_features()
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/should-not-be-used")
+        bot = SimpleNamespace(send_message=AsyncMock())
+        context = SimpleNamespace(bot=bot)
+        battle_log = "PROGRESSIONE GRIFF\n\n1. 14:30 — Footbrawl"
+        self.assertTrue(await obj._send_ranking_message(context, 123, battle_log))
+        obj._publish_telegraph.assert_not_called()
+        self.assertEqual(bot.send_message.await_args.kwargs["text"], battle_log)
+
     def test_progressione_oggi_builds_report_payload(self):
         obj = self.make_features()
         obj._get = Mock(return_value=[{
