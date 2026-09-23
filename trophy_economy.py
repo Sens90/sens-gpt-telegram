@@ -64,8 +64,10 @@ def classify_trophy_change(mode, result, trophies_before, trophy_change, placeme
             return base, extra, "observed_extra_unresolved" if extra else None
         for loss_mode, lower, upper, placement_bases in SURVIVAL_LOSS_BASES:
             expected = placement_bases.get(rank)
-            if mode == loss_mode and lower <= trophies <= upper and change == expected:
-                return expected, 0, None
+            if (mode == loss_mode and lower <= trophies <= upper
+                    and expected is not None and expected <= change <= expected + 4):
+                extra = change - expected
+                return expected, extra, "observed_extra_unresolved" if extra else None
         return None, None, None
 
     normalized_result = str(result or "").lower()
@@ -79,7 +81,8 @@ def classify_trophy_change(mode, result, trophies_before, trophy_change, placeme
 
     if normalized_result == "defeat":
         for lower, upper, expected in TEAM_LOSS_BY_RANGE:
-            if lower <= trophies <= upper and change == expected:
-                return expected, 0, None
+            if lower <= trophies <= upper and expected <= change <= expected + 4:
+                extra = change - expected
+                return expected, extra, "observed_extra_unresolved" if extra else None
 
     return None, None, None

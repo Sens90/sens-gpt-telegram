@@ -93,8 +93,19 @@ def test_only_verified_survival_losses_are_classified():
     assert classify_trophy_change("soloShowdown", None, 550, -2, 10) == (-2, 0, None)
     assert classify_trophy_change("soloShowdown", None, 900, -5, 10) == (-5, 0, None)
     assert classify_trophy_change("duoShowdown", None, 1600, -10, 4) == (-10, 0, None)
-    assert classify_trophy_change("duoShowdown", None, 1030, -3, 4) == (None, None, None)
+    assert classify_trophy_change("duoShowdown", None, 1030, -3, 4) == (
+        -6, 3, "observed_extra_unresolved"
+    )
     assert classify_trophy_change("duoShowdown", None, 1830, -2, 3) == (None, None, None)
+
+
+def test_verified_team_loss_can_expose_a_small_unresolved_bonus():
+    from trophy_economy import classify_trophy_change
+
+    assert classify_trophy_change("brawlBall", "defeat", 1150, -5) == (
+        -6, 1, "observed_extra_unresolved"
+    )
+    assert classify_trophy_change("brawlBall", "defeat", 1150, -1) == (None, None, None)
 
 
 def test_missing_trophy_change_is_not_persisted():
