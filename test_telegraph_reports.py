@@ -51,6 +51,18 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["text"], "Riepilogo")
         self.assertIsNotNone(kwargs["reply_markup"])
 
+    async def test_plain_ranking_becomes_top_ten_plus_full_report(self):
+        obj = self.make_features()
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/classifica-completa")
+        bot = SimpleNamespace(send_message=AsyncMock())
+        context = SimpleNamespace(bot=bot)
+        full = "CLASSIFICA TROFEI\n\n" + "\n".join(f"{i}. Player {i}" for i in range(1, 16))
+        self.assertTrue(await obj._send_ranking_message(context, 123, full))
+        kwargs = bot.send_message.await_args.kwargs
+        self.assertIn("10. Player 10", kwargs["text"])
+        self.assertNotIn("11. Player 11", kwargs["text"])
+        self.assertIsNotNone(kwargs["reply_markup"])
+
     def test_progressione_oggi_builds_report_payload(self):
         obj = self.make_features()
         obj._get = Mock(return_value=[{

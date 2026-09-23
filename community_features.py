@@ -2293,6 +2293,22 @@ class CommunityFeatures:
     async def _send_ranking_message(self, context, chat_id, text):
         """Deliver ranking replies with bounded retries on transient Telegram timeouts."""
         from telegram.error import NetworkError, RetryAfter, TelegramError, TimedOut
+        if isinstance(text, str):
+            full_lines = text.splitlines()
+            numbered = [line for line in full_lines if re.match(r"^\d+\.\s", line.strip())]
+            if numbered:
+                report_url = await asyncio.to_thread(
+                    self._publish_telegraph,
+                    full_lines[0] if full_lines else "Classifica TITANI ABUSIVI",
+                    full_lines,
+                )
+                if report_url:
+                    first_numbered = next(
+                        (index for index, line in enumerate(full_lines) if re.match(r"^\d+\.\s", line.strip())),
+                        1,
+                    )
+                    summary = [*full_lines[:first_numbered], *numbered[:10]]
+                    text = self._telegraph_reply(summary, report_url, full_lines)
         report_url = text.get("report_url") if isinstance(text, dict) else None
         fallback = text.get("fallback") if isinstance(text, dict) else text
         message_text = text.get("text") if isinstance(text, dict) else text
