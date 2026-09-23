@@ -2068,6 +2068,36 @@ def render_structured_brawler_meta(context_text):
         print("META DETERMINISTIC RENDER ERROR:",repr(e),flush=True);return None
 
 
+def save_coefficient_snapshot(player, is_registered=True):
+    if not player or not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return False
+    try:
+        result = calculate_trophy_coefficient(player.get("brawler_trophies"), player.get("trophies"))
+        payload = {
+            "player_tag": str(player.get("tag") or "").replace("#", "").upper(),
+            "player_name": player.get("name"),
+            "club_name": player.get("club_name") if isinstance(player.get("club_name"), str) else ((player.get("club") or {}).get("name") if isinstance(player.get("club"), dict) else player.get("club")),
+            "is_registered": bool(is_registered),
+            "trophies": int(result["official_total"]),
+            "coefficient_score": int(result["score"]),
+            "coefficient_value": int(result["score"]) - int(result["official_total"]),
+            "coefficient": float(result["coefficient"]),
+        }
+        if not payload["player_tag"]:
+            return False
+        response = requests.post(
+            SUPABASE_URL + "/rest/v1/coefficient_history",
+            headers={**_supabase_headers(), "Prefer": "return=minimal"},
+            json=payload,
+            timeout=15,
+        )
+        response.raise_for_status()
+        return True
+    except Exception as exc:
+        print("COEFFICIENT SNAPSHOT ERROR:", repr(exc), flush=True)
+        return False
+
+
 def save_trophy_snapshot(player_tag, player_name, trophies):
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         print("SUPABASE NON CONFIGURATO", flush=True)
@@ -2584,6 +2614,7 @@ def automatic_trophy_monitor():
                             player["trophies"]
                         )
                         save_player_tracking(player)
+                        save_coefficient_snapshot(player, is_registered=True)
 
                         # Keep the registered member's club synchronized from the
                         # same official Supercell response used by the monitor.
