@@ -1279,12 +1279,12 @@ class CommunityFeatures:
         value = int(result["score"]) - int(result["official_total"])
         coefficient = f'{result["coefficient"]:.6f}'.replace(".", ",")
         return "\n".join([
-            f'COEFFICIENTE — {player.get("name") or player_tag}',
+            f'COEFFICIENTE ABUSIVO — {player.get("name") or player_tag}',
             "",
             f'Trofei: {self.number_formatter(result["official_total"])}',
             f'Punteggio per coefficiente: {self.number_formatter(result["score"])}',
             f'Valore coefficiente: {self.number_formatter(value)}',
-            f'Coefficiente: {coefficient}',
+            f'Coefficiente Abusivo: {coefficient}',
         ])
 
     def coefficient_ranking_text(self, chat_id, scope="community"):
@@ -1309,14 +1309,14 @@ class CommunityFeatures:
                 if tag and tag not in unique:
                     unique[tag] = member
             members = list(unique.values())
-            title = "CLASSIFICA COEFFICIENTE — GLOBALE"
+            title = "CLASSIFICA PROGRESSIONE"
         else:
             members = self.members(chat_id)
             if club_name:
                 members = [m for m in members if str(m.get("club_name") or "").strip().casefold() == club_name.casefold()]
-                title = f"CLASSIFICA COEFFICIENTE — {club_name}"
+                title = f"CLASSIFICA PROGRESSIONE — {club_name}"
             else:
-                title = "CLASSIFICA COEFFICIENTE — COMMUNITY"
+                title = "CLASSIFICA PROGRESSIONE"
         rows = []
         for member in members:
             tag = str(member.get("player_tag") or "").strip().lstrip("#").upper()
@@ -1958,12 +1958,12 @@ class CommunityFeatures:
             if _ranking_member and _ranking_member.get("chat_id") is not None:
                 _ranking_chat_id = int(_ranking_member["chat_id"])
 
-        coefficient_single = re.fullmatch(r"coefficiente\\s+#?([0289PYLQGRJCUV]{3,15})", q0, re.I)
+        coefficient_single = re.fullmatch(r"coefficiente(?:\\s+abusivo)?\\s+#?([0289PYLQGRJCUV]{3,15})", q0, re.I)
         if coefficient_single:
             await message.reply_text(self.coefficient_text(coefficient_single.group(1)))
             return True
         coefficient_rank = re.fullmatch(
-            r"classifica\\s+coefficiente(?:\\s+(globale|community|titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?))?",
+            r"classifica\\s+progressione(?:\\s+(community|titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?))?(?:\\s+(oggi|7|15|30)(?:\\s+giorni)?)?",
             q0, re.I,
         )
         if coefficient_rank:
