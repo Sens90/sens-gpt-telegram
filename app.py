@@ -28,6 +28,7 @@ from ai_profile_generator import generate_scene, overlay_stats, quota_status, co
 from brawler_reference import resolve_ai_brawler_reference
 from player_tracking import extract_brawlzone_ranked, get_brawltrack_player
 from trophy_coefficient import calculate_trophy_coefficient
+from observed_trophy_battles import observed_battle_rows
 from live_maps import collect_report, render_report, report_csv, brawltrack_pro_map_stats, safe_get, localized
 from premium_ai import handle_premium_command
 
@@ -2115,6 +2116,39 @@ def save_coefficient_snapshot(player, is_registered=True):
         return False
 
 
+def save_observed_trophy_battles(player):
+    """Collect official trophyChange evidence for registered players only."""
+    if not player or not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return 0
+    tag = str(player.get("tag") or "").replace("#", "").upper()
+    token = str(os.environ.get("BRAWL_PROXY_API_KEY") or "").strip()
+    if not tag or not token:
+        return 0
+    try:
+        response = requests.get(
+            "https://bsproxy.royaleapi.dev/v1/players/%23" + tag + "/battlelog",
+            headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
+            timeout=20,
+        )
+        response.raise_for_status()
+        rows = observed_battle_rows(tag, player.get("name"), response.json())
+        if not rows:
+            return 0
+        saved = requests.post(
+            SUPABASE_URL + "/rest/v1/observed_trophy_battles",
+            headers={**_supabase_headers(), "Prefer": "resolution=ignore-duplicates,return=minimal"},
+            params={"on_conflict": "player_tag,battle_key"},
+            json=rows,
+            timeout=20,
+        )
+        saved.raise_for_status()
+        print("OBSERVED TROPHY BATTLES:", tag, "rows=", len(rows), flush=True)
+        return len(rows)
+    except Exception as exc:
+        print("OBSERVED TROPHY BATTLES ERROR:", tag, type(exc).__name__, str(exc)[:180], flush=True)
+        return 0
+
+
 def save_trophy_snapshot(player_tag, player_name, trophies):
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         print("SUPABASE NON CONFIGURATO", flush=True)
@@ -2652,6 +2686,8 @@ def automatic_trophy_monitor():
                         save_player_tracking(player)
                         clean_tag = str(player.get("tag") or "").replace("#", "").upper()
                         save_coefficient_snapshot(player, is_registered=clean_tag in registered_tags)
+                        if clean_tag in registered_tags:
+                            save_observed_trophy_battles(player)
 
                         # Keep the registered member's club synchronized from the
                         # same official Supercell response used by the monitor.
