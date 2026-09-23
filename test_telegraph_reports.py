@@ -106,6 +106,28 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(obj._progression_bonus_it("win_streak"), "Serie di vittorie")
         self.assertEqual(obj._progression_mode_it("futureTechnicalMode"), "Modalità non riconosciuta")
 
+    def test_telegraph_ranking_has_uniform_rows_and_top_three_medals(self):
+        nodes = self.make_features()._telegraph_nodes([
+            "CLASSIFICA OGGI", "1. SUPERLUIGI — +668", "2. Persinox — +437",
+            "3. Anna — +364", "10. NICCOLÒ — +75", "15. LEO — +46",
+        ])
+        self.assertEqual(nodes[0]["tag"], "h3")
+        for node in nodes[1:]:
+            self.assertEqual(node["tag"], "p")
+        self.assertIn("🥇", str(nodes[1]))
+        self.assertIn("🥈", str(nodes[2]))
+        self.assertIn("🥉", str(nodes[3]))
+        self.assertNotIn("h3", str(nodes[4:]))
+
+    def test_telegraph_fields_get_coherent_icons(self):
+        nodes = self.make_features()._telegraph_nodes([
+            "PROGRESSIONE GRIFF", "Data: 23/09/2026", "Coppe: 500 → 508 (+8)",
+            "Risultato: Vittoria", "Squadra: non disponibile",
+        ])
+        rendered = str(nodes)
+        for icon in ("📈", "📅", "🏆", "✅", "👥"):
+            self.assertIn(icon, rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1007,16 +1007,68 @@ class CommunityFeatures:
     @staticmethod
     def _telegraph_nodes(lines):
         nodes = []
-        for raw in lines:
+        section_headings = {
+            "PROFILO": "👤 PROFILO",
+            "RANKED": "🏅 RANKED",
+            "VITTORIE": "🏆 VITTORIE",
+            "COLLEZIONE": "🎁 COLLEZIONE",
+            "LIVELLI BRAWLER": "⚡ LIVELLI BRAWLER",
+            "PRESTIGIO BRAWLER": "🌟 PRESTIGIO BRAWLER",
+            "TEMPO DI GIOCO": "⏱️ TEMPO DI GIOCO",
+            "COSTO PER MAXARE L'ACCOUNT": "💰 COSTO PER MAXARE L'ACCOUNT",
+            "ANDAMENTO TROFEI": "📊 ANDAMENTO TROFEI",
+            "DETTAGLIO BRAWLER": "🎯 DETTAGLIO BRAWLER",
+            "LOG BATTAGLIE": "🎮 LOG BATTAGLIE",
+            "SESSIONI": "🕹️ SESSIONI",
+            "SQUADRA": "👥 SQUADRA",
+        }
+        field_emojis = {
+            "data": "📅", "periodo": "🗓️", "partite osservate valide": "🎮",
+            "coppe nette": "🏆", "coppe osservate": "🏆", "coppe": "🏆",
+            "punteggio progressione": "📈", "punti progressione": "📈", "punti": "📈",
+            "valore difficoltà": "⚖️", "extra osservati vs delta base": "✨",
+            "extra osservato": "✨", "delta base previsto": "🧮",
+            "serie di vittorie osservata": "🔥", "peso fascia iniziale": "⚖️",
+            "fasce": "🎯", "orario": "🕐", "risultato": "✅", "squadra": "👥",
+            "massimo squadra": "👑", "trofei": "🏆", "brawler": "🦸",
+            "club": "🛡️", "tag": "🏷️", "tag club": "🏷️", "livello": "⚡",
+            "punti esperienza": "✨", "fama": "🌠", "livello clip": "📎",
+            "punti clip": "📎", "qualificazione championship": "🏆",
+            "ranked attuale": "🏅", "record stagione": "📅", "record massimo": "👑",
+            "skin": "🎨", "gadget": "🧰", "abilità stellari": "⭐",
+            "equipaggiamenti": "⚙️", "overdrive": "🔥", "buffie": "💫",
+            "prestigi totali": "🌟", "ore giocate stimate": "⏱️",
+        }
+        for index, raw in enumerate(lines):
             value = str(raw or "").strip()
             if not value:
                 continue
-            if value.startswith("• "):
-                nodes.append({"tag": "p", "children": [value]})
-            elif ":" not in value and (value.isupper() or value.startswith("DETTAGLIO ") or value.startswith("LOG ")):
-                nodes.append({"tag": "h3", "children": [value]})
-            else:
-                nodes.append({"tag": "p", "children": [value]})
+            ranking = re.match(r"^(\d+)\.\s*(.+)$", value)
+            if ranking:
+                position = int(ranking.group(1))
+                medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(position)
+                rendered = f"{medal} {ranking.group(2)}" if medal else value
+                children = [{"tag": "strong", "children": [rendered]}] if medal else [rendered]
+                nodes.append({"tag": "p", "children": children})
+                continue
+            heading = section_headings.get(value.rstrip(":").upper())
+            if heading:
+                nodes.append({"tag": "h3", "children": [heading]})
+                continue
+            if index == 0:
+                title_icon = "🏆" if value.upper().startswith("CLASSIFICA") else ("📈" if value.upper().startswith("PROGRESSIONE") else "👤")
+                nodes.append({"tag": "h3", "children": [f"{title_icon} {value}"]})
+                continue
+            if ":" in value:
+                label, detail = value.split(":", 1)
+                icon = field_emojis.get(label.strip().casefold())
+                if icon:
+                    nodes.append({"tag": "p", "children": [
+                        {"tag": "strong", "children": [f"{icon} {label.strip()}:"]},
+                        detail,
+                    ]})
+                    continue
+            nodes.append({"tag": "p", "children": [value]})
         return nodes
 
     @staticmethod
