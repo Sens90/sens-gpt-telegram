@@ -37,6 +37,38 @@ def _find_player(node, player_tag):
     return None
 
 
+def _team_trophy_context(battle, player_tag):
+    """Return structured trophy context for the target player's actual team."""
+    teams = battle.get("teams")
+    if not isinstance(teams, list):
+        return None, None
+    for team in teams:
+        if not isinstance(team, list):
+            continue
+        clean_members = []
+        contains_target = False
+        for member in team:
+            if not isinstance(member, dict):
+                continue
+            tag = str(member.get("tag") or "").replace("#", "").upper()
+            if tag == player_tag:
+                contains_target = True
+            brawler = member.get("brawler") if isinstance(member.get("brawler"), dict) else {}
+            try:
+                trophies = int(brawler.get("trophies"))
+            except (TypeError, ValueError):
+                trophies = None
+            clean_members.append({
+                "tag": tag or None,
+                "name": member.get("name"),
+                "brawler_name": str(brawler.get("name") or "").strip() or None,
+                "brawler_trophies": trophies,
+            })
+        if contains_target:
+            values = [m["brawler_trophies"] for m in clean_members if m["brawler_trophies"] is not None]
+            return (max(values) if values else None), clean_members
+    return None, None
+
 def _showdown_team_size_mismatch(battle, mode):
     expected = {"duoShowdown": 2, "trioShowdown": 3}.get(mode)
     teams = battle.get("teams")
@@ -95,7 +127,7 @@ def observed_battle_rows(player_tag, player_name, payload):
         event = item.get("event") if isinstance(item.get("event"), dict) else {}
         mode = battle.get("mode") or event.get("mode")
         identity = "|".join((clean_tag, battle_time, str(event.get("id") or ""), str(mode or ""), str(brawler_name or ""), str(trophy_change)))
-        expected_base, observed_extra, bonus_type = classify_trophy_change(
+        team_max_trophies, team_composition = _team_trophy_context(battle, clean_tag)\n        expected_base, observed_extra, bonus_type = classify_trophy_change(
             mode, battle.get("result"), trophies_before, trophy_change, placement
         )
         if _showdown_team_size_mismatch(battle, mode):
@@ -109,6 +141,6 @@ def observed_battle_rows(player_tag, player_name, payload):
             "result": battle.get("result"), "placement": placement,
             "trophy_change": trophy_change, "expected_base_delta": expected_base,
             "observed_extra": observed_extra, "current_win_streak": streak,
-            "bonus_type": bonus_type, "raw_battle": item,
+            "bonus_type": bonus_type, "team_max_brawler_trophies": team_max_trophies,\n            "team_composition": team_composition, "raw_battle": item,
         })
     return rows
