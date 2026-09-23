@@ -213,3 +213,23 @@ def test_solo_placement_and_explicit_streak_are_preserved():
     assert row["placement"] == 2
     assert row["current_win_streak"] == 4
     assert row["brawler_trophies_before"] == 1500
+
+
+def test_official_trio_event_mislabeled_as_duo_is_normalized_with_4x3_proof():
+    teams = []
+    for team_index in range(4):
+        team = []
+        for member_index in range(3):
+            tag = "#2GU9UV2RG" if team_index == 0 and member_index == 0 else f"#P{team_index}{member_index}"
+            team.append({"tag": tag, "brawler": {"name": "PIPER", "trophies": 2050}})
+        teams.append(team)
+    payload = {"items": [{
+        "battleTime": "20260924T013712.000Z",
+        "event": {"mode": "trioShowdown"},
+        "battle": {"mode": "duoShowdown", "rank": 1, "trophyChange": 8, "teams": teams},
+    }]}
+    row = observed_battle_rows("2GU9UV2RG", "DeSS", payload)[0]
+    assert row["mode"] == "trioShowdown"
+    assert row["bonus_type"] != "excluded_team_size_mismatch"
+    assert row["expected_base_delta"] is None
+    assert row["observed_extra"] is None
