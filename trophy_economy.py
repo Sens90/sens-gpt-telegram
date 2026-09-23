@@ -6,10 +6,26 @@ Unknown, protected/bot and survival cases intentionally remain unclassified.
 
 
 SURVIVAL_MODES = {"soloShowdown", "duoShowdown"}
-SURVIVAL_PLACEMENT_BASES = {
-    "soloShowdown": {1: 13, 2: 10, 3: 9, 4: 5, 5: 2, 6: 1},
-    "duoShowdown": {1: 11, 2: 5},
-}
+SOLO_SHOWDOWN_BASES = (
+    (0, 49, (13, 10, 10, 8, 6, 5, 5, 5, 5, 5)),
+    (50, 99, (13, 10, 9, 7, 5, 4, 3, 2, 1, -1)),
+    (100, 199, (13, 10, 9, 7, 4, 3, 2, 1, 0, -1)),
+    (200, 299, (13, 10, 8, 5, 3, 2, 1, -1, -1, -1)),
+    (300, 499, (13, 10, 8, 5, 3, 2, 1, -1, -2, -2)),
+    (500, 599, (13, 10, 8, 5, 2, 1, -1, -1, -2, -2)),
+    (600, 799, (13, 10, 8, 5, 2, 1, -2, -2, -3, -4)),
+    (800, 999, (13, 10, 8, 5, 2, 1, -2, -3, -4, -5)),
+    (1000, 1099, (13, 10, 8, 5, 1, -2, -3, -4, -5, -6)),
+    (1100, 1199, (13, 10, 8, 5, 1, -2, -3, -4, -5, -7)),
+    (1200, 1299, (13, 10, 8, 5, 1, -2, -4, -5, -6, -8)),
+    (1300, 1499, (13, 10, 8, 5, 1, -2, -4, -6, -7, -10)),
+    (1500, 1799, (13, 10, 8, 5, 0, -3, -5, -6, -8, -11)),
+    (1800, 1999, (13, 10, 8, 5, 0, -3, -5, -7, -9, -12)),
+)
+
+# Duo remains deliberately limited to repeatedly observed winning placements
+# until its complete 2026 table is available from an authoritative source.
+SURVIVAL_PLACEMENT_BASES = {"duoShowdown": {1: 11, 2: 5}}
 
 # Exact negative deltas repeatedly observed for the same range and placement.
 # Partial coverage is deliberate: possible Underdog reductions remain unknown.
@@ -58,7 +74,14 @@ def classify_trophy_change(mode, result, trophies_before, trophy_change, placeme
             rank = int(placement)
         except (TypeError, ValueError):
             return None, None, None
-        base = SURVIVAL_PLACEMENT_BASES.get(mode, {}).get(rank)
+        base = None
+        if mode == "soloShowdown" and 1 <= rank <= 10:
+            for lower, upper, placement_bases in SOLO_SHOWDOWN_BASES:
+                if lower <= trophies <= upper:
+                    base = placement_bases[rank - 1]
+                    break
+        else:
+            base = SURVIVAL_PLACEMENT_BASES.get(mode, {}).get(rank)
         if base is not None and 0 <= trophies <= 1999 and base <= change <= base + 14:
             extra = change - base
             streak_finish = (mode == "soloShowdown" and rank <= 4) or (

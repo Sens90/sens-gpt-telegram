@@ -110,6 +110,24 @@ def test_only_verified_survival_losses_are_classified():
     assert classify_trophy_change("soloShowdown", None, 550, -2, 10) == (-2, 0, None)
     assert classify_trophy_change("soloShowdown", None, 900, -5, 10) == (-5, 0, None)
     assert classify_trophy_change("duoShowdown", None, 1600, -10, 4) == (-10, 0, None)
+
+
+def test_exact_2026_solo_showdown_table_changes_by_trophy_band():
+    from trophy_economy import classify_trophy_change
+
+    assert classify_trophy_change("soloShowdown", None, 40, 10, 3) == (10, 0, None)
+    assert classify_trophy_change("soloShowdown", None, 1034, 8, 3) == (8, 0, None)
+    assert classify_trophy_change("soloShowdown", None, 1038, 1, 5) == (1, 0, None)
+    assert classify_trophy_change("soloShowdown", None, 1063, -2, 6) == (-2, 0, None)
+    assert classify_trophy_change("soloShowdown", None, 1830, -12, 10) == (-12, 0, None)
+
+
+def test_solo_showdown_excess_is_measured_from_the_correct_band_base():
+    from trophy_economy import classify_trophy_change
+
+    assert classify_trophy_change("soloShowdown", None, 1050, 11, 3) == (
+        8, 3, "win_streak_observed"
+    )
     assert classify_trophy_change("duoShowdown", None, 1030, -3, 4) == (
         -6, 3, "underdog_observed"
     )
