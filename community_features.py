@@ -1564,12 +1564,11 @@ class CommunityFeatures:
                     sessions.append(current); current=[]
                 current.append(r)
             if current: sessions.append(current)
-            if len(sessions)>1:
-                lines.append("Sessioni:")
-                for ss in sessions:
-                    sr=sum(int(x.get("trophy_change") or 0) for x in ss)
-                    sw=int(Decimal(str(sum(weighted_delta(x) for x in ss))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-                    lines.append(f"• {dt_local(ss[0]['battle_time']):%H:%M}–{dt_local(ss[-1]['battle_time']):%H:%M}: {len(ss)} partite, {'+' if sr>0 else ''}{sr} coppe, {'+' if sw>0 else ''}{sw} punti")
+            lines.append("Sessioni:")
+            for ss in sessions:
+                sr=sum(int(x.get("trophy_change") or 0) for x in ss)
+                sw=int(Decimal(str(sum(weighted_delta(x) for x in ss))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+                lines.append(f"• {dt_local(ss[0]['battle_time']):%H:%M}–{dt_local(ss[-1]['battle_time']):%H:%M}: {len(ss)} partite, {'+' if sr>0 else ''}{sr} coppe, {'+' if sw>0 else ''}{sw} punti")
         lines.insert(1, f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}")
         report_url = self._publish_telegraph(f"Progressione {name} — {period}", lines)
         if report_url:
@@ -1615,8 +1614,9 @@ class CommunityFeatures:
         start_local = datetime.now(ROME).replace(hour=0, minute=0, second=0, microsecond=0)
         try:
             rows = self._get("observed_trophy_battles", {
-                "select": "player_name,battle_time,brawler_name,brawler_trophies_before,mode,result,placement,trophy_change,expected_base_delta,observed_extra,current_win_streak,bonus_type,team_max_brawler_trophies,team_composition",
+                "select": "player_name,battle_time,brawler_name,brawler_trophies_before,mode,result,placement,trophy_change,expected_base_delta,observed_extra,current_win_streak,bonus_type,team_max_brawler_trophies,team_composition,raw_battle",
                 "player_tag": f"eq.{tag}",
+                "brawler_name": f"ilike.{wanted}",
                 "battle_time": f"gte.{start_local.astimezone(timezone.utc).isoformat()}",
                 "trophy_change": "not.is.null",
                 "brawler_trophies_before": "not.is.null",
@@ -1629,9 +1629,32 @@ class CommunityFeatures:
         rows = [x for x in (rows or []) if not str(x.get("bonus_type") or "").startswith("excluded")]
         matches = [x for x in rows if str(x.get("brawler_name") or "").casefold() == wanted.casefold()]
         if not matches:
-            available = sorted({str(x.get("brawler_name") or "") for x in rows if x.get("brawler_name")})
+            available_rows = self._get("observed_trophy_battles", {
+                "select": "brawler_name",
+                "player_tag": f"eq.{tag}",
+                "battle_time": f"gte.{start_local.astimezone(timezone.utc).isoformat()}",
+                "trophy_change": "not.is.null",
+                "brawler_trophies_before": "not.is.null",
+                "limit": "5000",
+            })
+            available = sorted({str(x.get("brawler_name") or "") for x in available_rows or [] if x.get("brawler_name")})
             suffix = ("\nBrawler di oggi: " + ", ".join(available)) if available else ""
             return f"Nessuna battaglia valida di {wanted} osservata oggi.{suffix}"
+
+        try:
+            catalog_rows = self._get("brawlers_catalog", {"select": "name_en,name_it"}) or []
+        except Exception as exc:
+            LOG.warning("PROGRESSION BRAWLER LOCALIZATION ERROR: type=%s", type(exc).__name__)
+            catalog_rows = []
+        brawler_names_it = {
+            str(item.get("name_en") or "").strip().casefold():
+                str(item.get("name_it") or item.get("name_en") or "").strip()
+            for item in catalog_rows if item.get("name_en")
+        }
+
+        def brawler_name_it(value):
+            source = str(value or "").strip()
+            return brawler_names_it.get(source.casefold()) or source or "Brawler"
 
         def local_dt(value):
             return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(ROME)
@@ -1658,8 +1681,45 @@ class CommunityFeatures:
                 loss += max(0, t0 - max(t1, 3000))
             return -loss
 
+        def team_context(row):
+            """Use normalized team data, with a safe fallback to saved official evidence."""
+            team = row.get("team_composition")
+            if isinstance(team, list) and team:
+                return row.get("team_max_brawler_trophies"), team
+            raw = row.get("raw_battle")
+            battle = raw.get("battle") if isinstance(raw, dict) else None
+            teams = battle.get("teams") if isinstance(battle, dict) else None
+            if not isinstance(teams, list):
+                return None, None
+            for candidate in teams:
+                if not isinstance(candidate, list):
+                    continue
+                members = []
+                contains_target = False
+                for member in candidate:
+                    if not isinstance(member, dict):
+                        continue
+                    member_tag = str(member.get("tag") or "").replace("#", "").upper()
+                    if member_tag == tag:
+                        contains_target = True
+                    member_brawler = member.get("brawler") if isinstance(member.get("brawler"), dict) else {}
+                    try:
+                        trophies = int(member_brawler.get("trophies"))
+                    except (TypeError, ValueError):
+                        trophies = None
+                    members.append({
+                        "tag": member_tag or None,
+                        "name": member.get("name"),
+                        "brawler_name": str(member_brawler.get("name") or "").strip() or None,
+                        "brawler_trophies": trophies,
+                    })
+                if contains_target and members:
+                    values = [m["brawler_trophies"] for m in members if m["brawler_trophies"] is not None]
+                    return (max(values) if values else None), members
+            return None, None
+
         name = next((x.get("player_name") for x in reversed(matches) if x.get("player_name")), tag)
-        brawler = str(matches[-1].get("brawler_name") or wanted)
+        brawler = brawler_name_it(matches[-1].get("brawler_name") or wanted)
         raw = sum(int(x.get("trophy_change") or 0) for x in matches)
         pts = sum(points(x) for x in matches)
         lines = [
@@ -1700,16 +1760,15 @@ class CommunityFeatures:
             if row.get("current_win_streak") is not None:
                 lines.append(f"Serie di vittorie osservata: {int(row['current_win_streak'])}")
 
-            team = row.get("team_composition")
+            max_t, team = team_context(row)
             if isinstance(team, list) and team:
                 lines.append("Squadra:")
-                max_t = row.get("team_max_brawler_trophies")
                 for member in team:
                     mt = member.get("brawler_trophies")
                     crown = " 👑" if max_t is not None and mt is not None and int(mt) == int(max_t) else ""
                     lines.append(
                         f"• {member.get('name') or member.get('tag') or 'Giocatore'} — "
-                        f"{member.get('brawler_name') or 'Brawler'} — "
+                        f"{brawler_name_it(member.get('brawler_name'))} — "
                         f"{mt if mt is not None else '?'} 🏆{crown}"
                     )
                 if max_t is not None:

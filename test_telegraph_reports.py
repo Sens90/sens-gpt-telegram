@@ -108,6 +108,44 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["report_url"], "https://telegra.ph/progressione-oggi")
         self.assertIn("Partite osservate valide: 1", payload["text"])
         self.assertIn("Data:", payload["fallback"])
+        self.assertIn("Sessioni:", payload["fallback"])
+
+    def test_progressione_brawler_recovers_and_localizes_raw_team(self):
+        obj = self.make_features()
+        battle = {
+            "player_name": "Giorgio",
+            "battle_time": datetime.now(timezone.utc).isoformat(),
+            "brawler_name": "EL PRIMO",
+            "brawler_trophies_before": 1026,
+            "mode": "duoShowdown",
+            "result": None,
+            "placement": 1,
+            "trophy_change": 8,
+            "expected_base_delta": 8,
+            "observed_extra": 0,
+            "current_win_streak": None,
+            "bonus_type": None,
+            "team_max_brawler_trophies": None,
+            "team_composition": None,
+            "raw_battle": {"battle": {"teams": [[
+                {"tag": "#2LVRCLV8LV", "name": "Giorgio", "brawler": {"name": "EL PRIMO", "trophies": 1026}},
+                {"tag": "#TEAMMATE", "name": "Compagno", "brawler": {"name": "SURGE", "trophies": 1660}},
+            ]]}}
+        }
+        obj._get = Mock(side_effect=[
+            [battle],
+            [
+                {"name_en": "EL PRIMO", "name_it": "EL PRIMO"},
+                {"name_en": "SURGE", "name_it": "ENERGETIK"},
+            ],
+        ])
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/progressione-el-primo")
+
+        payload = obj.progression_brawler_text("2LVRCLV8LV", "El Primo")
+
+        self.assertIn("Squadra:", payload["fallback"])
+        self.assertIn("Compagno — ENERGETIK — 1660", payload["fallback"])
+        self.assertNotIn("Squadra: non disponibile", payload["fallback"])
 
     def test_my_accounts_remains_plain_text(self):
         obj = self.make_features()

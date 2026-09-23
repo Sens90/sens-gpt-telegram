@@ -5143,6 +5143,9 @@ async def ranked_catalog_job(context):
     except Exception as exc:
         print("RANKED CATALOG SYNC ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
 
+_AUTO_RANKING_IN_FLIGHT = set()
+
+
 async def _send_auto_ranking_slot(context, slot):
     """Send one automatic ranking slot at most once per chat, persisted in Supabase."""
     key = slot.strftime("%Y-%m-%d-%H%M")
@@ -5156,34 +5159,23 @@ async def _send_auto_ranking_slot(context, slot):
         return
     sent = 0
     for row in settings_rows or []:
+        chat_id = int(row["chat_id"])
+        flight_key = (chat_id, key)
+        if flight_key in _AUTO_RANKING_IN_FLIGHT:
+            print("CLASSIFICA OGGI AUTO IN FLIGHT:", chat_id, key, flush=True)
+            continue
         try:
-            chat_id = int(row["chat_id"])
             if row.get("last_auto_ranking_slot") == key:
                 continue
-            # Atomically claim this slot before computing/sending. Scheduler and
-            # watchdog can race at the exact minute; only one PATCH may match the
-            # previously observed value. The loser must not send a duplicate.
+            _AUTO_RANKING_IN_FLIGHT.add(flight_key)
             previous_slot = row.get("last_auto_ranking_slot")
-            claim_params = {"chat_id": f"eq.{chat_id}", "select": "chat_id"}
-            claim_params["last_auto_ranking_slot"] = (
-                f"eq.{previous_slot}" if previous_slot is not None else "is.null"
-            )
-            claim_response = await asyncio.to_thread(
-                requests.patch,
-                SUPABASE_URL + "/rest/v1/community_settings",
-                headers={**_supabase_headers(), "Prefer": "return=representation"},
-                params=claim_params,
-                json={"last_auto_ranking_slot": key},
-                timeout=10,
-            )
-            claim_response.raise_for_status()
-            if not claim_response.json():
-                print("CLASSIFICA OGGI AUTO CLAIM SKIP:", chat_id, key, flush=True)
-                continue
             # Compute the slot payload before sending. At 23:59 this freezes all
             # end-of-day texts while "today" still points to the closing Rome day,
             # so a Telegram send crossing midnight cannot reset the calculation.
             text = await asyncio.to_thread(community.ranking_text, chat_id, 0)
+            progression_text = await asyncio.to_thread(
+                community.coefficient_ranking_text, chat_id, "community", 0
+            )
             final_slot = slot.hour == 23 and slot.minute == 59
             club_text = None
             global_text = None
@@ -5193,32 +5185,47 @@ async def _send_auto_ranking_slot(context, slot):
                 global_text = await asyncio.to_thread(community.global_ranking_text, chat_id, 0)
                 global_club_text = await asyncio.to_thread(community.global_club_ranking_text, chat_id, False)
 
-            await context.bot.send_message(chat_id=chat_id, text=text)
+            payloads = [("trofei", text), ("progressione", progression_text)]
             if final_slot:
-                await context.bot.send_message(chat_id=chat_id, text=club_text)
-                await context.bot.send_message(chat_id=chat_id, text=global_text)
-                await context.bot.send_message(chat_id=chat_id, text=global_club_text)
+                payloads.extend([
+                    ("club", club_text),
+                    ("globale", global_text),
+                    ("club globale", global_club_text),
+                ])
+            for label, payload in payloads:
+                delivered = await community._send_ranking_message(context, chat_id, payload)
+                print(
+                    "CLASSIFICA OGGI AUTO DELIVERY: chat=%s slot=%s report=%s ok=%s" % (
+                        chat_id, key, label, delivered
+                    ),
+                    flush=True,
+                )
+                if not delivered:
+                    raise RuntimeError(f"Telegram delivery failed: {label}")
+
+            # Persist completion only after every Telegram delivery succeeded.
+            complete_params = {"chat_id": f"eq.{chat_id}", "select": "chat_id"}
+            complete_params["last_auto_ranking_slot"] = (
+                f"eq.{previous_slot}" if previous_slot is not None else "is.null"
+            )
+            complete_response = await asyncio.to_thread(
+                requests.patch,
+                SUPABASE_URL + "/rest/v1/community_settings",
+                headers={**_supabase_headers(), "Prefer": "return=representation"},
+                params=complete_params,
+                json={"last_auto_ranking_slot": key},
+                timeout=10,
+            )
+            complete_response.raise_for_status()
+            if not complete_response.json():
+                raise RuntimeError("slot completion update did not match current database state")
+            print("CLASSIFICA OGGI AUTO COMPLETED:", chat_id, key, flush=True)
             sent += 1
         except Exception as exc:
             print("CLASSIFICA OGGI AUTO SEND ERROR:", row.get("chat_id"), repr(exc), flush=True)
-            # Release only this worker's failed claim so the watchdog can retry.
-            try:
-                chat_id = int(row["chat_id"])
-                rollback_response = await asyncio.to_thread(
-                    requests.patch,
-                    SUPABASE_URL + "/rest/v1/community_settings",
-                    headers={**_supabase_headers(), "Prefer": "return=representation"},
-                    params={"chat_id": f"eq.{chat_id}", "last_auto_ranking_slot": f"eq.{key}", "select": "chat_id"},
-                    json={"last_auto_ranking_slot": previous_slot},
-                    timeout=10,
-                )
-                rollback_response.raise_for_status()
-                if rollback_response.json():
-                    print("CLASSIFICA OGGI AUTO CLAIM RELEASED:", chat_id, key, flush=True)
-                else:
-                    print("CLASSIFICA OGGI AUTO CLAIM RELEASE SKIP:", chat_id, key, flush=True)
-            except Exception as rollback_exc:
-                print("CLASSIFICA OGGI AUTO CLAIM RELEASE ERROR:", row.get("chat_id"), repr(rollback_exc), flush=True)
+            print("CLASSIFICA OGGI AUTO RETRY ENABLED:", chat_id, key, flush=True)
+        finally:
+            _AUTO_RANKING_IN_FLIGHT.discard(flight_key)
     print("CLASSIFICA OGGI AUTO: slot=%s sent=%s local=%s" % (
         key, sent, datetime.now(ROME).strftime("%Y-%m-%d %H:%M:%S")
     ), flush=True)
