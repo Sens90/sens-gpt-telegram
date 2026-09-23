@@ -2982,6 +2982,13 @@ def format_number_it(value):
     return f"{value:,}".replace(",", ".")
 
 
+# These modules used to be named sitecustomize/usercustomize and were therefore
+# imported by every Python process, including pip before dependencies existed.
+# Load them explicitly at the original runtime hook point instead.
+import sens_runtime_primary  # noqa: E402,F401
+import sens_runtime_guards  # noqa: E402,F401
+
+
 community = CommunityFeatures(
     SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY,

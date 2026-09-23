@@ -1,4 +1,7 @@
-"""Sens GPT runtime guards for Brawl Stars meta answers and live profiles."""
+"""Sens GPT runtime guards for Brawl Stars meta answers and live profiles.
+
+Imported explicitly by app.py after third-party dependencies are available.
+"""
 import html
 import os
 import re

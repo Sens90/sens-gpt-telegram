@@ -1,4 +1,7 @@
-"""Runtime integration: official Supercell first, BrawlTrack/legacy only for missing data."""
+"""Runtime integration: official Supercell first, BrawlTrack/legacy only for missing data.
+
+Imported explicitly by app.py after third-party dependencies are available.
+"""
 import os, re, requests, threading, time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
