@@ -6,7 +6,10 @@ Unknown, protected/bot and survival cases intentionally remain unclassified.
 
 
 SURVIVAL_MODES = {"soloShowdown", "duoShowdown"}
-SURVIVAL_FIRST_PLACE_BASE = {"soloShowdown": 13, "duoShowdown": 11}
+SURVIVAL_PLACEMENT_BASES = {
+    "soloShowdown": {1: 13, 2: 10, 3: 9, 4: 5, 5: 2, 6: 1},
+    "duoShowdown": {1: 11, 2: 5},
+}
 
 # Repeated exact losses observed across multiple ordinary team modes.
 TEAM_LOSS_BY_RANGE = (
@@ -42,8 +45,8 @@ def classify_trophy_change(mode, result, trophies_before, trophy_change, placeme
             rank = int(placement)
         except (TypeError, ValueError):
             return None, None, None
-        base = SURVIVAL_FIRST_PLACE_BASE.get(mode)
-        if rank == 1 and 300 <= trophies <= 1999 and base <= change <= base + 10:
+        base = SURVIVAL_PLACEMENT_BASES.get(mode, {}).get(rank)
+        if base is not None and 300 <= trophies <= 1999 and base <= change <= base + 10:
             extra = change - base
             return base, extra, "observed_extra_unresolved" if extra else None
         return None, None, None

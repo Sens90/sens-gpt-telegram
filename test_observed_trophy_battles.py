@@ -68,14 +68,22 @@ def test_protected_and_2000_plus_cases_stay_unclassified():
     assert classify_trophy_change("siege", "victory", 2100, 15) == (None, None, None)
 
 
-def test_verified_survival_first_place_bases_are_classified():
+def test_verified_survival_positive_placement_bases_are_classified():
     from trophy_economy import classify_trophy_change
 
     assert classify_trophy_change("soloShowdown", None, 900, 23, 1) == (
         13, 10, "observed_extra_unresolved"
     )
     assert classify_trophy_change("duoShowdown", None, 1500, 11, 1) == (11, 0, None)
-    assert classify_trophy_change("duoShowdown", None, 1500, 7, 2) == (None, None, None)
+    assert classify_trophy_change("duoShowdown", None, 1500, 7, 2) == (
+        5, 2, "observed_extra_unresolved"
+    )
+    assert classify_trophy_change("soloShowdown", None, 500, 15, 4) == (
+        5, 10, "observed_extra_unresolved"
+    )
+    assert classify_trophy_change("soloShowdown", None, 900, 2, 5) == (2, 0, None)
+    assert classify_trophy_change("soloShowdown", None, 700, 1, 6) == (1, 0, None)
+    assert classify_trophy_change("soloShowdown", None, 700, -2, 7) == (None, None, None)
     assert classify_trophy_change("soloShowdown", None, 2100, 13, 1) == (None, None, None)
 
 
