@@ -97,6 +97,15 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.additional_accounts = Mock(return_value=[])
         self.assertEqual(obj.my_accounts_text(123), "I TUOI ACCOUNT\n\nPRINCIPALE - Sens #2GU9UV2RG")
 
+    def test_progression_terms_are_always_localized(self):
+        obj = self.make_features()
+        self.assertEqual(obj._progression_mode_it("brawlBall"), "Footbrawl")
+        self.assertEqual(obj._progression_mode_it("gemGrab"), "Arraffagemme")
+        self.assertEqual(obj._progression_result_it("victory"), "Vittoria")
+        self.assertEqual(obj._progression_result_it("defeat"), "Sconfitta")
+        self.assertEqual(obj._progression_bonus_it("win_streak"), "Serie di vittorie")
+        self.assertEqual(obj._progression_mode_it("futureTechnicalMode"), "Modalità non riconosciuta")
+
 
 if __name__ == "__main__":
     unittest.main()

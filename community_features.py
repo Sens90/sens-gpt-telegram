@@ -19,6 +19,54 @@ _SKIN_BRIDGE_OPEN_UNTIL = 0.0
 _SKIN_BRIDGE_FAILURE_LIMIT = 3
 _SKIN_BRIDGE_BACKOFF_SECONDS = 6 * 60 * 60
 
+PROGRESSION_MODE_NAMES_IT = {
+    "gemgrab": "Arraffagemme",
+    "brawlball": "Footbrawl",
+    "hotzone": "Dominio",
+    "bounty": "Ricercati",
+    "heist": "Rapina",
+    "knockout": "K.O.",
+    "soloshowdown": "Sopravvivenza in singolo",
+    "duoshowdown": "Sopravvivenza in duo",
+    "trioshowdown": "Sopravvivenza in trio",
+    "showdown": "Sopravvivenza",
+    "duels": "Duelli",
+    "wipeout": "Annientamento",
+    "deathmatch5v5": "Annientamento 5v5",
+    "payload": "Corsa dei carrelli",
+    "basketbrawl": "Basket Brawl",
+    "volleybrawl": "Volley Brawl",
+    "trophythieves": "Ladri di trofei",
+    "presentplunder": "Furto dei regali",
+    "holdthetrophy": "Tieni il trofeo",
+    "siege": "Assedio",
+    "hunters": "Cacciatori",
+    "lonestar": "Stella solitaria",
+    "takedown": "Eliminazione",
+    "botdrop": "Caduta di robot",
+    "laststand": "Ultima resistenza",
+    "biggame": "Megabrawl",
+    "bossfight": "Boss Fight",
+    "roborumble": "Sfida al Boss Robot",
+    "airhockey": "Brawl Hockey",
+    "brawlarena": "Arena dei Brawler",
+    "paintbrawl": "Brawl Pittura",
+}
+
+PROGRESSION_RESULT_NAMES_IT = {
+    "victory": "Vittoria",
+    "defeat": "Sconfitta",
+    "draw": "Pareggio",
+}
+
+PROGRESSION_BONUS_NAMES_IT = {
+    "win_streak": "Serie di vittorie",
+    "underdog": "Sfavorito",
+    "bot": "Battaglia contro bot",
+    "low_trophy": "Bonus trofei bassi",
+    "combined": "Bonus combinato",
+}
+
 
 class SkinBridgeBackoff(RuntimeError):
     """Raised while the external skin source circuit breaker is open."""
@@ -115,6 +163,25 @@ Scrivi comandi in qualsiasi momento per rivedere questa guida."""
 
 
 class CommunityFeatures:
+    @staticmethod
+    def _progression_mode_it(value):
+        key = re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
+        return PROGRESSION_MODE_NAMES_IT.get(key, "Modalità non riconosciuta")
+
+    @staticmethod
+    def _progression_result_it(result, placement=None):
+        key = str(result or "").strip().casefold()
+        if key in PROGRESSION_RESULT_NAMES_IT:
+            return PROGRESSION_RESULT_NAMES_IT[key]
+        if placement is not None:
+            return f"Posizione {int(placement)}"
+        return "Risultato non disponibile"
+
+    @staticmethod
+    def _progression_bonus_it(value):
+        key = str(value or "").strip().casefold()
+        return PROGRESSION_BONUS_NAMES_IT.get(key, "Bonus aggiuntivo")
+
     def __init__(
         self,
         supabase_url,
@@ -1549,10 +1616,10 @@ class CommunityFeatures:
             w = weight_at(t0)
             expected = row.get("expected_base_delta")
             extra = row.get("observed_extra")
-            mode = str(row.get("mode") or "Modalità non disponibile")
-            result = str(row.get("result") or "").strip()
+            mode = self._progression_mode_it(row.get("mode"))
+            result = row.get("result")
             placement = row.get("placement")
-            outcome = result or (f"Posizione {placement}" if placement is not None else "Risultato non disponibile")
+            outcome = self._progression_result_it(result, placement)
             lines += [
                 "",
                 f"{index}. {local_dt(row['battle_time']):%H:%M} — {mode}",
@@ -1564,7 +1631,7 @@ class CommunityFeatures:
             if expected is not None:
                 lines.append(f"Delta base previsto: {'+' if int(expected) > 0 else ''}{int(expected)}")
             if extra is not None and int(extra) != 0:
-                bonus = str(row.get("bonus_type") or "extra osservato").replace("_", " ")
+                bonus = self._progression_bonus_it(row.get("bonus_type"))
                 lines.append(f"Extra osservato: +{int(extra)} ({bonus})")
             if row.get("current_win_streak") is not None:
                 lines.append(f"Serie di vittorie osservata: {int(row['current_win_streak'])}")
