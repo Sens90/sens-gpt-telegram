@@ -3603,7 +3603,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "club", "profilo club", "stato club", "regole", "faq", "regolamento",
         "sito", "website", "discord", "comandi", "aiuto", "help", "funzioni",
         "skin", "quante skin", "quali skin", "counter ", "chi countera ",
-        "ripristina registrazione",
+        "ripristina registrazione", "progressione",
     )
     if any(_command_q == p.rstrip() or _command_q.startswith(p) for p in _command_prefixes):
         print("COMMAND FIREWALL blocked AI fallback:", repr(question), flush=True)
