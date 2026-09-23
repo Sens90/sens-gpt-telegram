@@ -1484,7 +1484,7 @@ class CommunityFeatures:
             period = f"ULTIMI {int(days)} GIORNI"
         try:
             rows = self._get("observed_trophy_battles", {
-                "select": "player_name,battle_time,brawler_name,brawler_trophies_before,mode,trophy_change,observed_extra,bonus_type",
+                "select": "player_name,battle_time,brawler_name,brawler_trophies_before,mode,trophy_change,observed_extra,bonus_type,team_max_brawler_trophies",
                 "player_tag": f"eq.{tag}",
                 "battle_time": f"gte.{start_local.astimezone(timezone.utc).isoformat()}",
                 "trophy_change": "not.is.null",
@@ -1503,23 +1503,20 @@ class CommunityFeatures:
             return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(ROME)
 
         def weighted_delta(row):
+            """Wins use the highest Brawler trophy value in the team; losses score zero."""
             t0 = max(0, int(row.get("brawler_trophies_before") or 0))
             d = int(row.get("trophy_change") or 0)
-            t1 = max(0, t0 + d)
-            if d >= 0:
-                return float(score_brawler_trophies(t1) - score_brawler_trophies(t0))
-            # Losses use the inverse marginal coefficient: the higher the band,
-            # the smaller the negative Progression penalty. Handle band crossings
-            # piecewise by dividing each lost trophy segment by its band weight.
-            loss = 0.0
-            hi, lo = t0, t1
-            for start, end, weight in TROPHY_COEFFICIENT_BANDS:
-                overlap = max(0, min(hi, end) - max(lo, start))
-                if overlap:
-                    loss += overlap / float(weight)
-            if hi > 3000:
-                loss += max(0, hi - max(lo, 3000))
-            return -loss
+            if d <= 0:
+                return 0.0
+            reference = t0
+            if str(row.get("mode") or "").casefold() not in {"soloshowdown", "solo"}:
+                try:
+                    team_max = int(row.get("team_max_brawler_trophies"))
+                except (TypeError, ValueError):
+                    team_max = None
+                if team_max is not None:
+                    reference = max(reference, team_max)
+            return float(score_brawler_trophies(reference + d) - score_brawler_trophies(reference))
 
         def band_labels(lo, hi):
             a, b = sorted((max(0, lo), max(0, hi)))
