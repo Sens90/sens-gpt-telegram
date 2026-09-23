@@ -219,7 +219,7 @@ def current_ranked_pool():
             _ranked_pool_failure_until=0.0
             return pairs
         except Exception as exc:
-            print(f"RANKED POOL SOURCE ERROR: source={source} error={type(exc).__name__}: {exc}",flush=True)
+            print(f"RANKED POOL SOURCE UNAVAILABLE: source={source} fallback=next error={type(exc).__name__}",flush=True)
             errors.append(f"{source}={type(exc).__name__}: {exc}")
     _ranked_pool_failure_until=now+3600
     counts={mode:sum(1 for m,_ in _KNOWN_GOOD_RANKED_POOL if m==mode) for mode in RANKED_MODES}

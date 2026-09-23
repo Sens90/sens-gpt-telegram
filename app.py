@@ -3388,7 +3388,29 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "ANDAMENTO TROFEI", f"Oggi: {format_trophy_change(changes.get('today'))}", f"7 giorni: {format_trophy_change(changes.get('7d'))}", f"15 giorni: {format_trophy_change(changes.get('15d'))}", f"30 giorni: {format_trophy_change(changes.get('30d'))}", f"90 giorni: {format_trophy_change(changes.get('90d'))}"
             ])
             print("FULL PROFILE EARLY RENDER:", player_tag, "chars=", len(text), flush=True)
-            await send_mode_aware_text(message, context, text)
+            report_title = f"Stats {player['name']}"
+            report_url = await asyncio.to_thread(
+                community._publish_telegraph,
+                report_title,
+                text.splitlines(),
+            )
+            if report_url:
+                stats_summary = [
+                    str(player["name"]).upper(),
+                    f"Tag: {player['tag']}",
+                    f"Club: {profile_club}",
+                    f"Trofei: {format_number_it(player['trophies'])}",
+                    f"Brawler: {brawler_text}",
+                    f"Ranked attuale: {ranked_current}",
+                    f"Record massimo: {ranked_peak}",
+                ]
+                await community._send_ranking_message(
+                    context,
+                    message.chat_id,
+                    community._telegraph_reply(stats_summary, report_url, text.splitlines()),
+                )
+            else:
+                await send_mode_aware_text(message, context, text)
             return
 
     # Explicit mode on the current request always wins. Otherwise, replying

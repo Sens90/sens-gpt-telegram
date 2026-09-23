@@ -14,6 +14,15 @@ from trophy_coefficient import calculate_trophy_coefficient
 ROME = ZoneInfo("Europe/Rome")
 LOG = logging.getLogger(__name__)
 
+_SKIN_BRIDGE_FAILURES = 0
+_SKIN_BRIDGE_OPEN_UNTIL = 0.0
+_SKIN_BRIDGE_FAILURE_LIMIT = 3
+_SKIN_BRIDGE_BACKOFF_SECONDS = 6 * 60 * 60
+
+
+class SkinBridgeBackoff(RuntimeError):
+    """Raised while the external skin source circuit breaker is open."""
+
 FAQ_TEXT = (
     "TITANI ABUSIVI - INFO RAPIDE\n\n"
     "- Club competitivo: minimo 100.000 trofei.\n"
@@ -499,16 +508,30 @@ class CommunityFeatures:
 
     def _official_owned_skin_ids(self, player_tag):
         """Resolve exact owned skins through the authenticated Netsons BSInfo bridge."""
+        global _SKIN_BRIDGE_FAILURES, _SKIN_BRIDGE_OPEN_UNTIL
+        import time
         tag=str(player_tag or "").strip().lstrip("#").upper()
         proxy_url=(os.environ.get("BRAWL_OFFICIAL_PROXY_URL") or "").strip()
         proxy_key=(os.environ.get("BRAWL_OFFICIAL_PROXY_KEY") or "").strip()
         if not tag or not proxy_url or not proxy_key:
             raise RuntimeError("Skin collection proxy is not configured")
-        response=requests.get(proxy_url,params={"action":"skincollection","tag":tag},headers={"X-Sens-Key":proxy_key,"Accept":"application/json","User-Agent":"SensGPT-TitaniAbusivi/1.0"},timeout=20)
+        now = time.monotonic()
+        if now < _SKIN_BRIDGE_OPEN_UNTIL:
+            raise SkinBridgeBackoff("Skin collection source temporarily paused")
+        try:
+            response=requests.get(proxy_url,params={"action":"skincollection","tag":tag},headers={"X-Sens-Key":proxy_key,"Accept":"application/json","User-Agent":"SensGPT-TitaniAbusivi/1.0"},timeout=20)
+        except requests.RequestException:
+            _SKIN_BRIDGE_FAILURES += 1
+            if _SKIN_BRIDGE_FAILURES >= _SKIN_BRIDGE_FAILURE_LIMIT:
+                _SKIN_BRIDGE_OPEN_UNTIL = now + _SKIN_BRIDGE_BACKOFF_SECONDS
+                LOG.warning("SKINCOLLECTION CIRCUIT OPEN: failures=%s backoff_hours=6", _SKIN_BRIDGE_FAILURES)
+            raise
         if not response.ok:
-            # Diagnostic only: log bridge response body, never request headers or secrets.
-            body=(response.text or "").replace("\r"," ").replace("\n"," ")[:1500]
-            print("SKINCOLLECTION BRIDGE ERROR:",tag,"status=",response.status_code,"body=",body,flush=True)
+            _SKIN_BRIDGE_FAILURES += 1
+            LOG.warning("SKINCOLLECTION BRIDGE UNAVAILABLE: status=%s failures=%s", response.status_code, _SKIN_BRIDGE_FAILURES)
+            if _SKIN_BRIDGE_FAILURES >= _SKIN_BRIDGE_FAILURE_LIMIT:
+                _SKIN_BRIDGE_OPEN_UNTIL = now + _SKIN_BRIDGE_BACKOFF_SECONDS
+                LOG.warning("SKINCOLLECTION CIRCUIT OPEN: failures=%s backoff_hours=6", _SKIN_BRIDGE_FAILURES)
             response.raise_for_status()
         payload=response.json()
         if not isinstance(payload,dict):
@@ -534,6 +557,8 @@ class CommunityFeatures:
             else: unmatched+=1
         if not owned:
             raise RuntimeError("Bridge skins could not be mapped to catalog IDs")
+        _SKIN_BRIDGE_FAILURES = 0
+        _SKIN_BRIDGE_OPEN_UNTIL = 0.0
         print("BSINFO OWNED SKINS:",tag,"names=",len(names),"mapped=",len(owned),"ambiguous=",ambiguous,"unmatched=",unmatched,flush=True)
         return owned
 
@@ -911,6 +936,29 @@ class CommunityFeatures:
             n=max(1,int(row.get("account_order") or 2)-1)
             lines.append(f"SECONDARIO {n} - {row.get('player_name') or 'Account'} #{row.get('player_tag')}")
         return "\n".join(lines)
+
+    @staticmethod
+    def _telegraph_nodes(lines):
+        nodes = []
+        for raw in lines:
+            value = str(raw or "").strip()
+            if not value:
+                continue
+            if value.startswith("• "):
+                nodes.append({"tag": "p", "children": [value]})
+            elif ":" not in value and (value.isupper() or value.startswith("DETTAGLIO ") or value.startswith("LOG ")):
+                nodes.append({"tag": "h3", "children": [value]})
+            else:
+                nodes.append({"tag": "p", "children": [value]})
+        return nodes
+
+    @staticmethod
+    def _telegraph_reply(summary_lines, report_url, fallback_lines):
+        return {
+            "text": "\n".join(str(x) for x in summary_lines),
+            "report_url": report_url,
+            "fallback": "\n".join(str(x) for x in fallback_lines),
+        }
 
     def admin_reset_primary_registration(self, telegram_user_id):
         rows=self._get("community_members",{"select":"*","telegram_user_id":f"eq.{int(telegram_user_id)}","limit":"1"}) or []
@@ -1391,20 +1439,39 @@ class CommunityFeatures:
                     sr=sum(int(x.get("trophy_change") or 0) for x in ss)
                     sw=int(Decimal(str(sum(weighted_delta(x) for x in ss))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
                     lines.append(f"• {dt_local(ss[0]['battle_time']):%H:%M}–{dt_local(ss[-1]['battle_time']):%H:%M}: {len(ss)} partite, {'+' if sr>0 else ''}{sr} coppe, {'+' if sw>0 else ''}{sw} punti")
+        lines.insert(1, f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}")
+        report_url = self._publish_telegraph(f"Progressione {name} — {period}", lines)
+        if report_url:
+            summary = [
+                f"PROGRESSIONE ABUSIVA — {name}",
+                f"Periodo: {period}",
+                f"Partite osservate valide: {len(rows)}",
+                f"Coppe nette: {'+' if raw_total > 0 else ''}{self.number_formatter(raw_total)}",
+                f"Punteggio Progressione: {'+' if weighted_total > 0 else ''}{self.number_formatter(weighted_total)}",
+            ]
+            return self._telegraph_reply(summary, report_url, lines)
         return "\n".join(lines)
 
     def _publish_telegraph(self, title, lines):
         token = os.getenv("TELEGRAPH_ACCESS_TOKEN", "").strip()
         if not token:
             return None
-        content = [{"tag": "p", "children": [str(line)]} for line in lines if str(line or "").strip()]
+        content = self._telegraph_nodes(lines)
         try:
             response = requests.post("https://api.telegra.ph/createPage", data={"access_token": token, "title": str(title)[:256], "author_name": "TITANI ABUSIVI", "content": __import__("json").dumps(content, ensure_ascii=False), "return_content": "false"}, timeout=20)
             response.raise_for_status()
             payload = response.json()
-            return payload.get("result", {}).get("url") if payload.get("ok") else None
+            if not payload.get("ok"):
+                LOG.error("TELEGRAPH API ERROR: status=%s error=%s", response.status_code, str(payload.get("error") or "unknown")[:300])
+                return None
+            url = payload.get("result", {}).get("url")
+            if not url:
+                LOG.error("TELEGRAPH API ERROR: status=%s error=missing_result_url", response.status_code)
+                return None
+            LOG.info("TELEGRAPH PAGE CREATED: title=%s url=%s", str(title)[:120], url)
+            return url
         except Exception as exc:
-            LOG.error("TELEGRAPH CREATE PAGE ERROR: %r", exc)
+            LOG.error("TELEGRAPH API ERROR: type=%s message=%s", type(exc).__name__, str(exc)[:300])
             return None
 
     def progression_brawler_text(self, player_tag, brawler_name):
@@ -1466,6 +1533,7 @@ class CommunityFeatures:
         pts = sum(points(x) for x in matches)
         lines = [
             f"PROGRESSIONE {brawler.upper()} — {name}",
+            f"Data: {datetime.now(ROME):%d/%m/%Y}",
             "Periodo: OGGI",
             f"Partite osservate valide: {len(matches)}",
             f"Coppe nette: {'+' if raw > 0 else ''}{raw}",
@@ -1525,11 +1593,8 @@ class CommunityFeatures:
                 f"Partite osservate valide: {len(matches)}",
                 "Coppe nette: " + ("+" if raw > 0 else "") + str(raw),
                 "Punti Progressione: " + ("+" if pts > 0 else "") + f"{pts:.2f}".replace(".", ","),
-                "",
-                "📊 REPORT COMPLETO",
-                report_url,
             ]
-            return "\n".join(summary)
+            return self._telegraph_reply(summary, report_url, lines)
         return "\n".join(lines)
 
     def coefficient_ranking_text(self, chat_id, scope="community", days=None):
@@ -1635,12 +1700,16 @@ class CommunityFeatures:
         if not rows:
             return f"{title}\n\nStorico non ancora disponibile per questo periodo."
         period = "ATTUALE" if days is None else ("OGGI" if days == 0 else f"{days} GIORNI")
-        lines = [f"{title} — {period}", ""]
+        lines = [f"{title} — {period}", f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}", ""]
         for index, row in enumerate(rows[:200], 1):
             coefficient = f'{float(row["coefficient"]):.6f}'.replace(".", ",")
             value = int(row["value"])
             value_text = ("+" if value > 0 and days is not None else "") + self.number_formatter(value)
-            lines.append(f'{index}. {row["name"]} — {value_text} ({coefficient})')
+            lines.append(f'{index}. {row["name"]} — Progressione: {value_text} — Coefficiente: {coefficient}')
+        report_url = self._publish_telegraph(f"{title} — {period}", lines)
+        if report_url:
+            summary = [f"{title} — {period}", "", *lines[3:13]]
+            return self._telegraph_reply(summary, report_url, lines)
         return "\n".join(lines)
 
     def stat_ranking_text(self, chat_id, stat_key, club_name=None):
@@ -2224,15 +2293,28 @@ class CommunityFeatures:
     async def _send_ranking_message(self, context, chat_id, text):
         """Deliver ranking replies with bounded retries on transient Telegram timeouts."""
         from telegram.error import NetworkError, RetryAfter, TelegramError, TimedOut
+        report_url = text.get("report_url") if isinstance(text, dict) else None
+        fallback = text.get("fallback") if isinstance(text, dict) else text
+        message_text = text.get("text") if isinstance(text, dict) else text
+        reply_markup = None
+        if report_url:
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("📊 REPORT COMPLETO", url=report_url)]])
         for attempt in range(3):
             try:
-                await context.bot.send_message(chat_id=chat_id, text=text, connect_timeout=20, read_timeout=30, write_timeout=30, pool_timeout=20)
+                await context.bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, connect_timeout=20, read_timeout=30, write_timeout=30, pool_timeout=20)
                 return True
             except RetryAfter as exc:
                 delay = exc.retry_after.total_seconds() if hasattr(exc.retry_after, "total_seconds") else float(exc.retry_after)
             except (TimedOut, NetworkError):
                 delay = 2 ** attempt
             except TelegramError as exc:
+                if report_url:
+                    try:
+                        await context.bot.send_message(chat_id=chat_id, text=fallback, connect_timeout=20, read_timeout=30, write_timeout=30, pool_timeout=20)
+                        return True
+                    except TelegramError:
+                        pass
                 LOG.error("RANKING TELEGRAM SEND FAILED chat=%s error=%r", chat_id, exc); return False
             LOG.warning("RANKING TELEGRAM RETRY chat=%s attempt=%s", chat_id, attempt + 1)
             if attempt < 2: await asyncio.sleep(max(1, delay))
@@ -3669,6 +3751,9 @@ class CommunityFeatures:
                 self._post("skin_account_history", payload, params={"on_conflict": "community_member_id,snapshot_date,category"}, prefer="resolution=merge-duplicates,return=minimal")
                 saved += 1
             except Exception as exc:
+                if isinstance(exc, SkinBridgeBackoff):
+                    print("SKIN DAILY SNAPSHOT: upstream circuit open; remaining members deferred", flush=True)
+                    break
                 print(f"ERRORE SNAPSHOT SKIN MEMBER {member_id}:", repr(exc), flush=True)
         print(f"SKIN DAILY SNAPSHOT: date={day} saved={saved} skipped={skipped}", flush=True)
         return {"date": day, "saved": saved, "skipped": skipped}
