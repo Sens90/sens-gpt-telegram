@@ -147,6 +147,36 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Compagno — ENERGETIK — 1660", payload["fallback"])
         self.assertNotIn("Squadra: non disponibile", payload["fallback"])
 
+    def test_progressione_brawler_marks_solo_team_as_not_expected(self):
+        obj = self.make_features()
+        battle = {
+            "player_name": "Giorgio",
+            "battle_time": datetime.now(timezone.utc).isoformat(),
+            "brawler_name": "EL PRIMO",
+            "brawler_trophies_before": 1026,
+            "mode": "soloShowdown",
+            "result": None,
+            "placement": 3,
+            "trophy_change": 2,
+            "expected_base_delta": 2,
+            "observed_extra": 0,
+            "current_win_streak": None,
+            "bonus_type": None,
+            "team_max_brawler_trophies": None,
+            "team_composition": None,
+            "raw_battle": {"battle": {}},
+        }
+        obj._get = Mock(side_effect=[
+            [battle],
+            [{"name_en": "EL PRIMO", "name_it": "El Primo"}],
+        ])
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/progressione-el-primo")
+
+        payload = obj.progression_brawler_text("2LVRCLV8LV", "El Primo")
+
+        self.assertIn("Squadra: non prevista (modalità in singolo).", payload["fallback"])
+        self.assertNotIn("Squadra: non disponibile", payload["fallback"])
+
     def test_my_accounts_remains_plain_text(self):
         obj = self.make_features()
         obj.get_registered_user = Mock(return_value={"player_name": "Sens", "player_tag": "2GU9UV2RG"})
