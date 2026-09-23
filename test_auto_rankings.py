@@ -86,5 +86,22 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(database_patch.call_args.kwargs["json"]["last_auto_ranking_slot"], "2026-09-23-2359")
 
 
+class CompleteRosterRetryTests(unittest.TestCase):
+    def test_transient_empty_save_is_retried_once(self):
+        clubs = {"TITANI ABUSIVI": "UG9Q8PC"}
+        roster = [{"player_tag": "ABC", "player_name": "Giocatore", "trophies": 100000}]
+        with (
+            patch.object(app.community, "CLUB_TAGS", clubs),
+            patch.object(app, "fetch_supercell_proxy_club_roster", return_value=roster),
+            patch.object(app, "save_complete_roster_daily", side_effect=[0, 1]) as save,
+            patch("time.sleep") as sleep,
+        ):
+            saved = app.refresh_complete_club_rosters()
+
+        self.assertEqual(saved, 1)
+        self.assertEqual(save.call_count, 2)
+        sleep.assert_called_once_with(1)
+
+
 if __name__ == "__main__":
     unittest.main()

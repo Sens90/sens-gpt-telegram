@@ -2642,6 +2642,7 @@ def save_complete_roster_daily(club_name, club_tag, roster, source="brawlify"):
 
 def refresh_complete_club_rosters():
     """Refresh all four complete rosters. Brawlify is fallback while official proxy is WAF-blocked."""
+    import time
     total = 0
     for club_name, club_tag in community.CLUB_TAGS.items():
         roster = fetch_supercell_proxy_club_roster(club_name, club_tag)
@@ -2653,7 +2654,16 @@ def refresh_complete_club_rosters():
             roster = fetch_brawlify_club_roster(club_name, club_tag)
             source = "brawlify"
         if roster:
-            total += save_complete_roster_daily(club_name, club_tag, roster, source=source)
+            saved = save_complete_roster_daily(club_name, club_tag, roster, source=source)
+            if saved == 0:
+                # Supabase can occasionally reset one HTTP connection while a
+                # roster is being written. The operation is idempotent for
+                # snapshot_date/player_tag, so one bounded retry safely resumes
+                # a partial save without duplicating daily rows.
+                print("COMPLETE ROSTER SAVE RETRY:", club_name, flush=True)
+                time.sleep(1)
+                saved = save_complete_roster_daily(club_name, club_tag, roster, source=source)
+            total += saved
     print("COMPLETE CLUB ROSTER REFRESH: saved=", total, flush=True)
     return total
 
