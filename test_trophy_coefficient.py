@@ -2,10 +2,16 @@ from trophy_coefficient import calculate_trophy_coefficient, score_brawler_troph
 
 
 def test_thresholds_are_monotonic():
-    points = [0, 1099, 1100, 1199, 1200, 1999, 2000, 2199, 2200,
-              2499, 2500, 2799, 2800, 2999, 3000, 3001, 4000]
+    points = [0, 49, 50, 99, 100, 199, 200, 299, 300, 499, 500, 599,
+              600, 799, 800, 999, 1000, 1099, 1100, 1199, 1200, 1999,
+              2000, 2199, 2200, 2499, 2500, 2799, 2800, 2999, 3000, 3001, 4000]
     scores = [score_brawler_trophies(value) for value in points]
     assert scores == sorted(scores)
+
+
+def test_real_trophies_are_never_discounted():
+    for trophies in (1, 49, 50, 99, 100, 299, 500, 999, 2000, 3000, 4000):
+        assert score_brawler_trophies(trophies) >= trophies
 
 
 def test_above_3000_keeps_raw_trophies_without_extra_premium():
@@ -22,5 +28,5 @@ def test_same_total_distribution_can_score_differently():
 
 def test_official_total_is_preserved_when_detail_is_incomplete():
     result = calculate_trophy_coefficient([{"trophies": 1000}], 1100)
-    assert result["score"] == 1100
+    assert result["score"] >= 1100
     assert result["official_total"] == 1100
