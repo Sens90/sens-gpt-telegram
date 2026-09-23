@@ -44,6 +44,20 @@ def test_verified_team_base_and_unresolved_extra_are_classified():
     assert row["bonus_type"] == "win_streak_observed"
 
 
+def test_low_trophy_and_combined_victory_bonuses_are_classified():
+    from trophy_economy import classify_trophy_change
+
+    assert classify_trophy_change("siege", "victory", 0, 15) == (
+        10, 5, "win_streak_observed"
+    )
+    assert classify_trophy_change("brawlBall", "victory", 1393, 21) == (
+        10, 11, "win_streak_plus_underdog_observed"
+    )
+    assert classify_trophy_change("soloShowdown", None, 112, 20, 1) == (
+        13, 7, "win_streak_observed"
+    )
+
+
 def test_verified_team_loss_is_classified_without_bonus():
     payload = {"items": [{
         "battleTime": "20260923T013712.000Z",

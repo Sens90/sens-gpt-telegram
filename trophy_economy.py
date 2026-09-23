@@ -59,12 +59,13 @@ def classify_trophy_change(mode, result, trophies_before, trophy_change, placeme
         except (TypeError, ValueError):
             return None, None, None
         base = SURVIVAL_PLACEMENT_BASES.get(mode, {}).get(rank)
-        if base is not None and 300 <= trophies <= 1999 and base <= change <= base + 10:
+        if base is not None and 0 <= trophies <= 1999 and base <= change <= base + 14:
             extra = change - base
             streak_finish = (mode == "soloShowdown" and rank <= 4) or (
                 mode == "duoShowdown" and rank <= 2
             )
-            bonus = "win_streak_observed" if extra and streak_finish else (
+            bonus = ("win_streak_plus_underdog_observed" if extra > 10 and streak_finish
+                     else "win_streak_observed" if extra and streak_finish else
                 "underdog_observed" if extra else None
             )
             return base, extra, bonus
@@ -77,12 +78,14 @@ def classify_trophy_change(mode, result, trophies_before, trophy_change, placeme
         return None, None, None
 
     normalized_result = str(result or "").lower()
-    if normalized_result == "victory" and 300 <= trophies <= 1799:
+    if normalized_result == "victory" and 0 <= trophies <= 1999:
         # +1 victories occur in protected/bot matches. +10 is the repeatedly
         # observed ordinary team base; +11..+20 carry an unresolved bonus.
-        if 10 <= change <= 20:
+        if 10 <= change <= 24:
             extra = change - 10
-            return 10, extra, "win_streak_observed" if extra else None
+            bonus = ("win_streak_plus_underdog_observed" if extra > 10
+                     else "win_streak_observed" if extra else None)
+            return 10, extra, bonus
         return None, None, None
 
     if normalized_result == "defeat":
