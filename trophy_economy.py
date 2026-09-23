@@ -61,13 +61,19 @@ def classify_trophy_change(mode, result, trophies_before, trophy_change, placeme
         base = SURVIVAL_PLACEMENT_BASES.get(mode, {}).get(rank)
         if base is not None and 300 <= trophies <= 1999 and base <= change <= base + 10:
             extra = change - base
-            return base, extra, "observed_extra_unresolved" if extra else None
+            streak_finish = (mode == "soloShowdown" and rank <= 4) or (
+                mode == "duoShowdown" and rank <= 2
+            )
+            bonus = "win_streak_observed" if extra and streak_finish else (
+                "underdog_observed" if extra else None
+            )
+            return base, extra, bonus
         for loss_mode, lower, upper, placement_bases in SURVIVAL_LOSS_BASES:
             expected = placement_bases.get(rank)
             if (mode == loss_mode and lower <= trophies <= upper
                     and expected is not None and expected <= change <= expected + 4):
                 extra = change - expected
-                return expected, extra, "observed_extra_unresolved" if extra else None
+                return expected, extra, "underdog_observed" if extra else None
         return None, None, None
 
     normalized_result = str(result or "").lower()
@@ -76,13 +82,13 @@ def classify_trophy_change(mode, result, trophies_before, trophy_change, placeme
         # observed ordinary team base; +11..+20 carry an unresolved bonus.
         if 10 <= change <= 20:
             extra = change - 10
-            return 10, extra, "observed_extra_unresolved" if extra else None
+            return 10, extra, "win_streak_observed" if extra else None
         return None, None, None
 
     if normalized_result == "defeat":
         for lower, upper, expected in TEAM_LOSS_BY_RANGE:
             if lower <= trophies <= upper and expected <= change <= expected + 4:
                 extra = change - expected
-                return expected, extra, "observed_extra_unresolved" if extra else None
+                return expected, extra, "underdog_observed" if extra else None
 
     return None, None, None
