@@ -46,6 +46,10 @@ def observed_battle_rows(player_tag, player_name, payload):
         if not isinstance(item, dict):
             continue
         battle = item.get("battle") if isinstance(item.get("battle"), dict) else {}
+        # Challenge progress can expose trophyChange=1 and artificial Brawler
+        # values (0, 100, 200...). It is not trophy-ladder economy evidence.
+        if battle.get("type") == "challenge":
+            continue
         battle_time = _battle_time_iso(item.get("battleTime"))
         if not battle_time:
             continue

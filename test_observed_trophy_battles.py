@@ -120,6 +120,21 @@ def test_missing_trophy_change_is_not_persisted():
     assert observed_battle_rows("2GU9UV2RG", "DeSS", payload) == []
 
 
+def test_challenge_trophy_change_is_excluded_from_ladder_evidence():
+    payload = {"items": [{
+        "battleTime": "20260923T013712.000Z",
+        "event": {"mode": "bounty"},
+        "battle": {
+            "type": "challenge", "mode": "bounty", "result": "victory",
+            "trophyChange": 1,
+            "teams": [[{"tag": "#2GU9UV2RG", "brawler": {
+                "name": "PIPER", "trophies": 600,
+            }}]],
+        },
+    }]}
+    assert observed_battle_rows("2GU9UV2RG", "DeSS", payload) == []
+
+
 def test_solo_placement_and_explicit_streak_are_preserved():
     payload = {"items": [{
         "battleTime": "20260923T020000Z",
