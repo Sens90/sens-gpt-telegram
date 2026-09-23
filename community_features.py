@@ -59,7 +59,7 @@ CLASSIFICHE COMMUNITY
 - classifica ranked oggi / 7 / 15 / 30 — variazione ELO nel periodo
 - classifica classificata stagione / classifica ranked stagione — record stagione
 - classifica classificata carriera / classifica ranked carriera — record carriera
-- coefficiente abusivo #TAG — dettaglio del Coefficiente Abusivo
+- coefficiente abusivo #TAG — dettaglio del Coefficiente Abusivo\n- progressione [oggi|7|15|30] [#TAG] — report dettagliato con orari, Brawler, fasce/pesi e punteggio
 - classifica progressione [community|globale|club] [oggi|7|15|30] — valore o crescita del Coefficiente Abusivo
 - statistiche / tutte le classifiche — riepilogo statistiche
 
@@ -1289,6 +1289,96 @@ class CommunityFeatures:
             f'Coefficiente Abusivo: {coefficient}',
         ])
 
+    def progression_detail_text(self, player_tag, days=0):
+        """Detailed observed progression report for one monitored player."""
+        from trophy_coefficient import TROPHY_COEFFICIENT_BANDS, score_brawler_trophies
+        tag = str(player_tag or "").strip().lstrip("#").upper()
+        if not tag:
+            return "Giocatore non disponibile."
+        now_local = datetime.now(ROME)
+        if days == 0:
+            start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+            period = "OGGI"
+        else:
+            start_local = now_local - timedelta(days=int(days))
+            period = f"ULTIMI {int(days)} GIORNI"
+        try:
+            rows = self._get("observed_trophy_battles", {
+                "select": "player_name,battle_time,brawler_name,brawler_trophies_before,mode,trophy_change,observed_extra,bonus_type",
+                "player_tag": f"eq.{tag}",
+                "battle_time": f"gte.{start_local.astimezone(timezone.utc).isoformat()}",
+                "trophy_change": "not.is.null",
+                "brawler_trophies_before": "not.is.null",
+                "order": "battle_time.asc",
+                "limit": "5000",
+            })
+        except Exception as exc:
+            LOG.error("PROGRESSION DETAIL ERROR: %r", exc)
+            return "Non riesco a recuperare il dettaglio Progressione in questo momento."
+        rows = [r for r in (rows or []) if not str(r.get("bonus_type") or "").startswith("excluded")]
+        if not rows:
+            return f"PROGRESSIONE ABUSIVA — {period}\n\nNessuna battaglia osservata valida nel periodo."
+
+        def dt_local(value):
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(ROME)
+
+        def weighted_delta(row):
+            t0 = max(0, int(row.get("brawler_trophies_before") or 0))
+            d = int(row.get("trophy_change") or 0)
+            t1 = max(0, t0 + d)
+            return float(score_brawler_trophies(t1) - score_brawler_trophies(t0))
+
+        def band_labels(lo, hi):
+            a, b = sorted((max(0, lo), max(0, hi)))
+            labels = []
+            for start, end, weight in TROPHY_COEFFICIENT_BANDS:
+                if b >= start and a < end:
+                    labels.append(f"{start:,}–{end-1:,} ×{weight:.4f}".replace(",", ".").replace("×1.", "×1,").replace("×2.", "×2,"))
+            if b >= 3000:
+                labels.append("3.000+ ×1,0000")
+            return labels
+
+        grouped = {}
+        for row in rows:
+            grouped.setdefault(str(row.get("brawler_name") or "Brawler"), []).append(row)
+        raw_total = sum(int(r.get("trophy_change") or 0) for r in rows)
+        weighted_total = int(Decimal(str(sum(weighted_delta(r) for r in rows))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        extra_total = sum(int(r.get("observed_extra") or 0) for r in rows if r.get("observed_extra") is not None)
+        name = next((r.get("player_name") for r in reversed(rows) if r.get("player_name")), tag)
+        lines = [
+            f"PROGRESSIONE ABUSIVA — {name}", f"Periodo: {period}",
+            f"Partite osservate valide: {len(rows)}",
+            f"Coppe nette: {'+' if raw_total > 0 else ''}{self.number_formatter(raw_total)}",
+            f"Punteggio Progressione: {'+' if weighted_total > 0 else ''}{self.number_formatter(weighted_total)}",
+            f"Valore difficoltà: {'+' if weighted_total-raw_total > 0 else ''}{self.number_formatter(weighted_total-raw_total)}",
+            f"Extra osservati vs delta base: +{self.number_formatter(extra_total)}", "",
+            "DETTAGLIO BRAWLER"
+        ]
+        for brawler, br in sorted(grouped.items(), key=lambda item: sum(weighted_delta(r) for r in item[1]), reverse=True):
+            raw = sum(int(r.get("trophy_change") or 0) for r in br)
+            weighted = int(Decimal(str(sum(weighted_delta(r) for r in br))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+            starts = [int(r.get("brawler_trophies_before") or 0) for r in br]
+            ends = [max(0, int(r.get("brawler_trophies_before") or 0)+int(r.get("trophy_change") or 0)) for r in br]
+            first, last = dt_local(br[0]["battle_time"]), dt_local(br[-1]["battle_time"])
+            lines += ["", f"{brawler}", f"Orario: {first:%H:%M}–{last:%H:%M} | Partite: {len(br)}",
+                      f"Coppe osservate: {min(starts+ends):,}–{max(starts+ends):,}".replace(",", "."),
+                      f"Coppe nette: {'+' if raw > 0 else ''}{self.number_formatter(raw)} | Punti: {'+' if weighted > 0 else ''}{self.number_formatter(weighted)}",
+                      "Fasce: " + " · ".join(band_labels(min(starts+ends), max(starts+ends)))]
+            sessions=[]; current=[]
+            for r in br:
+                t=dt_local(r["battle_time"])
+                if current and (t-dt_local(current[-1]["battle_time"])).total_seconds()>1800:
+                    sessions.append(current); current=[]
+                current.append(r)
+            if current: sessions.append(current)
+            if len(sessions)>1:
+                lines.append("Sessioni:")
+                for ss in sessions:
+                    sr=sum(int(x.get("trophy_change") or 0) for x in ss)
+                    sw=int(Decimal(str(sum(weighted_delta(x) for x in ss))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+                    lines.append(f"• {dt_local(ss[0]['battle_time']):%H:%M}–{dt_local(ss[-1]['battle_time']):%H:%M}: {len(ss)} partite, {'+' if sr>0 else ''}{sr} coppe, {'+' if sw>0 else ''}{sw} punti")
+        return "\n".join(lines)
+
     def coefficient_ranking_text(self, chat_id, scope="community", days=None):
         scope = str(scope or "community").strip().casefold()
         club_name = None
@@ -2020,6 +2110,18 @@ class CommunityFeatures:
         coefficient_single = re.fullmatch(r"coefficiente(?:\s+abusivo)?\s+#?([0289PYLQGRJCUV]{3,15})", q0, re.I)
         if coefficient_single:
             await message.reply_text(self.coefficient_text(coefficient_single.group(1)))
+            return True
+
+        progression_detail = re.fullmatch(r"progressione(?:\\s+(oggi|7|15|30)(?:\\s+giorni)?)?(?:\\s+#?([0289PYLQGRJCUV]{3,15}))?", q0, re.I)
+        if progression_detail:
+            raw_period, explicit_tag = progression_detail.groups()
+            detail_days = 0 if raw_period in (None, "oggi") else int(raw_period)
+            registered = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
+            detail_tag = explicit_tag or (registered or {}).get("player_tag")
+            if not detail_tag:
+                await message.reply_text("Devi essere registrato oppure usare: progressione oggi #TAG.")
+                return True
+            await self._send_ranking_message(context, message.chat_id, self.progression_detail_text(detail_tag, detail_days))
             return True
 
         # Coefficiente Abusivo progression family. Keep all supported forms here
