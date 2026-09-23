@@ -1979,19 +1979,40 @@ class CommunityFeatures:
             if _ranking_member and _ranking_member.get("chat_id") is not None:
                 _ranking_chat_id = int(_ranking_member["chat_id"])
 
-        coefficient_single = re.fullmatch(r"coefficiente(?:\\s+abusivo)?\\s+#?([0289PYLQGRJCUV]{3,15})", q0, re.I)
+        coefficient_single = re.fullmatch(r"coefficiente(?:\s+abusivo)?\s+#?([0289PYLQGRJCUV]{3,15})", q0, re.I)
         if coefficient_single:
             await message.reply_text(self.coefficient_text(coefficient_single.group(1)))
             return True
-        coefficient_rank = re.fullmatch(
-            r"classifica\s+progressione(?:\s+(community|globale|titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?))?(?:\s+(oggi|7|15|30)(?:\s+giorni)?)?",
-            q0, re.I,
+
+        # Coefficiente Abusivo progression family. Keep all supported forms here
+        # so every recognized command is routed deterministically and never falls
+        # through to the AI conversation handler.
+        progression_patterns = (
+            (r"classifica\s+progressione(?:\s+(oggi|7|15|30)(?:\s+giorni)?)?", "community"),
+            (r"classifica\s+progressione\s+community(?:\s+(oggi|7|15|30)(?:\s+giorni)?)?", "community"),
+            (r"classifica\s+progressione\s+club(?:\s+(oggi|7|15|30)(?:\s+giorni)?)?", "community_club"),
+            (r"classifica\s+progressione\s+(?:globale\s+club|club\s+globale)(?:\s+(oggi|7|15|30)(?:\s+giorni)?)?", "global_clubs"),
+            (r"classifica\s+progressione\s+(titani|tamarri|tornadi|talenti)(?:\s+abusivi)?(?:\s+(oggi|7|15|30)(?:\s+giorni)?)?", "registered_club"),
+            (r"classifica\s+progressione\s+club\s+globale\s+(titani|tamarri|tornadi|talenti)(?:\s+abusivi)?(?:\s+(oggi|7|15|30)(?:\s+giorni)?)?", "global_single_club"),
         )
-        if coefficient_rank:
-            scope = (coefficient_rank.group(1) or "community").lower()
-            raw_period = coefficient_rank.group(2)
+        for progression_pattern, progression_scope in progression_patterns:
+            progression_match = re.fullmatch(progression_pattern, q0, re.I)
+            if not progression_match:
+                continue
+            groups = progression_match.groups()
+            if progression_scope in ("registered_club", "global_single_club"):
+                club_key = groups[0].lower()
+                raw_period = groups[1]
+                scope = club_key
+            else:
+                raw_period = groups[0] if groups else None
+                scope = progression_scope
             days = 0 if raw_period == "oggi" else (int(raw_period) if raw_period else None)
-            await self._send_ranking_message(context, message.chat_id, self.coefficient_ranking_text(_ranking_chat_id, scope, days))
+            await self._send_ranking_message(
+                context,
+                message.chat_id,
+                self.coefficient_ranking_text(_ranking_chat_id, scope, days),
+            )
             return True
 
         # Trophy leaderboard commands are common and can be expensive: route them
