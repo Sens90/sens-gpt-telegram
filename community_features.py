@@ -1029,7 +1029,7 @@ class CommunityFeatures:
             "valore difficoltà": "⚖️", "extra osservati vs delta base": "✨",
             "extra osservato": "✨", "delta base previsto": "🧮",
             "serie di vittorie osservata": "🔥", "peso fascia iniziale": "⚖️",
-            "fasce": "🎯", "orario": "🕐", "risultato": "✅", "squadra": "👥",
+            "fasce": "🎯", "orario": "🕐", "squadra": "👥",
             "massimo squadra": "👑", "trofei": "🏆", "brawler": "🦸",
             "club": "🛡️", "tag": "🏷️", "tag club": "🏷️", "livello": "⚡",
             "punti esperienza": "✨", "fama": "🌠", "livello clip": "📎",
@@ -1061,7 +1061,19 @@ class CommunityFeatures:
                 continue
             if ":" in value:
                 label, detail = value.split(":", 1)
-                icon = field_emojis.get(label.strip().casefold())
+                normalized_label = label.strip().casefold()
+                if normalized_label == "risultato":
+                    normalized_result = detail.strip().casefold()
+                    if normalized_result.startswith("vittoria"):
+                        icon = "✅"
+                    elif normalized_result.startswith("sconfitta"):
+                        icon = "❌"
+                    elif normalized_result.startswith("pareggio"):
+                        icon = "🤝"
+                    else:
+                        icon = "ℹ️"
+                else:
+                    icon = field_emojis.get(normalized_label)
                 if icon:
                     nodes.append({"tag": "p", "children": [
                         {"tag": "strong", "children": [f"{icon} {label.strip()}:"]},
@@ -2480,6 +2492,17 @@ class CommunityFeatures:
         coefficient_single = re.fullmatch(r"coefficiente(?:\s+abusivo)?\s+#?([0289PYLQGRJCUV]{3,15})", q0, re.I)
         if coefficient_single:
             await message.reply_text(self.coefficient_text(coefficient_single.group(1)))
+            return True
+
+        progression_club = re.fullmatch(r"progressione\s+club(?:\s+(oggi|7|15|30)(?:\s+giorni)?)?", q0, re.I)
+        if progression_club:
+            raw_period = progression_club.group(1)
+            days = 0 if raw_period == "oggi" else (int(raw_period) if raw_period else None)
+            await self._send_ranking_message(
+                context,
+                message.chat_id,
+                self.coefficient_ranking_text(_ranking_chat_id, "community_club", days),
+            )
             return True
 
         progression_brawler = re.fullmatch(r"progressione\s+(.+?)(?:\s+#([0289PYLQGRJCUV]{3,15}))?", q0, re.I)

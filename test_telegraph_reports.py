@@ -73,6 +73,24 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._publish_telegraph.assert_not_called()
         self.assertEqual(bot.send_message.await_args.kwargs["text"], battle_log)
 
+    async def test_progressione_club_is_routed_to_club_ranking(self):
+        obj = self.make_features()
+        obj.coefficient_ranking_text = Mock(return_value="CLASSIFICA PROGRESSIONE CLUB")
+        obj._send_ranking_message = AsyncMock(return_value=True)
+        message = SimpleNamespace(
+            chat_id=123,
+            chat=SimpleNamespace(type="group"),
+            from_user=SimpleNamespace(id=456),
+            reply_text=AsyncMock(),
+        )
+        context = SimpleNamespace(user_data={})
+
+        self.assertTrue(await obj.handle_command(message, context, "Progressione club"))
+        obj.coefficient_ranking_text.assert_called_once_with(123, "community_club", None)
+        obj._send_ranking_message.assert_awaited_once_with(
+            context, 123, "CLASSIFICA PROGRESSIONE CLUB"
+        )
+
     def test_progressione_oggi_builds_report_payload(self):
         obj = self.make_features()
         obj._get = Mock(return_value=[{
@@ -122,10 +140,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
     def test_telegraph_fields_get_coherent_icons(self):
         nodes = self.make_features()._telegraph_nodes([
             "PROGRESSIONE GRIFF", "Data: 23/09/2026", "Coppe: 500 → 508 (+8)",
-            "Risultato: Vittoria", "Squadra: non disponibile",
+            "Risultato: Vittoria", "Risultato: Sconfitta", "Risultato: Pareggio",
+            "Squadra: non disponibile",
         ])
         rendered = str(nodes)
-        for icon in ("📈", "📅", "🏆", "✅", "👥"):
+        for icon in ("📈", "📅", "🏆", "✅", "❌", "🤝", "👥"):
             self.assertIn(icon, rendered)
 
 
