@@ -6,6 +6,7 @@ Unknown, protected/bot and survival cases intentionally remain unclassified.
 
 
 SURVIVAL_MODES = {"soloShowdown", "duoShowdown"}
+SURVIVAL_FIRST_PLACE_BASE = {"soloShowdown": 13, "duoShowdown": 11}
 
 # Repeated exact losses observed across multiple ordinary team modes.
 TEAM_LOSS_BY_RANGE = (
@@ -20,7 +21,7 @@ TEAM_LOSS_BY_RANGE = (
 )
 
 
-def classify_trophy_change(mode, result, trophies_before, trophy_change):
+def classify_trophy_change(mode, result, trophies_before, trophy_change, placement=None):
     """Return (base delta, observed extra, type), or unknown Nones.
 
     The API does not expose whether a positive extra is streak, underdog or
@@ -33,7 +34,18 @@ def classify_trophy_change(mode, result, trophies_before, trophy_change):
     except (TypeError, ValueError):
         return None, None, None
 
-    if mode in SURVIVAL_MODES or not mode or trophies >= 2000:
+    if not mode or trophies >= 2000:
+        return None, None, None
+
+    if mode in SURVIVAL_MODES:
+        try:
+            rank = int(placement)
+        except (TypeError, ValueError):
+            return None, None, None
+        base = SURVIVAL_FIRST_PLACE_BASE.get(mode)
+        if rank == 1 and 300 <= trophies <= 1999 and base <= change <= base + 10:
+            extra = change - base
+            return base, extra, "observed_extra_unresolved" if extra else None
         return None, None, None
 
     normalized_result = str(result or "").lower()
