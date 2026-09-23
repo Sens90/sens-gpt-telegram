@@ -142,6 +142,7 @@ def observed_battle_rows(player_tag, player_name, payload):
             "result": battle.get("result"), "placement": placement,
             "trophy_change": trophy_change, "expected_base_delta": expected_base,
             "observed_extra": observed_extra, "current_win_streak": streak,
-            "bonus_type": bonus_type, "team_max_brawler_trophies": team_max_trophies,\n            "team_composition": team_composition, "raw_battle": item,
+            "bonus_type": bonus_type, "team_max_brawler_trophies": team_max_trophies,
+            "team_composition": team_composition, "raw_battle": item,
         })
     return rows
