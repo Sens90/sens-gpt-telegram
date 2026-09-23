@@ -1667,19 +1667,21 @@ class CommunityFeatures:
             return 1.0
 
         def points(row):
+            """Positive Progressione uses the highest Brawler trophy value in the team."""
             t0 = max(0, int(row.get("brawler_trophies_before") or 0))
             d = int(row.get("trophy_change") or 0)
-            t1 = max(0, t0 + d)
-            if d >= 0:
-                return float(score_brawler_trophies(t1) - score_brawler_trophies(t0))
-            loss = 0.0
-            for start, end, weight in TROPHY_COEFFICIENT_BANDS:
-                overlap = max(0, min(t0, end) - max(t1, start))
-                if overlap:
-                    loss += overlap / float(weight)
-            if t0 > 3000:
-                loss += max(0, t0 - max(t1, 3000))
-            return -loss
+            if d <= 0:
+                return 0.0
+            mode_key = str(row.get("mode") or "").casefold()
+            reference = t0
+            if mode_key not in {"soloshowdown", "solo"}:
+                try:
+                    team_max = int(row.get("team_max_brawler_trophies"))
+                except (TypeError, ValueError):
+                    team_max = None
+                if team_max is not None:
+                    reference = max(reference, team_max)
+            return float(score_brawler_trophies(reference + d) - score_brawler_trophies(reference))
 
         def team_context(row):
             """Use normalized team data, with a safe fallback to saved official evidence."""
@@ -1737,7 +1739,9 @@ class CommunityFeatures:
             d = int(row.get("trophy_change") or 0)
             t1 = max(0, t0 + d)
             p = points(row)
-            w = weight_at(t0)
+            max_t, team = team_context(row)
+            reference_trophies = t0 if str(row.get("mode") or "").casefold() in {"soloshowdown", "solo"} else max(t0, int(max_t)) if max_t is not None else t0
+            w = weight_at(reference_trophies)
             expected = row.get("expected_base_delta")
             extra = row.get("observed_extra")
             mode = self._progression_mode_it(row.get("mode"))
@@ -1749,8 +1753,10 @@ class CommunityFeatures:
                 f"{index}. {local_dt(row['battle_time']):%H:%M} — {mode}",
                 f"Coppe: {t0} → {t1} ({'+' if d > 0 else ''}{d})",
                 f"Risultato: {outcome}",
-                f"Peso fascia iniziale: ×{w:.4f}".replace(".", ","),
-                f"Punti Progressione: {'+' if p > 0 else ''}{p:.2f}".replace(".", ","),
+                f"Valore di riferimento: {reference_trophies} 🏆",
+                f"Peso fascia di riferimento: ×{w:.4f}".replace(".", ","),
+                ("Punti Progressione: 0 (sconfitta non conteggiata)" if d < 0 else
+                 f"Punti Progressione: {'+' if p > 0 else ''}{p:.2f}".replace(".", ",")),
             ]
             if expected is not None:
                 lines.append(f"Delta base previsto: {'+' if int(expected) > 0 else ''}{int(expected)}")
@@ -1760,7 +1766,6 @@ class CommunityFeatures:
             if row.get("current_win_streak") is not None:
                 lines.append(f"Serie di vittorie osservata: {int(row['current_win_streak'])}")
 
-            max_t, team = team_context(row)
             if isinstance(team, list) and team:
                 lines.append("Squadra:")
                 for member in team:
