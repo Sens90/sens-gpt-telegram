@@ -127,7 +127,8 @@ def observed_battle_rows(player_tag, player_name, payload):
         event = item.get("event") if isinstance(item.get("event"), dict) else {}
         mode = battle.get("mode") or event.get("mode")
         identity = "|".join((clean_tag, battle_time, str(event.get("id") or ""), str(mode or ""), str(brawler_name or ""), str(trophy_change)))
-        team_max_trophies, team_composition = _team_trophy_context(battle, clean_tag)\n        expected_base, observed_extra, bonus_type = classify_trophy_change(
+        team_max_trophies, team_composition = _team_trophy_context(battle, clean_tag)
+        expected_base, observed_extra, bonus_type = classify_trophy_change(
             mode, battle.get("result"), trophies_before, trophy_change, placement
         )
         if _showdown_team_size_mismatch(battle, mode):
