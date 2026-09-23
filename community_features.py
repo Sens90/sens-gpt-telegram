@@ -1326,6 +1326,10 @@ class CommunityFeatures:
         def weighted_delta(row):
             t0 = max(0, int(row.get("brawler_trophies_before") or 0))
             d = int(row.get("trophy_change") or 0)
+            # Progression difficulty is earned on positive trophy gains only.
+            # Losses keep their real x1 value so a high band is not penalized twice.
+            if d <= 0:
+                return float(d)
             t1 = max(0, t0 + d)
             return float(score_brawler_trophies(t1) - score_brawler_trophies(t0))
 
