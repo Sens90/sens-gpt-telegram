@@ -2113,7 +2113,7 @@ class CommunityFeatures:
             await message.reply_text(self.coefficient_text(coefficient_single.group(1)))
             return True
 
-        progression_detail = re.fullmatch(r"progressione(?:\\s+(oggi|7|15|30)(?:\\s+giorni)?)?(?:\\s+#?([0289PYLQGRJCUV]{3,15}))?", q0, re.I)
+        progression_detail = re.fullmatch(r"progressione(?:\s+(oggi|7|15|30)(?:\s+giorni)?)?(?:\s+#?([0289PYLQGRJCUV]{3,15}))?", q0, re.I)
         if progression_detail:
             raw_period, explicit_tag = progression_detail.groups()
             detail_days = 0 if raw_period in (None, "oggi") else int(raw_period)
