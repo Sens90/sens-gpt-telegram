@@ -1984,7 +1984,7 @@ class CommunityFeatures:
             await message.reply_text(self.coefficient_text(coefficient_single.group(1)))
             return True
         coefficient_rank = re.fullmatch(
-            r"classifica\\s+progressione(?:\\s+(community|globale|titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?))?(?:\\s+(oggi|7|15|30)(?:\\s+giorni)?)?",
+            r"classifica\s+progressione(?:\s+(community|globale|titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?))?(?:\s+(oggi|7|15|30)(?:\s+giorni)?)?",
             q0, re.I,
         )
         if coefficient_rank:
