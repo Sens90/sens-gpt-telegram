@@ -1292,12 +1292,10 @@ class CommunityFeatures:
     def coefficient_ranking_text(self, chat_id, scope="community", days=None):
         scope = str(scope or "community").strip().casefold()
         club_name = None
-        global_registered = scope == "globale"
-        if scope not in ("community", "globale"):
-            club_name = self.CLUB_ALIASES.get(scope) or self.CLUB_ALIASES.get(scope.replace(" abusivi", ""))
-            if not club_name:
-                return "Classifica coefficiente non riconosciuta."
-        if global_registered:
+        registered_only = False
+
+        if scope == "community":
+            # All registered users, regardless of club.
             members = self._get("community_members", {
                 "select": "player_tag,player_name,display_name,club_name,is_active",
                 "is_active": "eq.true",
@@ -1305,15 +1303,49 @@ class CommunityFeatures:
                 "order": "player_last_updated_at.desc.nullslast",
                 "limit": "1000",
             })
-            unique = {}
-            for member in members or []:
-                tag = str(member.get("player_tag") or "").strip().lstrip("#").upper()
-                if tag and tag not in unique:
-                    unique[tag] = member
-            members = list(unique.values())
             title = "CLASSIFICA PROGRESSIONE"
+        elif scope == "community_club":
+            # Registered users who currently belong to one of the four ABUSIVI clubs.
+            members = self._get("community_members", {
+                "select": "player_tag,player_name,display_name,club_name,is_active",
+                "is_active": "eq.true",
+                "player_tag": "not.is.null",
+                "order": "player_last_updated_at.desc.nullslast",
+                "limit": "1000",
+            })
+            allowed = {name.casefold() for name in self.CLUB_ALIASES.values()}
+            members = [m for m in (members or []) if str(m.get("club_name") or "").casefold() in allowed]
+            title = "CLASSIFICA PROGRESSIONE CLUB"
+        elif scope == "global_clubs":
+            # Complete latest rosters of all four ABUSIVI clubs.
+            members = []
+            seen = set()
+            for name in sorted(set(self.CLUB_ALIASES.values())):
+                latest_dates = self._get("club_roster_daily", {
+                    "select": "snapshot_date", "club_name": f"eq.{name}",
+                    "order": "snapshot_date.desc", "limit": "1",
+                })
+                latest_date = latest_dates[0].get("snapshot_date") if latest_dates else None
+                if not latest_date:
+                    continue
+                for member in self._get("club_roster_daily", {
+                    "select": "player_tag,player_name,club_name",
+                    "club_name": f"eq.{name}", "snapshot_date": f"eq.{latest_date}", "limit": "100",
+                }) or []:
+                    tag = str(member.get("player_tag") or "").strip().lstrip("#").upper()
+                    if tag and tag not in seen:
+                        seen.add(tag)
+                        members.append(member)
+            title = "CLASSIFICA PROGRESSIONE GLOBALE CLUB"
         else:
-            if club_name:
+            global_single = False
+            if scope.startswith("global_single:"):
+                global_single = True
+                scope = scope.split(":", 1)[1]
+            club_name = self.CLUB_ALIASES.get(scope) or self.CLUB_ALIASES.get(scope.replace(" abusivi", ""))
+            if not club_name:
+                return "Classifica progressione non riconosciuta."
+            if global_single:
                 latest_dates = self._get("club_roster_daily", {
                     "select": "snapshot_date", "club_name": f"eq.{club_name}",
                     "order": "snapshot_date.desc", "limit": "1",
@@ -1321,18 +1353,24 @@ class CommunityFeatures:
                 latest_date = latest_dates[0].get("snapshot_date") if latest_dates else None
                 members = self._get("club_roster_daily", {
                     "select": "player_tag,player_name,club_name",
-                    "club_name": f"eq.{club_name}",
-                    "snapshot_date": f"eq.{latest_date}", "limit": "100",
+                    "club_name": f"eq.{club_name}", "snapshot_date": f"eq.{latest_date}", "limit": "100",
                 }) if latest_date else []
-                title = f"CLASSIFICA PROGRESSIONE — {club_name}"
+                title = f"CLASSIFICA PROGRESSIONE CLUB GLOBALE — {club_name}"
             else:
-                members = self.members(chat_id)
-                title = "CLASSIFICA PROGRESSIONE"
-        member_by_tag = {
-            str(member.get("player_tag") or "").strip().lstrip("#").upper(): member
-            for member in members
-            if member.get("player_tag")
-        }
+                # Registered users of the requested club only.
+                members = self._get("community_members", {
+                    "select": "player_tag,player_name,display_name,club_name,is_active",
+                    "is_active": "eq.true", "player_tag": "not.is.null",
+                    "club_name": f"eq.{club_name}", "limit": "1000",
+                })
+                title = f"CLASSIFICA PROGRESSIONE — {club_name}"
+
+        unique = {}
+        for member in members or []:
+            tag = str(member.get("player_tag") or "").strip().lstrip("#").upper()
+            if tag and tag not in unique:
+                unique[tag] = member
+        member_by_tag = unique
         try:
             response = requests.post(
                 f"{self.supabase_url}/rest/v1/rpc/coefficient_progression_rows",
@@ -2003,7 +2041,7 @@ class CommunityFeatures:
             if progression_scope in ("registered_club", "global_single_club"):
                 club_key = groups[0].lower()
                 raw_period = groups[1]
-                scope = club_key
+                scope = ("global_single:" + club_key) if progression_scope == "global_single_club" else club_key
             else:
                 raw_period = groups[0] if groups else None
                 scope = progression_scope
