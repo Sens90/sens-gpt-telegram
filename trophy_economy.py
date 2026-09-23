@@ -23,14 +23,15 @@ SOLO_SHOWDOWN_BASES = (
     (1800, 1999, (13, 10, 8, 5, 0, -3, -5, -7, -9, -12)),
 )
 
-# Duo remains deliberately limited to repeatedly observed cells.  The public
-# 2026 graphic covers Solo only, so unknown Duo cells must stay unclassified.
-SURVIVAL_PLACEMENT_BASES = {"duoShowdown": {1: 11, 2: 5}}
+# Duo remains deliberately limited to genuine two-player-team observations.
+# The public 2026 graphic covers Solo only, so unknown Duo cells stay unknown.
+SURVIVAL_PLACEMENT_BASES = {}
 DUO_SHOWDOWN_BASES = (
-    (1000, 1099, {3: -1, 4: -6, 5: -5}),
+    (900, 999, {2: 5}),
+    (1000, 1099, {1: 11, 2: 5, 3: -1, 4: -6, 5: -5}),
     # These losses are confirmed by the observed delta plus the maximum +4
     # Underdog compensation in matches with a much lower-trophy teammate.
-    (1100, 1199, {3: -5, 4: -8}),
+    (1100, 1199, {1: 11, 3: -5, 4: -8}),
     (1800, 1999, {3: -6}),
 )
 
@@ -41,10 +42,7 @@ SURVIVAL_LOSS_BASES = (
     ("soloShowdown", 600, 799, {7: -2, 8: -2, 9: -3}),
     ("soloShowdown", 800, 999, {7: -2, 9: -4, 10: -5}),
     ("soloShowdown", 1300, 1499, {10: -10}),
-    ("duoShowdown", 300, 599, {4: -2}),
     ("duoShowdown", 1000, 1099, {4: -6}),
-    ("duoShowdown", 1300, 1499, {4: -9}),
-    ("duoShowdown", 1500, 1799, {3: -5, 4: -10}),
 )
 
 # Repeated exact losses observed across multiple ordinary team modes.

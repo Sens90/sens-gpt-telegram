@@ -37,6 +37,14 @@ def _find_player(node, player_tag):
     return None
 
 
+def _showdown_team_size_mismatch(battle, mode):
+    expected = {"duoShowdown": 2, "trioShowdown": 3}.get(mode)
+    teams = battle.get("teams")
+    if expected is None or not isinstance(teams, list) or not teams:
+        return False
+    return any(not isinstance(team, list) or len(team) != expected for team in teams)
+
+
 def observed_battle_rows(player_tag, player_name, payload):
     """Return rows only for battles carrying an explicit trophyChange."""
     clean_tag = str(player_tag or "").replace("#", "").upper()
@@ -90,6 +98,9 @@ def observed_battle_rows(player_tag, player_name, payload):
         expected_base, observed_extra, bonus_type = classify_trophy_change(
             mode, battle.get("result"), trophies_before, trophy_change, placement
         )
+        if _showdown_team_size_mismatch(battle, mode):
+            expected_base = observed_extra = None
+            bonus_type = "excluded_team_size_mismatch"
         rows.append({
             "player_tag": clean_tag, "player_name": player_name,
             "battle_key": hashlib.sha256(identity.encode("utf-8")).hexdigest(),

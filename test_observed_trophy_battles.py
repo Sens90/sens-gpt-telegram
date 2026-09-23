@@ -88,10 +88,7 @@ def test_verified_survival_positive_placement_bases_are_classified():
     assert classify_trophy_change("soloShowdown", None, 900, 23, 1) == (
         13, 10, "win_streak_observed"
     )
-    assert classify_trophy_change("duoShowdown", None, 1500, 11, 1) == (11, 0, None)
-    assert classify_trophy_change("duoShowdown", None, 1500, 7, 2) == (
-        5, 2, "win_streak_observed"
-    )
+    assert classify_trophy_change("duoShowdown", None, 1500, 11, 1) == (None, None, None)
     assert classify_trophy_change("soloShowdown", None, 500, 15, 4) == (
         5, 10, "win_streak_observed"
     )
@@ -109,7 +106,7 @@ def test_only_verified_survival_losses_are_classified():
 
     assert classify_trophy_change("soloShowdown", None, 550, -2, 10) == (-2, 0, None)
     assert classify_trophy_change("soloShowdown", None, 900, -5, 10) == (-5, 0, None)
-    assert classify_trophy_change("duoShowdown", None, 1600, -10, 4) == (-10, 0, None)
+    assert classify_trophy_change("duoShowdown", None, 1600, -10, 4) == (None, None, None)
 
 
 def test_exact_2026_solo_showdown_table_changes_by_trophy_band():
@@ -180,6 +177,25 @@ def test_challenge_trophy_change_is_excluded_from_ladder_evidence():
         },
     }]}
     assert observed_battle_rows("2GU9UV2RG", "DeSS", payload) == []
+
+
+def test_mislabeled_trio_teams_are_not_used_as_duo_evidence():
+    payload = {"items": [{
+        "battleTime": "20260923T013712.000Z",
+        "event": {"mode": "duoShowdown"},
+        "battle": {
+            "mode": "duoShowdown", "rank": 1, "trophyChange": 11,
+            "teams": [[
+                {"tag": "#2GU9UV2RG", "brawler": {"name": "PIPER", "trophies": 1050}},
+                {"tag": "#A", "brawler": {"name": "COLT", "trophies": 1050}},
+                {"tag": "#B", "brawler": {"name": "SHELLY", "trophies": 1050}},
+            ]],
+        },
+    }]}
+    row = observed_battle_rows("2GU9UV2RG", "DeSS", payload)[0]
+    assert row["expected_base_delta"] is None
+    assert row["observed_extra"] is None
+    assert row["bonus_type"] == "excluded_team_size_mismatch"
 
 
 def test_solo_placement_and_explicit_streak_are_preserved():
