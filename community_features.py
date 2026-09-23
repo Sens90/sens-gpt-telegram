@@ -1517,6 +1517,19 @@ class CommunityFeatures:
                     lines.append(f"Massimo squadra: {int(max_t)} 🏆")
             else:
                 lines.append("Squadra: non disponibile nel battle log.")
+        report_url = self._publish_telegraph(f"Progressione {brawler} — {name}", lines)
+        if report_url:
+            summary = [
+                f"PROGRESSIONE {brawler.upper()} — {name}",
+                "Periodo: OGGI",
+                f"Partite osservate valide: {len(matches)}",
+                "Coppe nette: " + ("+" if raw > 0 else "") + str(raw),
+                "Punti Progressione: " + ("+" if pts > 0 else "") + f"{pts:.2f}".replace(".", ","),
+                "",
+                "📊 REPORT COMPLETO",
+                report_url,
+            ]
+            return "\n".join(summary)
         return "\n".join(lines)
 
     def coefficient_ranking_text(self, chat_id, scope="community", days=None):
