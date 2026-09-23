@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+from trophy_coefficient import calculate_trophy_coefficient
+
 ROME = ZoneInfo("Europe/Rome")
 LOG = logging.getLogger(__name__)
 
@@ -57,6 +59,8 @@ CLASSIFICHE COMMUNITY
 - classifica ranked oggi / 7 / 15 / 30 — variazione ELO nel periodo
 - classifica classificata stagione / classifica ranked stagione — record stagione
 - classifica classificata carriera / classifica ranked carriera — record carriera
+- coefficiente abusivo #TAG — dettaglio del Coefficiente Abusivo
+- classifica progressione [community|globale|club] [oggi|7|15|30] — valore o crescita del Coefficiente Abusivo
 - statistiche / tutte le classifiche — riepilogo statistiche
 
 CLASSIFICHE DEI 4 CLUB
@@ -1269,6 +1273,95 @@ class CommunityFeatures:
         rows.sort(key=lambda x:x["value"],reverse=True)
         return rows
 
+    def coefficient_text(self, player_tag):
+        player = self.player_fetcher(str(player_tag or "").strip().lstrip("#").upper())
+        if not player or player.get("trophies") is None:
+            return "Non riesco a recuperare questo giocatore."
+        result = calculate_trophy_coefficient(player.get("brawler_trophies"), player.get("trophies"))
+        value = int(result["score"]) - int(result["official_total"])
+        coefficient = f'{result["coefficient"]:.6f}'.replace(".", ",")
+        return "\n".join([
+            f'COEFFICIENTE ABUSIVO — {player.get("name") or player_tag}',
+            "",
+            f'Trofei: {self.number_formatter(result["official_total"])}',
+            f'Punteggio per coefficiente: {self.number_formatter(result["score"])}',
+            f'Valore coefficiente: {self.number_formatter(value)}',
+            f'Coefficiente Abusivo: {coefficient}',
+        ])
+
+    def coefficient_ranking_text(self, chat_id, scope="community", days=None):
+        scope = str(scope or "community").strip().casefold()
+        club_name = None
+        global_registered = scope == "globale"
+        if scope not in ("community", "globale"):
+            club_name = self.CLUB_ALIASES.get(scope) or self.CLUB_ALIASES.get(scope.replace(" abusivi", ""))
+            if not club_name:
+                return "Classifica coefficiente non riconosciuta."
+        if global_registered:
+            members = self._get("community_members", {
+                "select": "player_tag,player_name,display_name,club_name,is_active",
+                "is_active": "eq.true",
+                "player_tag": "not.is.null",
+                "order": "player_last_updated_at.desc.nullslast",
+                "limit": "1000",
+            })
+            unique = {}
+            for member in members or []:
+                tag = str(member.get("player_tag") or "").strip().lstrip("#").upper()
+                if tag and tag not in unique:
+                    unique[tag] = member
+            members = list(unique.values())
+            title = "CLASSIFICA PROGRESSIONE"
+        else:
+            if club_name:
+                latest_dates = self._get("club_roster_daily", {
+                    "select": "snapshot_date", "club_name": f"eq.{club_name}",
+                    "order": "snapshot_date.desc", "limit": "1",
+                })
+                latest_date = latest_dates[0].get("snapshot_date") if latest_dates else None
+                members = self._get("club_roster_daily", {
+                    "select": "player_tag,player_name,club_name",
+                    "club_name": f"eq.{club_name}",
+                    "snapshot_date": f"eq.{latest_date}", "limit": "100",
+                }) if latest_date else []
+                title = f"CLASSIFICA PROGRESSIONE — {club_name}"
+            else:
+                members = self.members(chat_id)
+                title = "CLASSIFICA PROGRESSIONE"
+        member_by_tag = {
+            str(member.get("player_tag") or "").strip().lstrip("#").upper(): member
+            for member in members
+            if member.get("player_tag")
+        }
+        try:
+            response = requests.post(
+                f"{self.supabase_url}/rest/v1/rpc/coefficient_progression_rows",
+                headers=self._headers(),
+                json={"p_player_tags": list(member_by_tag), "p_days": days},
+                timeout=20,
+            )
+            response.raise_for_status()
+            rows = response.json()
+        except Exception as exc:
+            LOG.error("COEFFICIENT RANKING RPC ERROR: %r", exc)
+            rows = []
+        for row in rows:
+            member = member_by_tag.get(str(row.get("player_tag") or "").upper(), {})
+            row["name"] = row.get("player_name") or member.get("player_name") or member.get("display_name") or row.get("player_tag")
+            row["value"] = row.get("coefficient_value") if days is None else row.get("progression_value")
+        rows = [row for row in rows if row.get("value") is not None]
+        rows.sort(key=lambda row: (int(row["value"]), float(row.get("coefficient") or 0)), reverse=True)
+        if not rows:
+            return f"{title}\n\nStorico non ancora disponibile per questo periodo."
+        period = "ATTUALE" if days is None else ("OGGI" if days == 0 else f"{days} GIORNI")
+        lines = [f"{title} — {period}", ""]
+        for index, row in enumerate(rows[:200], 1):
+            coefficient = f'{float(row["coefficient"]):.6f}'.replace(".", ",")
+            value = int(row["value"])
+            value_text = ("+" if value > 0 and days is not None else "") + self.number_formatter(value)
+            lines.append(f'{index}. {row["name"]} — {value_text} ({coefficient})')
+        return "\n".join(lines)
+
     def stat_ranking_text(self, chat_id, stat_key, club_name=None):
         definition=self.STAT_DEFS.get(stat_key)
         if not definition: return "Statistica non riconosciuta."
@@ -1885,6 +1978,21 @@ class CommunityFeatures:
             _ranking_member = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
             if _ranking_member and _ranking_member.get("chat_id") is not None:
                 _ranking_chat_id = int(_ranking_member["chat_id"])
+
+        coefficient_single = re.fullmatch(r"coefficiente(?:\\s+abusivo)?\\s+#?([0289PYLQGRJCUV]{3,15})", q0, re.I)
+        if coefficient_single:
+            await message.reply_text(self.coefficient_text(coefficient_single.group(1)))
+            return True
+        coefficient_rank = re.fullmatch(
+            r"classifica\\s+progressione(?:\\s+(community|globale|titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?))?(?:\\s+(oggi|7|15|30)(?:\\s+giorni)?)?",
+            q0, re.I,
+        )
+        if coefficient_rank:
+            scope = (coefficient_rank.group(1) or "community").lower()
+            raw_period = coefficient_rank.group(2)
+            days = 0 if raw_period == "oggi" else (int(raw_period) if raw_period else None)
+            await self._send_ranking_message(context, message.chat_id, self.coefficient_ranking_text(_ranking_chat_id, scope, days))
+            return True
 
         # Trophy leaderboard commands are common and can be expensive: route them
         # before Skin Account/user registration lookups so they cannot be delayed

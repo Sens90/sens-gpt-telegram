@@ -2068,6 +2068,53 @@ def render_structured_brawler_meta(context_text):
         print("META DETERMINISTIC RENDER ERROR:",repr(e),flush=True);return None
 
 
+def save_coefficient_snapshot(player, is_registered=True):
+    if not player or not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return False
+    try:
+        result = calculate_trophy_coefficient(player.get("brawler_trophies"), player.get("trophies"))
+        payload = {
+            "player_tag": str(player.get("tag") or "").replace("#", "").upper(),
+            "player_name": player.get("name"),
+            "club_name": player.get("club_name") if isinstance(player.get("club_name"), str) else ((player.get("club") or {}).get("name") if isinstance(player.get("club"), dict) else player.get("club")),
+            "is_registered": bool(is_registered),
+            "trophies": int(result["official_total"]),
+            "coefficient_score": int(result["score"]),
+            "coefficient_value": int(result["score"]) - int(result["official_total"]),
+            "coefficient": float(result["coefficient"]),
+        }
+        if not payload["player_tag"]:
+            return False
+        latest = requests.get(
+            SUPABASE_URL + "/rest/v1/coefficient_history",
+            headers=_supabase_headers(),
+            params={
+                "player_tag": "eq." + payload["player_tag"],
+                "select": "coefficient_score,trophies,recorded_at",
+                "order": "recorded_at.desc",
+                "limit": "1",
+            },
+            timeout=15,
+        )
+        latest.raise_for_status()
+        previous = (latest.json() or [None])[0]
+        if previous and previous.get("coefficient_score") == payload["coefficient_score"] and previous.get("trophies") == payload["trophies"]:
+            recorded = datetime.fromisoformat(str(previous["recorded_at"]).replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) - recorded < timedelta(hours=1):
+                return True
+        response = requests.post(
+            SUPABASE_URL + "/rest/v1/coefficient_history",
+            headers={**_supabase_headers(), "Prefer": "return=minimal"},
+            json=payload,
+            timeout=15,
+        )
+        response.raise_for_status()
+        return True
+    except Exception as exc:
+        print("COEFFICIENT SNAPSHOT ERROR:", repr(exc), flush=True)
+        return False
+
+
 def save_trophy_snapshot(player_tag, player_name, trophies):
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         print("SUPABASE NON CONFIGURATO", flush=True)
@@ -2231,6 +2278,7 @@ def get_tracked_player_tags():
         sources = (
             ("community_members", {"select": "player_tag", "player_tag": "not.is.null", "is_active": "eq.true", "limit": "5000"}),
             ("trophy_history", {"select": "player_tag", "order": "recorded_at.desc", "limit": "5000"}),
+            ("club_roster_daily", {"select": "player_tag", "order": "snapshot_date.desc", "limit": "5000"}),
         )
         for table, params in sources:
             response = requests.get(
@@ -2259,6 +2307,23 @@ def _tracking_headers(prefer=None):
     if prefer:
         headers["Prefer"] = prefer
     return headers
+
+
+def get_registered_player_tags():
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return set()
+    try:
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/community_members",
+            headers=_tracking_headers(),
+            params={"select": "player_tag", "player_tag": "not.is.null", "is_active": "eq.true", "limit": "5000"},
+            timeout=15,
+        )
+        response.raise_for_status()
+        return {str(row.get("player_tag") or "").replace("#", "").upper() for row in response.json() if row.get("player_tag")}
+    except Exception as exc:
+        print("ERRORE LETTURA TAG REGISTRATI:", repr(exc), flush=True)
+        return set()
 
 
 def save_player_tracking(player):
@@ -2567,6 +2632,7 @@ def automatic_trophy_monitor():
             # This path never changes the primary player-profile source order.
             refresh_complete_club_rosters()
             tags = get_tracked_player_tags()
+            registered_tags = get_registered_player_tags()
 
             print(
                 f"MONITOR TROFEI: {len(tags)} giocatori",
@@ -2584,6 +2650,8 @@ def automatic_trophy_monitor():
                             player["trophies"]
                         )
                         save_player_tracking(player)
+                        clean_tag = str(player.get("tag") or "").replace("#", "").upper()
+                        save_coefficient_snapshot(player, is_registered=clean_tag in registered_tags)
 
                         # Keep the registered member's club synchronized from the
                         # same official Supercell response used by the monitor.
@@ -3266,7 +3334,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             brawler_text=owned_total("brawlers","brawlers_total")
             text = "\n".join([
                 str(player["name"]).upper(), f"Tag: {player['tag']}", f"Club: {profile_club}", f"Tag club: {profile_club_tag or 'Non disponibile'}", "",
-                "PROFILO", f"Trofei: {format_number_it(player['trophies'])}", f"Punteggio per coefficiente: {format_number_it(calculate_trophy_coefficient(player.get('brawler_trophies'), player.get('trophies'))['score'])}", f"Coefficiente: {calculate_trophy_coefficient(player.get('brawler_trophies'), player.get('trophies'))['coefficient']:.6f}".replace(".", ","), f"Brawler: {brawler_text}", f"Livello: {format_number_it(player.get('level'))}", f"Punti esperienza: {format_number_it(player.get('exp_points'))}", f"Fama: {fame_text}", f"Livello Clip: {format_number_it(player.get('clip_level'))}", f"Punti Clip: {format_number_it(player.get('clip_points'))}", *([f"Account creato nel: {format_number_it(player.get('account_created_year'))}"] if player.get("account_created_year") is not None else []), f"Qualificazione Championship: {'Qualificato' if player.get('championship_qualified') else 'Mai qualificato'}", "",
+                "PROFILO", f"Trofei: {format_number_it(player['trophies'])}", f"Punteggio per coefficiente: {format_number_it(calculate_trophy_coefficient(player.get('brawler_trophies'), player.get('trophies'))['score'])}", f"Coefficiente Abusivo: {calculate_trophy_coefficient(player.get('brawler_trophies'), player.get('trophies'))['coefficient']:.6f}".replace(".", ","), f"Brawler: {brawler_text}", f"Livello: {format_number_it(player.get('level'))}", f"Punti esperienza: {format_number_it(player.get('exp_points'))}", f"Fama: {fame_text}", f"Livello Clip: {format_number_it(player.get('clip_level'))}", f"Punti Clip: {format_number_it(player.get('clip_points'))}", *([f"Account creato nel: {format_number_it(player.get('account_created_year'))}"] if player.get("account_created_year") is not None else []), f"Qualificazione Championship: {'Qualificato' if player.get('championship_qualified') else 'Mai qualificato'}", "",
                 "RANKED", f"Ranked attuale: {ranked_current}", f"Record stagione: {ranked_season_peak}", f"Record massimo: {ranked_peak}", "",
                 "VITTORIE", f"3v3: {format_number_it(player.get('wins_3v3'))}", f"Solo: {format_number_it(player.get('wins_solo'))}", f"Duo: {format_number_it(player.get('wins_duo'))}", "",
                 "COLLEZIONE", *collection, "", "LIVELLI BRAWLER", *(level_lines or ["Non disponibili"]), "", "PRESTIGIO BRAWLER", f"Prestigi totali: {format_number_it(player.get('prestige'))}/{format_number_it((player.get('brawlers') or 0) * 3)}", *(prestige_lines or ["Distribuzione non disponibile"]), "",
