@@ -1393,6 +1393,118 @@ class CommunityFeatures:
                     lines.append(f"• {dt_local(ss[0]['battle_time']):%H:%M}–{dt_local(ss[-1]['battle_time']):%H:%M}: {len(ss)} partite, {'+' if sr>0 else ''}{sr} coppe, {'+' if sw>0 else ''}{sw} punti")
         return "\n".join(lines)
 
+    def progression_brawler_text(self, player_tag, brawler_name):
+        """Today's battle-by-battle Progressione log for one Brawler."""
+        from trophy_coefficient import TROPHY_COEFFICIENT_BANDS, score_brawler_trophies
+        tag = str(player_tag or "").strip().lstrip("#").upper()
+        wanted = str(brawler_name or "").strip()
+        if not tag or not wanted:
+            return "Giocatore o Brawler non disponibile."
+        start_local = datetime.now(ROME).replace(hour=0, minute=0, second=0, microsecond=0)
+        try:
+            rows = self._get("observed_trophy_battles", {
+                "select": "player_name,battle_time,brawler_name,brawler_trophies_before,mode,result,placement,trophy_change,expected_base_delta,observed_extra,current_win_streak,bonus_type,team_max_brawler_trophies,team_composition",
+                "player_tag": f"eq.{tag}",
+                "battle_time": f"gte.{start_local.astimezone(timezone.utc).isoformat()}",
+                "trophy_change": "not.is.null",
+                "brawler_trophies_before": "not.is.null",
+                "order": "battle_time.asc",
+                "limit": "5000",
+            })
+        except Exception as exc:
+            LOG.error("PROGRESSION BRAWLER ERROR: %r", exc)
+            return "Non riesco a recuperare il log del Brawler in questo momento."
+        rows = [x for x in (rows or []) if not str(x.get("bonus_type") or "").startswith("excluded")]
+        matches = [x for x in rows if str(x.get("brawler_name") or "").casefold() == wanted.casefold()]
+        if not matches:
+            available = sorted({str(x.get("brawler_name") or "") for x in rows if x.get("brawler_name")})
+            suffix = ("\nBrawler di oggi: " + ", ".join(available)) if available else ""
+            return f"Nessuna battaglia valida di {wanted} osservata oggi.{suffix}"
+
+        def local_dt(value):
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(ROME)
+
+        def weight_at(trophies):
+            t = max(0, int(trophies))
+            for start, end, weight in TROPHY_COEFFICIENT_BANDS:
+                if start <= t < end:
+                    return float(weight)
+            return 1.0
+
+        def points(row):
+            t0 = max(0, int(row.get("brawler_trophies_before") or 0))
+            d = int(row.get("trophy_change") or 0)
+            t1 = max(0, t0 + d)
+            if d >= 0:
+                return float(score_brawler_trophies(t1) - score_brawler_trophies(t0))
+            loss = 0.0
+            for start, end, weight in TROPHY_COEFFICIENT_BANDS:
+                overlap = max(0, min(t0, end) - max(t1, start))
+                if overlap:
+                    loss += overlap / float(weight)
+            if t0 > 3000:
+                loss += max(0, t0 - max(t1, 3000))
+            return -loss
+
+        name = next((x.get("player_name") for x in reversed(matches) if x.get("player_name")), tag)
+        brawler = str(matches[-1].get("brawler_name") or wanted)
+        raw = sum(int(x.get("trophy_change") or 0) for x in matches)
+        pts = sum(points(x) for x in matches)
+        lines = [
+            f"PROGRESSIONE {brawler.upper()} — {name}",
+            "Periodo: OGGI",
+            f"Partite osservate valide: {len(matches)}",
+            f"Coppe nette: {'+' if raw > 0 else ''}{raw}",
+            f"Punti Progressione: {'+' if pts > 0 else ''}{pts:.2f}".replace(".", ","),
+            "",
+            "LOG BATTAGLIE",
+        ]
+        for index, row in enumerate(matches, 1):
+            t0 = max(0, int(row.get("brawler_trophies_before") or 0))
+            d = int(row.get("trophy_change") or 0)
+            t1 = max(0, t0 + d)
+            p = points(row)
+            w = weight_at(t0)
+            expected = row.get("expected_base_delta")
+            extra = row.get("observed_extra")
+            mode = str(row.get("mode") or "Modalità non disponibile")
+            result = str(row.get("result") or "").strip()
+            placement = row.get("placement")
+            outcome = result or (f"Posizione {placement}" if placement is not None else "Risultato non disponibile")
+            lines += [
+                "",
+                f"{index}. {local_dt(row['battle_time']):%H:%M} — {mode}",
+                f"Coppe: {t0} → {t1} ({'+' if d > 0 else ''}{d})",
+                f"Risultato: {outcome}",
+                f"Peso fascia iniziale: ×{w:.4f}".replace(".", ","),
+                f"Punti Progressione: {'+' if p > 0 else ''}{p:.2f}".replace(".", ","),
+            ]
+            if expected is not None:
+                lines.append(f"Delta base previsto: {'+' if int(expected) > 0 else ''}{int(expected)}")
+            if extra is not None and int(extra) != 0:
+                bonus = str(row.get("bonus_type") or "extra osservato").replace("_", " ")
+                lines.append(f"Extra osservato: +{int(extra)} ({bonus})")
+            if row.get("current_win_streak") is not None:
+                lines.append(f"Serie di vittorie osservata: {int(row['current_win_streak'])}")
+
+            team = row.get("team_composition")
+            if isinstance(team, list) and team:
+                lines.append("Squadra:")
+                max_t = row.get("team_max_brawler_trophies")
+                for member in team:
+                    mt = member.get("brawler_trophies")
+                    crown = " 👑" if max_t is not None and mt is not None and int(mt) == int(max_t) else ""
+                    lines.append(
+                        f"• {member.get('name') or member.get('tag') or 'Giocatore'} — "
+                        f"{member.get('brawler_name') or 'Brawler'} — "
+                        f"{mt if mt is not None else '?'} 🏆{crown}"
+                    )
+                if max_t is not None:
+                    lines.append(f"Massimo squadra: {int(max_t)} 🏆")
+            else:
+                lines.append("Squadra: non disponibile nel battle log.")
+        return "\n".join(lines)
+
     def coefficient_ranking_text(self, chat_id, scope="community", days=None):
         scope = str(scope or "community").strip().casefold()
         club_name = None
@@ -2124,6 +2236,19 @@ class CommunityFeatures:
         coefficient_single = re.fullmatch(r"coefficiente(?:\s+abusivo)?\s+#?([0289PYLQGRJCUV]{3,15})", q0, re.I)
         if coefficient_single:
             await message.reply_text(self.coefficient_text(coefficient_single.group(1)))
+            return True
+
+        progression_brawler = re.fullmatch(r"progressione\s+(.+?)(?:\s+#([0289PYLQGRJCUV]{3,15}))?", q0, re.I)
+        if progression_brawler and progression_brawler.group(1).casefold() not in ("oggi", "7", "15", "30", "7 giorni", "15 giorni", "30 giorni"):
+            brawler_name, explicit_tag = progression_brawler.groups()
+            registered = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
+            detail_tag = explicit_tag or (registered or {}).get("player_tag")
+            if not detail_tag:
+                await message.reply_text("Devi essere registrato oppure usare: progressione NOME_BRAWLER #TAG.")
+                return True
+            await self._send_ranking_message(
+                context, message.chat_id, self.progression_brawler_text(detail_tag, brawler_name)
+            )
             return True
 
         progression_detail = re.fullmatch(r"progressione(?:\s+(oggi|7|15|30)(?:\s+giorni)?)?(?:\s+#?([0289PYLQGRJCUV]{3,15}))?", q0, re.I)
