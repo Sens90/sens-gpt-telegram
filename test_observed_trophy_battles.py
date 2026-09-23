@@ -9,7 +9,7 @@ def test_team_battle_is_normalized_without_inventing_bonus():
             "battle": {
                 "mode": "gemGrab", "result": "victory", "trophyChange": 8,
                 "teams": [[{"tag": "#2GU9UV2RG", "name": "DeSS", "brawler": {
-                    "name": "SHELLY", "trophies": 1008,
+                    "name": "SHELLY", "trophies": 1000,
                 }}]],
             },
         }],
@@ -43,7 +43,7 @@ def test_solo_placement_and_explicit_streak_are_preserved():
         "battle": {
             "mode": "soloShowdown", "rank": 2, "trophyChange": 6,
             "players": [{"tag": "#2GU9UV2RG", "brawler": {
-                "name": "CROW", "trophies": 1506, "currentWinStreak": 4,
+                "name": "CROW", "trophies": 1500, "currentWinStreak": 4,
             }}],
         },
     }]}

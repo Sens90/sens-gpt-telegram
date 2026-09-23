@@ -62,7 +62,9 @@ def observed_battle_rows(player_tag, player_name, payload):
             brawler = brawlers[0]
         brawler_name = str(brawler.get("name") or "").strip() or None
         try:
-            trophies_before = int(brawler.get("trophies")) - trophy_change
+            # Consecutive official battle-log records prove that this value is
+            # the Brawler trophy count before the recorded battle.
+            trophies_before = int(brawler.get("trophies"))
         except (TypeError, ValueError):
             trophies_before = None
         placement = battle.get("rank", battle.get("placement"))
