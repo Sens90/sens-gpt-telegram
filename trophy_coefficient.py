@@ -37,6 +37,7 @@ TROPHY_COEFFICIENT_BANDS = (
 
 PREMIUM_CAP = 3000
 WEIGHT_SCALE = 10_000
+COEFFICIENT_FORMULA_VERSION = 2
 
 
 def score_brawler_trophies(trophies):

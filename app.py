@@ -27,7 +27,7 @@ from ai_profile_experience import build_visual_prompt, choose_scene
 from ai_profile_generator import generate_scene, overlay_stats, quota_status, consume_quota
 from brawler_reference import resolve_ai_brawler_reference
 from player_tracking import extract_brawlzone_ranked, get_brawltrack_player
-from trophy_coefficient import calculate_trophy_coefficient
+from trophy_coefficient import COEFFICIENT_FORMULA_VERSION, calculate_trophy_coefficient
 from observed_trophy_battles import observed_battle_rows
 from live_maps import collect_report, render_report, report_csv, brawltrack_pro_map_stats, safe_get, localized
 from premium_ai import handle_premium_command
@@ -2083,6 +2083,7 @@ def save_coefficient_snapshot(player, is_registered=True):
             "coefficient_score": int(result["score"]),
             "coefficient_value": int(result["score"]) - int(result["official_total"]),
             "coefficient": float(result["coefficient"]),
+            "formula_version": COEFFICIENT_FORMULA_VERSION,
         }
         if not payload["player_tag"]:
             return False
@@ -2091,7 +2092,7 @@ def save_coefficient_snapshot(player, is_registered=True):
             headers=_supabase_headers(),
             params={
                 "player_tag": "eq." + payload["player_tag"],
-                "select": "coefficient_score,trophies,recorded_at",
+                "select": "coefficient_score,trophies,formula_version,recorded_at",
                 "order": "recorded_at.desc",
                 "limit": "1",
             },
@@ -2099,7 +2100,9 @@ def save_coefficient_snapshot(player, is_registered=True):
         )
         latest.raise_for_status()
         previous = (latest.json() or [None])[0]
-        if previous and previous.get("coefficient_score") == payload["coefficient_score"] and previous.get("trophies") == payload["trophies"]:
+        if (previous and previous.get("coefficient_score") == payload["coefficient_score"]
+                and previous.get("trophies") == payload["trophies"]
+                and previous.get("formula_version") == COEFFICIENT_FORMULA_VERSION):
             recorded = datetime.fromisoformat(str(previous["recorded_at"]).replace("Z", "+00:00"))
             if datetime.now(timezone.utc) - recorded < timedelta(hours=1):
                 return True

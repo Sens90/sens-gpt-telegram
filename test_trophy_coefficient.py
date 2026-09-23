@@ -1,10 +1,15 @@
 from decimal import Decimal
 
 from trophy_coefficient import (
+    COEFFICIENT_FORMULA_VERSION,
     TROPHY_COEFFICIENT_BANDS,
     calculate_trophy_coefficient,
     score_brawler_trophies,
 )
+
+
+def test_formula_version_changes_when_band_weights_change():
+    assert COEFFICIENT_FORMULA_VERSION == 2
 
 
 def test_thresholds_are_monotonic():
