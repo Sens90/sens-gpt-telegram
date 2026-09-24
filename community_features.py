@@ -4842,8 +4842,16 @@ class CommunityFeatures:
                 scope = "global_single:" + raw_scope.removeprefix("club globale ").strip()
             else:
                 scope = raw_scope
-            report_text = await asyncio.to_thread(self.periodic_report_text, message.chat_id, scope, days)
+            LOG.info("MANUAL REPORT BUILD START chat=%s scope=%s days=%s", message.chat_id, scope, days)
+            try:
+                report_text = await asyncio.wait_for(asyncio.to_thread(self.periodic_report_text, message.chat_id, scope, days), timeout=60)
+            except asyncio.TimeoutError:
+                LOG.error("MANUAL REPORT BUILD TIMEOUT chat=%s scope=%s days=%s", message.chat_id, scope, days)
+                await message.reply_text("Il report sta impiegando troppo tempo. Riprova tra poco.")
+                return True
+            LOG.info("MANUAL REPORT BUILD DONE chat=%s scope=%s days=%s", message.chat_id, scope, days)
             await message.reply_text(report_text)
+            LOG.info("MANUAL REPORT PRIVATE DELIVERY DONE user=%s", message.from_user.id)
             return True
 
         match = re.fullmatch(r"report\s+(giornaliero|settimanale)\s+(on|off)", q, re.I)
