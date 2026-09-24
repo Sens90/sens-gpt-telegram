@@ -195,6 +195,26 @@ class CompleteRosterRetryTests(unittest.TestCase):
 
 
 class RegisteredBattleMonitorTests(unittest.TestCase):
+    def test_registered_tag_set_is_never_none(self):
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = [
+            {"player_tag": "#abc"},
+            {"player_tag": "ABC"},
+            {"player_tag": None},
+        ]
+        with patch.object(app.requests, "get", return_value=response):
+            tags = app.get_registered_player_tags()
+
+        self.assertEqual(tags, {"ABC"})
+        self.assertIsInstance(tags, set)
+
+    def test_registered_tag_failure_returns_empty_set(self):
+        with patch.object(app.requests, "get", side_effect=RuntimeError("offline")):
+            tags = app.get_registered_player_tags()
+
+        self.assertEqual(tags, set())
+
     def test_registered_roster_is_normalized_and_deduplicated(self):
         response = Mock()
         response.raise_for_status.return_value = None

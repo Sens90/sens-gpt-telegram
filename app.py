@@ -2379,6 +2379,18 @@ def _tracking_headers(prefer=None):
 def get_registered_player_tags():
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         return set()
+    try:
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/community_members",
+            headers=_tracking_headers(),
+            params={"select": "player_tag", "player_tag": "not.is.null", "is_active": "eq.true", "limit": "5000"},
+            timeout=15,
+        )
+        response.raise_for_status()
+        return {str(row.get("player_tag") or "").replace("#", "").upper() for row in response.json() if row.get("player_tag")}
+    except Exception as exc:
+        print("ERRORE LETTURA TAG REGISTRATI:", repr(exc), flush=True)
+        return set()
 
 
 def get_registered_players_for_battle_monitor():
@@ -2410,18 +2422,6 @@ def get_registered_players_for_battle_monitor():
     except Exception as exc:
         print("ERRORE LETTURA GIOCATORI BATTLE MONITOR:", repr(exc), flush=True)
         return []
-    try:
-        response = requests.get(
-            f"{SUPABASE_URL}/rest/v1/community_members",
-            headers=_tracking_headers(),
-            params={"select": "player_tag", "player_tag": "not.is.null", "is_active": "eq.true", "limit": "5000"},
-            timeout=15,
-        )
-        response.raise_for_status()
-        return {str(row.get("player_tag") or "").replace("#", "").upper() for row in response.json() if row.get("player_tag")}
-    except Exception as exc:
-        print("ERRORE LETTURA TAG REGISTRATI:", repr(exc), flush=True)
-        return set()
 
 
 def save_player_tracking(player):
