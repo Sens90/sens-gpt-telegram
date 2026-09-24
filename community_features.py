@@ -297,52 +297,102 @@ Sens GPT può inoltre rispondere a richieste su meta, mappe, composizioni, Ladde
 Scrivi comandi in qualsiasi momento per riaprire questa guida."""
 
 
-PROGRESSION_GUIDE_TEXT = """GUIDA PROGRESSIONE — TITANI ABUSIVI
+PROGRESSION_GUIDE_TEXT = """🔥 GUIDA PROGRESSIONE — TITANI ABUSIVI
 
-COME VIENE CALCOLATA
-La Progressione viene calcolata Brawler per Brawler e battaglia per battaglia.
-Ogni guadagno positivo di coppe viene pesato usando i trofei che quel singolo Brawler aveva al momento della battaglia e la relativa fascia del Coefficiente Abusivo.
-Le sconfitte restano registrate per partite, vittorie/sconfitte, saldo e analisi, ma non generano punti Progressione negativi.
-I punti ottenuti da tutti i Brawler giocati vengono poi sommati: non viene fatta la media dei coefficienti dei Brawler.
+🏆 LA TUA PROGRESSIONE, BRAWLER PER BRAWLER
+Un sistema pensato per leggere quanto vale davvero la tua scalata: ogni battaglia osservata viene analizzata usando i trofei del singolo Brawler nel momento in cui giochi.
 
-Coeff. Progressione = Progressione totale / Coppe positive totali.
-Il Coeff. Progressione è dinamico per il periodo scelto ed è distinto dal Coefficiente Abusivo strutturale dell'intero account.
+⚙️ COME FUNZIONA
+Ogni guadagno positivo di coppe viene pesato in base alla fascia trofei del Brawler usato.
+Più impegnativa è la fascia, maggiore può essere il peso applicato a quelle coppe.
 
-PERIODI
-- oggi — dalla mezzanotte italiana al momento del comando
-- 7 — ultime 7 giornate mobili
-- 15 — ultimi 15 giorni
-- 30 — ultimi 30 giorni
+Le sconfitte restano registrate per partite, vittorie/sconfitte, saldo e analisi, ma non generano Progressione negativa.
+Alla fine vengono sommati i punti prodotti da tutti i Brawler giocati: non viene fatta la media dei loro coefficienti.
 
-COMANDI PERSONALI
-[[CMD:cmd_progressione|Progressione]]
-[[CMD:cmd_progressione_oggi|Progressione oggi]]
-[[CMD:cmd_progressione_7|Progressione 7]]
-[[CMD:cmd_progressione_15|Progressione 15]]
-[[CMD:cmd_progressione_30|Progressione 30]]
-Mostrano il totale del giocatore e la Progressione dei Brawler realmente giocati nel periodo.
+🧮 FORMULA
+Coeff. Progressione = Progressione totale / Coppe positive totali
 
-SINGOLO BRAWLER
-- progressione NOME_BRAWLER
-- progressione NOME_BRAWLER oggi
-- progressione NOME_BRAWLER 7
-- progressione NOME_BRAWLER 15
-- progressione NOME_BRAWLER 30
-Il dettaglio comprende partite, vittorie, sconfitte, pareggi, win rate, coppe positive, coppe perse, saldo trofei, bonus, Progressione, Coeff. Progressione, trofei iniziali e ultimo dato osservato, oltre al log delle battaglie.
+Il Coeff. Progressione è dinamico e vale esclusivamente per il periodo selezionato.
+Non va confuso con il Coefficiente Abusivo, che misura invece la struttura complessiva dell'account.
 
-CLASSIFICHE
-[[CMD:cmd_classifica_progressione_oggi|Classifica Progressione oggi]]
-[[CMD:cmd_classifica_progressione_7|Classifica Progressione 7]]
-[[CMD:cmd_classifica_progressione_15|Classifica Progressione 15]]
-[[CMD:cmd_classifica_progressione_30|Classifica Progressione 30]]
-Sono disponibili anche gli scope community, club, globale club e i singoli club ABUSIVI.
+🗓️ SCEGLI IL PERIODO
+Oggi — dalla mezzanotte italiana fino al momento del comando.
+7 giorni — ultime 7 giornate mobili.
+15 giorni — ultimi 15 giorni.
+30 giorni — ultimi 30 giorni.
 
-Nelle classifiche:
-🏆 Coppe = somma delle coppe positive
-⚡ Bonus = Progressione - Coppe positive
-🔥 Progressione = somma dei punti ponderati di tutti i Brawler
-🧮 Coeff. Progressione = Progressione / Coppe positive
-"""
+🔥 LA MIA PROGRESSIONE
+Tocca uno dei comandi per eseguirlo direttamente in Sens GPT.
+
+[[CMD:cmd_progressione|▶️ Progressione]]
+Mostra il riepilogo personale del periodo predefinito.
+
+[[CMD:cmd_progressione_oggi|▶️ Progressione oggi]]
+Mostra quello che hai fatto dalla mezzanotte a ora.
+
+[[CMD:cmd_progressione_7|▶️ Progressione 7 giorni]]
+Analizza gli ultimi 7 giorni.
+
+[[CMD:cmd_progressione_15|▶️ Progressione 15 giorni]]
+Analizza gli ultimi 15 giorni.
+
+[[CMD:cmd_progressione_30|▶️ Progressione 30 giorni]]
+Analizza gli ultimi 30 giorni.
+
+🎯 ANALIZZA UN SINGOLO BRAWLER
+progressione NOME_BRAWLER
+progressione NOME_BRAWLER oggi
+progressione NOME_BRAWLER 7
+progressione NOME_BRAWLER 15
+progressione NOME_BRAWLER 30
+
+Esempio: progressione Brock 7
+
+Il dettaglio mostra:
+🎮 Partite
+✅ Vittorie
+❌ Sconfitte
+🤝 Pareggi
+📊 Win rate
+🏆 Coppe positive
+📉 Coppe perse
+📈 Saldo trofei
+⚡ Bonus
+🔥 Progressione
+🧮 Coeff. Progressione
+🏆 Trofei a inizio periodo e ultimo dato osservato
+🎮 Log delle battaglie
+
+🏅 CLASSIFICHE PROGRESSIONE
+[[CMD:cmd_classifica_progressione_oggi|▶️ Classifica Progressione oggi]]
+[[CMD:cmd_classifica_progressione_7|▶️ Classifica Progressione 7 giorni]]
+[[CMD:cmd_classifica_progressione_15|▶️ Classifica Progressione 15 giorni]]
+[[CMD:cmd_classifica_progressione_30|▶️ Classifica Progressione 30 giorni]]
+
+Sono disponibili anche le classifiche Community, Club, Globale Club e quelle dedicate a TITANI, TAMARRI, TORNADI e TALENTI ABUSIVI.
+
+📖 COME LEGGERE I VALORI
+🏆 Coppe
+Somma di tutte le coppe positive osservate nel periodo.
+
+⚡ Bonus
+Differenza tra Progressione e Coppe positive.
+
+🔥 Progressione
+Somma dei punti ponderati prodotti, battaglia dopo battaglia, da tutti i Brawler giocati.
+
+🧮 Coeff. Progressione
+Rapporto tra Progressione totale e Coppe positive totali.
+
+💡 ESEMPIO SEMPLICE
+Se nel periodo ottieni 500 Coppe positive e la Progressione calcolata è 575:
+Bonus = +75
+Coeff. Progressione = 1,150000
+
+Più il coefficiente supera 1, più le coppe ottenute nel periodo sono state valorizzate dalle fasce trofei dei Brawler utilizzati.
+
+⚔️ TITANI ABUSIVI
+La Progressione non guarda soltanto quante coppe hai guadagnato: tiene conto di dove le hai conquistate, Brawler per Brawler."""
 
 
 class CommunityFeatures:
@@ -3224,7 +3274,15 @@ class CommunityFeatures:
             guide_url = self._publish_telegraph("Guida Progressione — TITANI ABUSIVI", guide_lines)
             if guide_url:
                 await self._send_ranking_message(context, message.chat_id, self._telegraph_reply(
-                    ["GUIDA PROGRESSIONE", "Apri la guida completa per calcolo, periodi e comandi."],
+                    [
+                        "🔥 GUIDA PROGRESSIONE — TITANI ABUSIVI",
+                        "",
+                        "🏆 Scopri come viene calcolata la tua Progressione, Brawler per Brawler e battaglia dopo battaglia.",
+                        "",
+                        "⚡ Trovi Coppe, Bonus, Coeff. Progressione, periodi Oggi/7/15/30, singolo Brawler e classifiche.",
+                        "",
+                        "📖 Apri la Guida Progressione completa",
+                    ],
                     guide_url, guide_lines
                 ))
             else:
