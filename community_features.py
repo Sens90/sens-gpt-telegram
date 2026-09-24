@@ -91,207 +91,189 @@ HELP_TEXT = """COMANDI SENS GPT — GUIDA COMPLETA
 
 Questa pagina raccoglie i comandi disponibili e spiega cosa fa ciascuno. Dove trovi ▶️ puoi toccare il comando per aprire Sens GPT ed eseguirlo in privato.
 
-ESECUZIONE RAPIDA
-[[CMD:cmd_stats|Stats]]
-Mostra la scheda completa del tuo account registrato: profilo, Ranked, vittorie, collezione, livelli Brawler, prestigio e altri dati disponibili.
-
-[[CMD:cmd_skin|Skin]]
-Mostra il riepilogo della tua collezione Skin, con possedute, mancanti e valori disponibili.
-
-[[CMD:cmd_classifica|Classifica]]
-Mostra le classifiche e i periodi disponibili.
-
-[[CMD:cmd_progressione|Progressione]]
-Mostra la tua Progressione di oggi, calcolata Brawler per Brawler sulle battaglie osservate.
-
-[[CMD:cmd_progressione_oggi|Progressione oggi]]
-Mostra partite, coppe positive, Bonus, Progressione, Coeff. Progressione e dettaglio dei Brawler giocati da mezzanotte.
-
-[[CMD:cmd_guida_progressione|Guida Progressione]]
-Apre la guida dedicata che spiega calcolo, periodi e comandi della Progressione.
-
-[[CMD:cmd_draft_ranked|Draft Ranked]]
-Avvia in chat privata la procedura guidata per ban e pick della Draft Ranked.
-
-ACCOUNT E PROFILO
-registrami #TAG
+👤 ACCOUNT E PROFILO
+[[CMDNAME:registrami #TAG]]
 Collega il tuo account Brawl Stars principale al tuo utente Telegram. Esempio: registrami #2LVRCLV8LV
 
-aggiungi account #TAG
+[[CMDNAME:aggiungi account #TAG]]
 Collega un account Brawl Stars secondario o successivo al tuo profilo.
 
-i miei account
+[[CMDNAME:i miei account]]
 Mostra l'account principale e tutti gli account aggiuntivi collegati.
 
-profilo #TAG / stats #TAG
+[[CMDNAME:profilo #TAG / stats #TAG]]
 Genera la scheda completa del giocatore indicato. Senza #TAG, Stats usa il tuo account registrato.
 
-ranked #TAG
+[[CMDNAME:ranked #TAG]]
 Mostra la Classificata attuale e i record Ranked disponibili del giocatore.
 
-storico ranked #TAG
+[[CMDNAME:storico ranked #TAG]]
 Mostra le variazioni Ranked registrate nel tempo.
 
-SKIN ACCOUNT
-skin / quante skin ho
+🎨 SKIN ACCOUNT
+[[CMDNAME:skin / quante skin ho]]
 Riepiloga la collezione Skin del tuo account: possedute, mancanti e valori disponibili.
 
-skin account NOME_BRAWLER
+[[CMDNAME:skin account NOME_BRAWLER]]
 Mostra la situazione Skin completa del Brawler indicato.
 
-quante skin ho di NOME_BRAWLER
+[[CMDNAME:quante skin ho di NOME_BRAWLER]]
 Conta quante Skin possiedi per quel Brawler.
 
-quali skin di NOME_BRAWLER ho
+[[CMDNAME:quali skin di NOME_BRAWLER ho]]
 Elenca le Skin possedute del Brawler.
 
-quali skin di NOME_BRAWLER mi mancano
+[[CMDNAME:quali skin di NOME_BRAWLER mi mancano]]
 Elenca le Skin mancanti del Brawler.
 
-quante skin RARITÀ ho
+[[CMDNAME:quante skin RARITÀ ho]]
 Conta le Skin possedute nella categoria o rarità indicata.
 
-quali skin RARITÀ ho / mi mancano
+[[CMDNAME:quali skin RARITÀ ho / mi mancano]]
 Elenca possedute o mancanti filtrando per categoria o rarità.
 
-grafico skin [RARITÀ] [7|15|30|60|90|180|365]
+[[CMDNAME:grafico skin [RARITÀ] [7|15|30|60|90|180|365]]]
 Mostra lo storico della collezione Skin nel periodo scelto.
 
-mostrami la skin NOME_SKIN di NOME_BRAWLER
+[[CMDNAME:mostrami la skin NOME_SKIN di NOME_BRAWLER]]
 Mostra l'immagine disponibile della Skin specificata.
 
-CLASSIFICHE COMMUNITY
-classifica
+🏆 CLASSIFICHE COMMUNITY
+[[CMD:cmd_classifica|Classifica]]
 Mostra i periodi e le classifiche disponibili.
 
-classifica oggi / 7 / 15 / 30
+[[CMDNAME:classifica oggi / 7 / 15 / 30]]
 Ordina i giocatori in base all'andamento trofei nel periodo scelto.
 
-classifica trofei
+[[CMDNAME:classifica trofei]]
 Ordina i giocatori per trofei attuali.
 
-classifica brawler
+[[CMDNAME:classifica brawler]]
 Confronta il numero di Brawler dei giocatori.
 
-classifica livello
+[[CMDNAME:classifica livello]]
 Ordina i giocatori per livello account disponibile.
 
-classifica prestigio
+[[CMDNAME:classifica prestigio]]
 Ordina i giocatori in base al Prestigio Brawler registrato.
 
-classifica 3v3
+[[CMDNAME:classifica 3v3]]
 Ordina i giocatori per vittorie 3v3.
 
-classifica solo
+[[CMDNAME:classifica solo]]
 Ordina i giocatori per vittorie Sopravvivenza Solo.
 
-classifica duo
+[[CMDNAME:classifica duo]]
 Ordina i giocatori per vittorie Sopravvivenza Duo.
 
-classifica classificata / classifica ranked
+[[CMDNAME:classifica classificata / classifica ranked]]
 Mostra la classifica Ranked attuale.
 
-classifica ranked oggi / 7 / 15 / 30
+[[CMDNAME:classifica ranked oggi / 7 / 15 / 30]]
 Mostra la variazione Ranked/ELO osservata nel periodo.
 
-classifica ranked stagione
+[[CMDNAME:classifica ranked stagione]]
 Confronta il record Ranked della stagione corrente disponibile.
 
-classifica ranked carriera
+[[CMDNAME:classifica ranked carriera]]
 Confronta il record Ranked massimo di carriera disponibile.
 
-coefficiente abusivo #TAG
+[[CMDNAME:coefficiente abusivo #TAG]]
 Calcola il Coefficiente Abusivo strutturale del giocatore, separato dalla Progressione del periodo.
 
-progressione [oggi|7|15|30] [#TAG]
+[[CMD:cmd_progressione|Progressione]]
+[[CMD:cmd_progressione_oggi|Progressione oggi]]
+[[CMD:cmd_progressione_7|Progressione 7 giorni]]
+[[CMD:cmd_progressione_15|Progressione 15 giorni]]
+[[CMD:cmd_progressione_30|Progressione 30 giorni]]
 Mostra il riepilogo Progressione del giocatore e tutti i Brawler realmente giocati nel periodo.
 
-progressione NOME_BRAWLER [oggi|7|15|30] [#TAG]
+[[CMDNAME:progressione NOME_BRAWLER [oggi|7|15|30] [#TAG]]]
 Analizza un singolo Brawler: partite, vittorie, sconfitte, pareggi, win rate, coppe positive/perse, saldo, Bonus, Progressione e Coeff. Progressione. Esempio: progressione Brock 7
 
-guida progressione
+[[CMD:cmd_guida_progressione|Guida Progressione]]
 Apre la guida Telegraph dedicata e spiega esattamente come viene calcolata la Progressione.
 
-classifica progressione [community|globale|club] [oggi|7|15|30]
+[[CMDNAME:classifica progressione [community|globale|club] [oggi|7|15|30]]]
 Ordina i giocatori usando la Progressione ponderata nel periodo e mostra Coppe, Bonus e Coeff. Progressione.
 
-statistiche / tutte le classifiche
+[[CMDNAME:statistiche / tutte le classifiche]]
 Mostra un riepilogo delle statistiche e classifiche disponibili.
 
-CLASSIFICHE DEI 4 CLUB
-classifica titani / tamarri / tornadi / talenti + METRICA
+🛡️ CLASSIFICHE DEI 4 CLUB
+[[CMDNAME:classifica titani / tamarri / tornadi / talenti + METRICA]]
 Applica una classifica al singolo club ABUSIVO. Esempi: classifica titani 3v3; classifica tamarri trofei; classifica tornadi prestigio; classifica talenti duo.
 
-statistiche titani / tamarri / tornadi / talenti
+[[CMDNAME:statistiche titani / tamarri / tornadi / talenti]]
 Mostra il riepilogo statistico del club scelto.
 
-GRAFICI
-grafico 7|15|30|90 #TAG
+📊 GRAFICI
+[[CMDNAME:grafico 7|15|30|90 #TAG]]
 Mostra l'andamento storico del giocatore nel periodo.
 
-grafico community 7|15|30|90
+[[CMDNAME:grafico community 7|15|30|90]]
 Mostra l'andamento aggregato dei giocatori registrati.
 
-grafico titani 7|15|30|90
+[[CMDNAME:grafico titani 7|15|30|90]]
 Mostra l'andamento del club TITANI ABUSIVI.
 
-grafico tamarri 7|15|30|90
+[[CMDNAME:grafico tamarri 7|15|30|90]]
 Mostra l'andamento del club TAMARRI ABUSIVI.
 
-grafico tornadi 7|15|30|90
+[[CMDNAME:grafico tornadi 7|15|30|90]]
 Mostra l'andamento del club TORNADI ABUSIVI.
 
-grafico talenti 7|15|30|90
+[[CMDNAME:grafico talenti 7|15|30|90]]
 Mostra l'andamento del club TALENTI ABUSIVI.
 
-DRAFT RANKED — SOLO CHAT PRIVATA
-Draft Ranked
+🎯 DRAFT RANKED — SOLO CHAT PRIVATA
+[[CMD:cmd_draft_ranked|Draft Ranked]]
 Avvia la Draft guidata. Puoi indicare una mappa e una fascia Ranked oppure scegliere una modalità e poi una mappa Ranked corrente.
 
-draft stato / draft riepilogo
+[[CMDNAME:draft stato / draft riepilogo]]
 Mostra ban, pick e stato corrente della Draft in corso.
 
-draft reset
+[[CMDNAME:draft reset]]
 Chiude la Draft corrente e azzera la sessione.
 
-counter NOME_BRAWLER
+[[CMDNAME:counter NOME_BRAWLER]]
 Mostra i counter verificati disponibili per il Brawler indicato.
 
-COMMUNITY
-club
+🤝 COMMUNITY
+[[CMDNAME:club]]
 Mostra il riepilogo della community e dei club configurati.
 
-elenco registrati
+[[CMDNAME:elenco registrati]]
 Mostra gli account della community collegati al bot.
 
-inattivi
+[[CMDNAME:inattivi]]
 Mostra la situazione di inattività disponibile al bot.
 
-assenza N
+[[CMDNAME:assenza N]]
 Registra una segnalazione di assenza per il numero di giorni indicato.
 
-eventi
+[[CMDNAME:eventi]]
 Mostra gli eventi community aperti.
 
-partecipo ID
+[[CMDNAME:partecipo ID]]
 Conferma la partecipazione all'evento identificato dall'ID.
 
-report
+[[CMDNAME:report]]
 Mostra il report operativo disponibile.
 
-reclutamento
+[[CMDNAME:reclutamento]]
 Avvia la procedura di candidatura/reclutamento.
 
-regole / faq
+[[CMDNAME:regole / faq]]
 Mostra il regolamento e le risposte rapide della community.
 
-sito
+[[CMDNAME:sito]]
 Mostra il sito ufficiale della community.
 
-discord
+[[CMDNAME:discord]]
 Mostra il collegamento al server Discord della community.
 
-BRAWL STARS — RICHIESTE LIBERE
+🎮 BRAWL STARS — RICHIESTE LIBERE
 Sens GPT può inoltre rispondere a richieste su meta, mappe, composizioni, Ladder o Classificata, Brawler, configurazioni, gadget, abilità stellari, equipaggiamenti, overdrive e consigli di gioco. Queste non sono sintassi rigide come i comandi sopra.
 
 Scrivi comandi in qualsiasi momento per riaprire questa guida."""
@@ -1242,6 +1224,7 @@ class CommunityFeatures:
         nodes = []
         first_value = next((str(item or "").strip() for item in lines if str(item or "").strip()), "")
         is_ranking_report = first_value.upper().startswith("CLASSIFICA")
+        is_command_guide = first_value.upper().startswith("COMANDI SENS GPT")
         section_headings = {
             "PROFILO": "👤 PROFILO",
             "RANKED": "🏅 RANKED",
@@ -1280,9 +1263,17 @@ class CommunityFeatures:
             value = str(raw or "").strip()
             if not value:
                 continue
+            command_name = re.fullmatch(r"\[\[CMDNAME:(.+?)\]\]", value)
+            if command_name:
+                if is_command_guide:
+                    nodes.append({"tag": "p", "children": ["\u00a0"]})
+                nodes.append({"tag": "p", "children": [{"tag": "strong", "children": [f"⌨️ {command_name.group(1)}"]}]})
+                continue
             command_link = re.fullmatch(r"\[\[CMD:([a-z0-9_]+)\|(.+?)\]\]", value, re.I)
             if command_link:
                 payload, label = command_link.groups()
+                if is_command_guide:
+                    nodes.append({"tag": "p", "children": ["\u00a0"]})
                 nodes.append({"tag": "p", "children": [{
                     "tag": "a",
                     "attrs": {"href": f"https://t.me/SensGPT_TitaniAbusiviBot?start={payload}"},
@@ -1303,6 +1294,15 @@ class CommunityFeatures:
                         {"tag": "p", "children": ["\u00a0"]},
                     ])
                 nodes.append({"tag": "p", "children": children})
+                continue
+            command_sections = {
+                "👤 ACCOUNT E PROFILO", "🎨 SKIN ACCOUNT", "🏆 CLASSIFICHE COMMUNITY",
+                "🛡️ CLASSIFICHE DEI 4 CLUB", "📊 GRAFICI",
+                "🎯 DRAFT RANKED — SOLO CHAT PRIVATA", "🤝 COMMUNITY",
+                "🎮 BRAWL STARS — RICHIESTE LIBERE",
+            }
+            if is_command_guide and value in command_sections:
+                nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h3", "children": [value]}])
                 continue
             heading = section_headings.get(value.rstrip(":").upper())
             if heading:
