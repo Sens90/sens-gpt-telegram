@@ -1,4 +1,5 @@
 import json
+import base64
 import io
 import asyncio
 import html
@@ -2394,10 +2395,13 @@ def get_registered_player_tags():
 
 
 def get_registered_players_for_battle_monitor():
-    """Return the small active registered roster used by the fast battle poller."""
+    """Return every player that must be battle-tracked: registered users plus all four current club rosters."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         return []
     try:
+        players = []
+        seen = set()
+
         response = requests.get(
             f"{SUPABASE_URL}/rest/v1/community_members",
             headers=_tracking_headers(),
@@ -2410,14 +2414,48 @@ def get_registered_players_for_battle_monitor():
             timeout=15,
         )
         response.raise_for_status()
-        players = []
-        seen = set()
         for row in response.json():
             tag = str(row.get("player_tag") or "").replace("#", "").strip().upper()
-            if not tag or tag in seen:
+            if tag and tag not in seen:
+                seen.add(tag)
+                players.append({"tag": tag, "name": row.get("player_name")})
+
+        # Registration is not required for Global Club tracking. Add the latest
+        # complete roster of TITANI/TAMARRI/TORNADI/TALENTI to the fast poller.
+        clubs = sorted(set(community.CLUB_ALIASES.values()))
+        for club_name in clubs:
+            date_response = requests.get(
+                f"{SUPABASE_URL}/rest/v1/club_roster_daily",
+                headers=_tracking_headers(),
+                params={
+                    "select": "snapshot_date",
+                    "club_name": f"eq.{club_name}",
+                    "order": "snapshot_date.desc",
+                    "limit": "1",
+                },
+                timeout=15,
+            )
+            date_response.raise_for_status()
+            date_rows = date_response.json() or []
+            if not date_rows:
                 continue
-            seen.add(tag)
-            players.append({"tag": tag, "name": row.get("player_name")})
+            roster_response = requests.get(
+                f"{SUPABASE_URL}/rest/v1/club_roster_daily",
+                headers=_tracking_headers(),
+                params={
+                    "select": "player_tag,player_name",
+                    "club_name": f"eq.{club_name}",
+                    "snapshot_date": f"eq.{date_rows[0]['snapshot_date']}",
+                    "limit": "100",
+                },
+                timeout=15,
+            )
+            roster_response.raise_for_status()
+            for row in roster_response.json() or []:
+                tag = str(row.get("player_tag") or "").replace("#", "").strip().upper()
+                if tag and tag not in seen:
+                    seen.add(tag)
+                    players.append({"tag": tag, "name": row.get("player_name")})
         return players
     except Exception as exc:
         print("ERRORE LETTURA GIOCATORI BATTLE MONITOR:", repr(exc), flush=True)
@@ -2808,14 +2846,14 @@ def automatic_trophy_monitor():
 
 
 def automatic_battle_monitor():
-    """Poll registered battlelogs frequently enough to stay inside their finite window."""
+    """Poll registered users and all four current club rosters inside the finite battlelog window."""
     import time
 
     time.sleep(30)
     while True:
         try:
             players = get_registered_players_for_battle_monitor()
-            print("BATTLE MONITOR:", len(players), "giocatori registrati", flush=True)
+            print("BATTLE MONITOR:", len(players), "giocatori registrati + roster 4 club", flush=True)
             for player in players:
                 save_observed_trophy_battles(player)
         except Exception as exc:
@@ -3240,6 +3278,51 @@ def normalize_deterministic_command(raw_text, bot_username=None):
     return re.sub(r"\s+", " ", command).strip()
 
 
+class _PrivateCommandMessage:
+    """Keep the source group as command scope while delivering replies to the requester in private."""
+    def __init__(self, original, bot):
+        self._original = original
+        self._bot = bot
+        self._private_chat_id = int(original.from_user.id)
+
+    def __getattr__(self, name):
+        return getattr(self._original, name)
+
+    async def reply_text(self, text, *args, **kwargs):
+        kwargs.pop("reply_to_message_id", None)
+        return await self._bot.send_message(chat_id=self._private_chat_id, text=text, *args, **kwargs)
+
+    async def reply_photo(self, photo, *args, **kwargs):
+        kwargs.pop("reply_to_message_id", None)
+        return await self._bot.send_photo(chat_id=self._private_chat_id, photo=photo, *args, **kwargs)
+
+    async def reply_document(self, document, *args, **kwargs):
+        kwargs.pop("reply_to_message_id", None)
+        return await self._bot.send_document(chat_id=self._private_chat_id, document=document, *args, **kwargs)
+
+    async def reply_voice(self, voice, *args, **kwargs):
+        kwargs.pop("reply_to_message_id", None)
+        return await self._bot.send_voice(chat_id=self._private_chat_id, voice=voice, *args, **kwargs)
+
+    async def reply_audio(self, audio, *args, **kwargs):
+        kwargs.pop("reply_to_message_id", None)
+        return await self._bot.send_audio(chat_id=self._private_chat_id, audio=audio, *args, **kwargs)
+
+
+async def _ensure_private_command_delivery(message, context):
+    """Return a group-scoped message whose interactive replies go to the requester privately."""
+    if getattr(message.chat, "type", None) not in {"group", "supergroup"}:
+        return message
+    try:
+        await context.bot.send_chat_action(chat_id=message.from_user.id, action="typing")
+        return _PrivateCommandMessage(message, context.bot)
+    except Exception:
+        await message.reply_text(
+            "Per usare i comandi senza intasare il gruppo, apri @SensGPT_TitaniAbusiviBot in privato e premi Avvia una volta."
+        )
+        return None
+
+
 async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.text:
@@ -3293,6 +3376,13 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message.text,
         _bot_username_for_command,
     )
+    # Every manual command issued in a group is executed with the group as
+    # its data/permission scope, but all interactive output is delivered in
+    # private to the requester. Automatic jobs bypass answer() and stay public.
+    _private_message = await _ensure_private_command_delivery(message, context)
+    if _private_message is None:
+        return
+    message = _private_message
     # A malformed bot mention can swallow the first command token
     # (e.g. @SensGPT_TitaniAbusiviBotregistrami). Treat every text containing
     # an explicit registration attempt as registration traffic and NEVER let it
@@ -3400,7 +3490,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         if profile_match:
             player_tag = profile_match.group(1).upper()
-            await context.bot.send_chat_action(chat_id=message.chat_id, action="typing")
+            await context.bot.send_chat_action(chat_id=message.from_user.id, action="typing")
             player = await asyncio.to_thread(get_brawlzone_player, player_tag)
             if not player:
                 await message.reply_text("Non riesco a trovare questo giocatore. Controlla che il tag sia corretto e riprova.")
@@ -3764,7 +3854,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             upper=max(values) if values else 0;ax.set_ylim(0,max(100,upper*1.2))
             for bar,value in zip(bars,values):ax.text(bar.get_x()+bar.get_width()/2,bar.get_height()+max(1,upper*.02),f"{value:.2f}%",ha="center",va="bottom")
             fig.tight_layout();image=io.BytesIO();fig.savefig(image,format="png",dpi=150);plt.close(fig);image.seek(0);image.name="meta_brawler.png"
-            await context.bot.send_photo(chat_id=message.chat_id,photo=image,caption=f"Meta di {row.get('brawler')}: dati aggiornati.")
+            await context.bot.send_photo(chat_id=message.from_user.id,photo=image,caption=f"Meta di {row.get('brawler')}: dati aggiornati.")
         except Exception as exc:
             print("ERRORE GRAFICO META:",repr(exc),flush=True);await send_mode_aware_text(message, context, "Non riesco a creare il grafico meta per questo Brawler.")
         return
@@ -3800,7 +3890,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 suffix="%" if ylabel.endswith("(%)") else ""
                 ax.text(bar.get_x()+bar.get_width()/2,bar.get_height()+max(.05,upper*.02),f"{value:.2f}{suffix}" if suffix else str(int(value)),ha="center",va="bottom")
             fig.tight_layout();image=io.BytesIO();fig.savefig(image,format="png",dpi=150);plt.close(fig);image.seek(0);image.name="dettaglio_meta_brawler.png"
-            await context.bot.send_photo(chat_id=message.chat_id,photo=image,caption=f"{kind.capitalize()} di {row.get('brawler')}: dati aggiornati.")
+            await context.bot.send_photo(chat_id=message.from_user.id,photo=image,caption=f"{kind.capitalize()} di {row.get('brawler')}: dati aggiornati.")
         except Exception as exc:
             print("ERRORE GRAFICO META DETTAGLIO:",repr(exc),flush=True);await send_mode_aware_text(message, context, "Non ci sono dati sufficienti per creare questo grafico.")
         return
@@ -3831,7 +3921,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not chart:
             await send_mode_aware_text(message, context, f"Non ci sono ancora abbastanza dati per creare il grafico degli ultimi {days} giorni.")
             return
-        await context.bot.send_photo(chat_id=message.chat_id,photo=chart,caption=f"Andamento trofei di {player['name']}\\nPeriodo: ultimi {days} giorni\\nTrofei attuali: {format_number_it(player['trophies'])}")
+        await context.bot.send_photo(chat_id=message.from_user.id,photo=chart,caption=f"Andamento trofei di {player['name']}\\nPeriodo: ultimi {days} giorni\\nTrofei attuali: {format_number_it(player['trophies'])}")
         return
 
     chart_match = re.fullmatch(
@@ -3853,7 +3943,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not player:
             await context.bot.send_message(
-                chat_id=message.chat_id,
+                chat_id=message.from_user.id,
                 text="Giocatore non trovato."
             )
             return
@@ -3878,7 +3968,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not chart:
             await context.bot.send_message(
-                chat_id=message.chat_id,
+                chat_id=message.from_user.id,
                 text=(
                     f"Non ci sono ancora abbastanza dati per creare "
                     f"il grafico degli ultimi {days} giorni."
@@ -3921,7 +4011,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not chart:
             await send_mode_aware_text(message, context, f"Non ci sono ancora abbastanza dati per il grafico degli ultimi {days} giorni.")
             return
-        await context.bot.send_photo(chat_id=message.chat_id,photo=chart,caption=f"Andamento trofei - {club_name or 'COMMUNITY ABUSIVI'}\nPeriodo: ultimi {days} giorni\nGiocatori inclusi: {included}")
+        await context.bot.send_photo(chat_id=message.from_user.id,photo=chart,caption=f"Andamento trofei - {club_name or 'COMMUNITY ABUSIVI'}\nPeriodo: ultimi {days} giorni\nGiocatori inclusi: {included}")
         return
 
     if re.fullmatch(r"(?:quante\\s+)?generazion(?:e|i)(?:\\s+(?:ai|profilo ai))?(?:\\s+(?:mi\\s+)?(?:rimangono|rimaste|restano|restanti))?", question.strip(), re.I) or re.fullmatch(r"(?:quante\\s+)?generazion(?:e|i)\\s+(?:ho|mi restano|mi rimangono)", question.strip(), re.I):
@@ -4067,7 +4157,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not player:
             await context.bot.send_message(
-                chat_id=message.chat_id,
+                chat_id=message.from_user.id,
                 text=(
                     "Non riesco a trovare questo giocatore.\n"
                     "Controlla che il tag sia corretto e riprova."
@@ -4289,7 +4379,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             await context.bot.send_message(
-                chat_id=message.chat_id,
+                chat_id=message.from_user.id,
                 text=(
                     "Sono Sens GPT, l'AI ufficiale dei TITANI ABUSIVI. "
                     "Fammi una domanda su Brawl Stars."
@@ -4310,7 +4400,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if is_all_maps_request(question):
         try:
-            await context.bot.send_chat_action(chat_id=message.chat_id, action="typing")
+            await context.bot.send_chat_action(chat_id=message.from_user.id, action="typing")
             report = await asyncio.to_thread(
                 collect_report, get_game_context(question), secondary=secondary_live_map_stats
             )
@@ -5132,7 +5222,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         await context.bot.send_message(
-            chat_id=message.chat_id,
+            chat_id=message.from_user.id,
             text=user_error
         )
 
@@ -5242,6 +5332,21 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "cmd_comandi": "comandi",
             "cmd_draft_ranked": "draft ranked",
         }
+        if payload.startswith("run_"):
+            encoded = payload[4:]
+            try:
+                padding = "=" * (-len(encoded) % 4)
+                command = base64.urlsafe_b64decode(encoded + padding).decode("utf-8").strip()
+            except Exception:
+                command = ""
+            # Telegraph only emits these links from the maintained HELP_TEXT.
+            # Placeholder syntaxes remain non-clickable because they need user input.
+            if command and not any(token in command for token in ("#", "[", "]", "NOME_", "RARITÀ", " + ", " / ")):
+                print("TELEGRAPH GENERIC DEEP LINK ROUTE:", command, flush=True)
+                if await community.handle_command(message, context, command):
+                    return
+            await message.reply_text("Questo comando richiede un parametro. Scrivilo direttamente in chat.")
+            return
         if payload in deep_commands:
             command = deep_commands[payload]
             print("TELEGRAPH DEEP LINK ROUTE:", command, flush=True)

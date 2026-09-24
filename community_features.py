@@ -1,4 +1,5 @@
 import os
+import base64
 import re
 import logging
 import io
@@ -258,8 +259,40 @@ Mostra gli eventi community aperti.
 [[CMDNAME:partecipo ID]]
 Conferma la partecipazione all'evento identificato dall'ID.
 
-[[CMDNAME:report]]
-Mostra il report operativo disponibile.
+📑 REPORT PERIODICI — TROFEI + PROGRESSIONE
+I report 7/15/30 uniscono Classifica Trofei, Classifica Progressione e resoconto. Telegram mostra la Top 5; il Telegraph collegato contiene le classifiche complete.
+
+[[CMDNAME:report 7]]
+Report 7 giorni degli utenti registrati.
+
+[[CMDNAME:report 15]]
+Report 15 giorni degli utenti registrati.
+
+[[CMDNAME:report 30]]
+Report 30 giorni degli utenti registrati.
+
+[[CMDNAME:report club 7]]
+[[CMDNAME:report club 15]]
+[[CMDNAME:report club 30]]
+Report degli utenti registrati appartenenti ai quattro club ABUSIVI.
+
+[[CMDNAME:report globale club 7]]
+[[CMDNAME:report globale club 15]]
+[[CMDNAME:report globale club 30]]
+Report del roster completo dei quattro club: registrati + non registrati.
+
+[[CMDNAME:report titani 7]]
+[[CMDNAME:report titani 15]]
+[[CMDNAME:report titani 30]]
+Report dei registrati di TITANI ABUSIVI. Gli stessi comandi sono disponibili sostituendo titani con tamarri, tornadi o talenti.
+
+[[CMDNAME:report club globale titani 7]]
+[[CMDNAME:report club globale titani 15]]
+[[CMDNAME:report club globale titani 30]]
+Report del roster completo TITANI, registrati + non registrati. Gli stessi comandi sono disponibili per tamarri, tornadi e talenti.
+
+[[CMDNAME:report oggi]]
+Il report giornaliero operativo resta separato: le classifiche giornaliere continuano a essere pubblicate come Classifiche.
 
 [[CMDNAME:reclutamento]]
 Avvia la procedura di candidatura/reclutamento.
@@ -372,6 +405,51 @@ Bonus = +75
 Coeff. Progressione = 1,150000
 
 Più il coefficiente supera 1, più le coppe ottenute nel periodo sono state valorizzate dalle fasce trofei dei Brawler utilizzati.
+
+📊 TABELLA PESI DEL COEFFICIENTE
+0–49 → x1,0000
+50–99 → x1,0250
+100–199 → x1,0285
+200–299 → x1,0320
+300–499 → x1,0500
+500–599 → x1,0590
+600–799 → x1,0680
+800–999 → x1,0970
+1.000–1.099 → x1,1180
+1.100–1.199 → x1,1360
+1.200–1.299 → x1,1650
+1.300–1.499 → x1,1900
+1.500–1.799 → x1,2080
+1.800–1.999 → x1,2370
+2.000–2.199 → x1,5500
+2.200–2.299 → x1,5900
+2.300–2.399 → x1,6300
+2.400–2.499 → x1,6700
+2.500–2.599 → x1,7285
+2.600–2.699 → x1,8000
+2.700–2.799 → x1,8800
+2.800–2.999 → x2,0000
+3.000+ → x1,0000 sui trofei oltre 3.000
+
+Il peso viene applicato per fasce marginali: non moltiplica tutti i trofei del Brawler per il peso della sua fascia finale.
+
+🔥 BONUS E REGOLE OSSERVATE
+Sotto 2.000 trofei il battle log può mostrare coppe aggiuntive rispetto al delta base. Il bot misura questo extra come Bonus osservato.
+
+Win Streak: il sistema 2026 può arrivare fino a +10 sotto 2.000 trofei. Il battle log, però, non espone in modo affidabile la causa dell'extra: il bot non etichetta automaticamente un extra come Win Streak se non può dimostrarlo.
+
+Underdog / Sfavorito: può modificare il trophyChange sotto 2.000. Anche in questo caso viene registrato l'extra osservato senza inventarne la causa.
+
+Bot / partite protette: possono avere un'economia diversa da una partita ordinaria; i casi non classificabili restano esplicitamente non classificati.
+
+Da 2.000 trofei: Win Streak, bot e sfavorito sono OFF nel modello 2026.
+
+👥 TEAM VALUE
+Il Team Value viene registrato nel tracking delle battaglie per descrivere il livello della squadra e per l'analisi del contesto. Non viene usato come riferimento per pesare la Progressione personale: il peso della Progressione usa i trofei del Brawler del giocatore al momento della battaglia.
+
+🎮 DELTA BASE
+Per 3v3/5v5 e altre modalità a squadre, una vittoria ordinaria osservata sotto 2.000 parte da +10; eventuali coppe sopra il delta base vengono separate come Bonus osservato quando classificabili.
+Solo, Duo e Trio usano invece le rispettive tabelle di piazzamento verificate.
 
 ⚔️ TITANI ABUSIVI
 La Progressione non guarda soltanto quante coppe hai guadagnato: tiene conto di dove le hai conquistate, Brawler per Brawler."""
@@ -1265,9 +1343,18 @@ class CommunityFeatures:
                 continue
             command_name = re.fullmatch(r"\[\[CMDNAME:(.+?)\]\]", value)
             if command_name:
+                command_text = command_name.group(1)
                 if is_command_guide:
                     nodes.append({"tag": "p", "children": ["\u00a0"]})
-                nodes.append({"tag": "p", "children": [{"tag": "strong", "children": [f"⌨️ {command_name.group(1)}"]}]})
+                encoded = base64.urlsafe_b64encode(command_text.encode("utf-8")).decode("ascii").rstrip("=")
+                if len("run_" + encoded) <= 64:
+                    nodes.append({"tag": "p", "children": [{
+                        "tag": "a",
+                        "attrs": {"href": f"https://t.me/SensGPT_TitaniAbusiviBot?start=run_{encoded}"},
+                        "children": [f"▶️ {command_text}"],
+                    }]})
+                else:
+                    nodes.append({"tag": "p", "children": [{"tag": "strong", "children": [f"⌨️ {command_text}"]}]})
                 continue
             command_link = re.fullmatch(r"\[\[CMD:([a-z0-9_]+)\|(.+?)\]\]", value, re.I)
             if command_link:
@@ -2942,30 +3029,259 @@ class CommunityFeatures:
         return False
 
     def operational_report_text(self, chat_id, period="weekly"):
+        period_key = str(period or "weekly").strip().casefold()
+        period_days = {"daily": 0, "giornaliero": 0, "today": 0, "weekly": 7, "settimanale": 7, "7": 7, "15": 15, "30": 30}.get(period_key, 7)
+        period_label = "OGGI" if period_days == 0 else f"{period_days} GIORNI"
+        title = "REPORT GIORNALIERO" if period_days == 0 else f"REPORT {period_days} GIORNI"
         members = self.members(chat_id)
-        ranking = self.ranking(chat_id, 7)
+        ranking = self.ranking(chat_id, period_days)
         inactive = self.inactivity_rows(chat_id)
         valid_growth = [x for x in ranking if x["delta"] is not None]
         growth = sum(x["delta"] for x in valid_growth)
-        title = "REPORT SETTIMANALE" if period == "weekly" else "REPORT GIORNALIERO"
         lines = [
             f"TITANI ABUSIVI - {title}",
             "",
             f"Membri tracciati: {len(members)}",
             f"Giocatori registrati: {sum(1 for m in members if m.get('player_tag'))}",
-            (f"Crescita trofei (7 giorni): {'+' if growth > 0 else ''}{growth}" if valid_growth else "Crescita trofei (7 giorni): storico non ancora disponibile"),
+            "Ambito trofei: solo utenti registrati con tag Brawl Stars collegato",
+            "Ambito Progressione: solo utenti registrati con battaglie osservate valide",
+            (f"Crescita trofei ({period_label.lower()}): {'+' if growth > 0 else ''}{growth}" if valid_growth else f"Crescita trofei ({period_label.lower()}): storico non ancora disponibile"),
             f"Membri sopra soglia inattività: {len(inactive)}",
         ]
         if valid_growth:
-            lines.append("\nTop crescita:")
+            lines.append("\n🏆 Top crescita:")
             for row in valid_growth[:5]:
                 lines.append(f"- {row['name']}: {'+' if row['delta'] > 0 else ''}{row['delta']}")
+
+        try:
+            progression_members = self._get("community_members", {
+                "select": "player_tag,player_name,display_name",
+                "is_active": "eq.true", "player_tag": "not.is.null", "limit": "1000",
+            }) or []
+            progression_by_tag = {
+                str(m.get("player_tag") or "").strip().lstrip("#").upper(): m
+                for m in progression_members if m.get("player_tag")
+            }
+            progression_rows = []
+            if progression_by_tag:
+                response = requests.post(
+                    f"{self.supabase_url}/rest/v1/rpc/coefficient_progression_rows_v2",
+                    headers=self._headers(),
+                    json={"p_player_tags": list(progression_by_tag), "p_days": period_days},
+                    timeout=20,
+                )
+                response.raise_for_status()
+                progression_rows = response.json() or []
+            for row in progression_rows:
+                member = progression_by_tag.get(str(row.get("player_tag") or "").upper(), {})
+                row["_name"] = row.get("player_name") or member.get("player_name") or member.get("display_name") or row.get("player_tag")
+            progression_rows = [row for row in progression_rows if row.get("progression_value") is not None and int(row.get("battle_count") or 0) > 0]
+            progression_rows.sort(key=lambda row: (
+                int(row.get("progression_value") or 0),
+                (float(row.get("progression_value") or 0) / int(row.get("positive_trophies") or 0))
+                if int(row.get("positive_trophies") or 0) > 0 else 0,
+            ), reverse=True)
+            if progression_rows:
+                lines.append(f"\n🔥 Top Progressione ({period_label.lower()}):")
+                for row in progression_rows[:5]:
+                    value = int(row.get("progression_value") or 0)
+                    cups = int(row.get("positive_trophies") or 0)
+                    bonus = value - cups
+                    coeff = (float(value) / cups) if cups > 0 else 0.0
+                    lines.append(
+                        f"- {row['_name']}: +{self.number_formatter(value)} "
+                        f"(Coppe +{self.number_formatter(cups)} · Bonus +{self.number_formatter(bonus)} · "
+                        f"Coeff. {coeff:.6f})"
+                    )
+        except Exception as exc:
+            LOG.error("REPORT PROGRESSION ERROR: %r", exc)
+            lines.append(f"\n🔥 Top Progressione ({period_label.lower()}): dati momentaneamente non disponibili")
+
         if inactive:
             lines.append("\nDa controllare:")
             for member, inactive_days, risk in inactive[:8]:
                 name = member.get("display_name") or member.get("telegram_username") or str(member.get("telegram_user_id"))
                 lines.append(f"- {name}: {inactive_days} giorni{' - RISCHIO KICK' if risk else ''}")
         return "\n".join(lines)
+
+    def periodic_report_text(self, chat_id, scope="community", days=7):
+        """Combined Trophy + Progressione report. Telegram gets Top 5; Telegraph keeps the full lists."""
+        days = int(days)
+        if days not in (7, 15, 30):
+            return "I report periodici sono disponibili per 7, 15 o 30 giorni."
+
+        scope_key = str(scope or "community").strip().casefold()
+        allowed_clubs = {name.casefold(): name for name in self.CLUB_ALIASES.values()}
+        members = []
+        scope_label = "UTENTI REGISTRATI"
+        scope_note = "utenti registrati con tag Brawl Stars collegato"
+
+        if scope_key == "community":
+            members = self._get("community_members", {
+                "select": "player_tag,player_name,display_name,club_name",
+                "is_active": "eq.true", "player_tag": "not.is.null", "limit": "1000",
+            }) or []
+        elif scope_key == "community_club":
+            rows = self._get("community_members", {
+                "select": "player_tag,player_name,display_name,club_name",
+                "is_active": "eq.true", "player_tag": "not.is.null", "limit": "1000",
+            }) or []
+            members = [m for m in rows if str(m.get("club_name") or "").casefold() in allowed_clubs]
+            scope_label = "CLUB — REGISTRATI"
+            scope_note = "utenti registrati appartenenti ai 4 club ABUSIVI"
+        else:
+            global_scope = scope_key == "global_clubs" or scope_key.startswith("global_single:")
+            club_key = scope_key.split(":", 1)[1] if scope_key.startswith("global_single:") else scope_key
+            club_name = self.CLUB_ALIASES.get(club_key) or self.CLUB_ALIASES.get(club_key.replace(" abusivi", ""))
+            if global_scope:
+                wanted = [club_name] if club_name else sorted(set(self.CLUB_ALIASES.values()))
+                seen = set()
+                for name in wanted:
+                    latest = self._get("club_roster_daily", {
+                        "select": "snapshot_date", "club_name": f"eq.{name}",
+                        "order": "snapshot_date.desc", "limit": "1",
+                    })
+                    latest_date = latest[0].get("snapshot_date") if latest else None
+                    if not latest_date:
+                        continue
+                    for m in self._get("club_roster_daily", {
+                        "select": "player_tag,player_name,club_name",
+                        "club_name": f"eq.{name}", "snapshot_date": f"eq.{latest_date}", "limit": "100",
+                    }) or []:
+                        tag = str(m.get("player_tag") or "").lstrip("#").upper()
+                        if tag and tag not in seen:
+                            seen.add(tag); members.append(m)
+                scope_label = f"CLUB GLOBALE — {club_name}" if club_name else "GLOBALE CLUB"
+                scope_note = ("roster completo del club, registrati + non registrati" if club_name
+                              else "roster completo dei 4 club ABUSIVI, registrati + non registrati")
+            elif club_name:
+                members = self._get("community_members", {
+                    "select": "player_tag,player_name,display_name,club_name",
+                    "is_active": "eq.true", "player_tag": "not.is.null",
+                    "club_name": f"eq.{club_name}", "limit": "1000",
+                }) or []
+                scope_label = club_name
+                scope_note = f"utenti registrati di {club_name}"
+            else:
+                return "Ambito report non riconosciuto."
+
+        by_tag = {}
+        for m in members:
+            tag = str(m.get("player_tag") or "").strip().lstrip("#").upper()
+            if tag and tag not in by_tag:
+                by_tag[tag] = m
+        tags = list(by_tag)
+
+        trophy_rows = []
+        for tag, m in by_tag.items():
+            try:
+                history = self.history_fetcher(tag, days=max(days + 2, 10))
+                current = None
+                if history:
+                    last = history[-1] if isinstance(history, list) else None
+                    if isinstance(last, dict):
+                        current = last.get("trophies")
+                if current is None:
+                    state = self._get("player_tracking_state", {
+                        "select": "trophies", "player_tag": f"eq.{tag}", "limit": "1",
+                    })
+                    current = state[0].get("trophies") if state else None
+                if current is None:
+                    continue
+                changes = self.change_calculator(history, int(current))
+                delta = changes.get({7: "7d", 15: "15d", 30: "30d"}[days])
+                if delta is None:
+                    continue
+                trophy_rows.append({
+                    "name": m.get("player_name") or m.get("display_name") or tag,
+                    "tag": tag, "delta": int(delta), "current": int(current),
+                })
+            except Exception:
+                continue
+        trophy_rows.sort(key=lambda r: (r["delta"], r["current"]), reverse=True)
+
+        progression_rows = []
+        if tags:
+            try:
+                response = requests.post(
+                    f"{self.supabase_url}/rest/v1/rpc/coefficient_progression_rows_v2",
+                    headers=self._headers(), json={"p_player_tags": tags, "p_days": days}, timeout=30,
+                )
+                response.raise_for_status()
+                progression_rows = response.json() or []
+            except Exception as exc:
+                LOG.error("PERIODIC REPORT PROGRESSION ERROR: %r", exc)
+        for row in progression_rows:
+            m = by_tag.get(str(row.get("player_tag") or "").upper(), {})
+            row["_name"] = row.get("player_name") or m.get("player_name") or m.get("display_name") or row.get("player_tag")
+            row["_value"] = int(row.get("progression_value") or 0)
+            row["_cups"] = int(row.get("positive_trophies") or 0)
+            row["_bonus"] = row["_value"] - row["_cups"]
+            row["_coeff"] = (row["_value"] / row["_cups"]) if row["_cups"] > 0 else 0.0
+        progression_rows = [r for r in progression_rows if int(r.get("battle_count") or 0) > 0]
+        progression_rows.sort(key=lambda r: (r["_value"], r["_coeff"]), reverse=True)
+
+        title = f"🔥 REPORT {scope_label} — {days} GIORNI"
+        full = [title, f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}", "", f"👥 Ambito: {scope_note}", ""]
+        full.append("🏆 CLASSIFICA TROFEI")
+        if trophy_rows:
+            for i, r in enumerate(trophy_rows, 1):
+                sign = "+" if r["delta"] > 0 else ""
+                full.append(f"{i}. {r['name']} — {sign}{self.number_formatter(r['delta'])}")
+        else:
+            full.append("Storico trofei non ancora disponibile.")
+        full.extend(["", "🔥 CLASSIFICA PROGRESSIONE"])
+        if progression_rows:
+            for i, r in enumerate(progression_rows, 1):
+                full.extend([
+                    f"{i}. {r['_name']}",
+                    f"🎮 Partite: {int(r.get('battle_count') or 0)}",
+                    f"🏆 Coppe: +{self.number_formatter(r['_cups'])}",
+                    f"⚡ Bonus: +{self.number_formatter(r['_bonus'])}",
+                    f"🔥 Progressione: +{self.number_formatter(r['_value'])}",
+                    f"🧮 Coeff. Progressione: {r['_coeff']:.6f}".replace(".", ","),
+                    "",
+                ])
+        else:
+            full.append("Battaglie osservate non ancora disponibili.")
+
+        total_battles = sum(int(r.get("battle_count") or 0) for r in progression_rows)
+        total_cups = sum(r["_cups"] for r in progression_rows)
+        total_progression = sum(r["_value"] for r in progression_rows)
+        full.extend([
+            "📊 RESOCONTO",
+            f"👥 Giocatori monitorati: {len(tags)}",
+            f"🎮 Battaglie analizzate: {total_battles}",
+            f"🏆 Coppe positive: +{self.number_formatter(total_cups)}",
+            f"⚡ Bonus Progressione: +{self.number_formatter(total_progression-total_cups)}",
+            f"🔥 Progressione complessiva: +{self.number_formatter(total_progression)}",
+        ])
+
+        report_url = self._publish_telegraph(title, full)
+        summary = [title, "", f"👥 Ambito: {scope_note}", "", "🏆 CLASSIFICA TROFEI"]
+        for i, r in enumerate(trophy_rows[:5], 1):
+            sign = "+" if r["delta"] > 0 else ""
+            summary.append(f"{i}. {r['name']} — {sign}{self.number_formatter(r['delta'])}")
+        if not trophy_rows:
+            summary.append("Storico trofei non ancora disponibile.")
+        summary.extend(["", "🔥 CLASSIFICA PROGRESSIONE"])
+        for i, r in enumerate(progression_rows[:5], 1):
+            summary.append(
+                f"{i}. {r['_name']} — +{self.number_formatter(r['_value'])} "
+                f"(Coppe +{self.number_formatter(r['_cups'])} · Bonus +{self.number_formatter(r['_bonus'])} · "
+                f"Coeff. {r['_coeff']:.6f})".replace(".", ",")
+            )
+        if not progression_rows:
+            summary.append("Battaglie osservate non ancora disponibili.")
+        summary.extend([
+            "", "📊 RESOCONTO",
+            f"👥 Giocatori monitorati: {len(tags)}",
+            f"🎮 Battaglie analizzate: {total_battles}",
+            f"🔥 Progressione complessiva: +{self.number_formatter(total_progression)}",
+        ])
+        if report_url:
+            summary.extend(["", f"📖 Classifiche complete: {report_url}"])
+        return "\n".join(summary)
 
     async def _send_ranking_message(self, context, chat_id, text):
         """Deliver ranking replies with bounded retries on transient Telegram timeouts."""
@@ -3030,7 +3346,7 @@ class CommunityFeatures:
             summary = [guide[0], "", "🏆 Ogni coppa vale almeno ×1; il calcolo è Brawler per Brawler.",
                        "📈 Progressione: battaglie osservate e punti per partita."]
             payload = self._telegraph_reply(summary, report_url, guide) if report_url else "\n".join(guide)
-            await self._send_ranking_message(context, message.chat_id, payload)
+            await self._send_ranking_message(context, _ranking_reply_chat_id, payload)
             return True
         if q0l in ("elenco registrati", "registrati", "membri registrati", "account registrati"):
             await message.reply_text(self.registered_members_text(message.chat_id))
@@ -3049,6 +3365,29 @@ class CommunityFeatures:
             if _ranking_member and _ranking_member.get("chat_id") is not None:
                 _ranking_chat_id = int(_ranking_member["chat_id"])
 
+        # Manual leaderboard requests made in a group are delivered privately to
+        # the requester. Scheduled/automatic publications do not pass through
+        # handle_command and therefore continue to be posted in the community.
+        _manual_ranking_request = bool(re.match(r"^(?:classific(?:a|he)|statistiche(?:\\s|$)|tutte\\s+le\\s+classifiche)", q0, re.I))
+        _ranking_reply_chat_id = (
+            int(message.from_user.id)
+            if _manual_ranking_request and getattr(message.chat, "type", None) != "private"
+            else int(message.chat_id)
+        )
+
+        async def _ranking_reply(text):
+            try:
+                await context.bot.send_message(chat_id=_ranking_reply_chat_id, text=text)
+                return True
+            except Exception as exc:
+                LOG.warning("PRIVATE RANKING DELIVERY FAILED user=%s error=%r", message.from_user.id, exc)
+                if _ranking_reply_chat_id != int(message.chat_id):
+                    await message.reply_text(
+                        "Apri prima la chat privata con Sens GPT e premi Avvia: le classifiche richieste manualmente vengono inviate solo in privato."
+                    )
+                    return False
+                raise
+
         coefficient_single = re.fullmatch(r"coefficiente(?:\s+abusivo)?\s+#?([0289PYLQGRJCUV]{3,15})", q0, re.I)
         if coefficient_single:
             await message.reply_text(self.coefficient_text(coefficient_single.group(1)))
@@ -3060,7 +3399,7 @@ class CommunityFeatures:
             days = 0 if raw_period == "oggi" else (int(raw_period) if raw_period else None)
             await self._send_ranking_message(
                 context,
-                message.chat_id,
+                _ranking_reply_chat_id,
                 self.coefficient_ranking_text(_ranking_chat_id, "community_club", days),
             )
             return True
@@ -3088,7 +3427,7 @@ class CommunityFeatures:
             if not detail_tag:
                 await message.reply_text("Devi essere registrato oppure usare: progressione oggi #TAG.")
                 return True
-            await self._send_ranking_message(context, message.chat_id, self.progression_detail_text(detail_tag, detail_days))
+            await self._send_ranking_message(context, _ranking_reply_chat_id, self.progression_detail_text(detail_tag, detail_days))
             return True
 
         # Coefficiente Abusivo progression family. Keep all supported forms here
@@ -3117,7 +3456,7 @@ class CommunityFeatures:
             days = 0 if raw_period == "oggi" else (int(raw_period) if raw_period else None)
             await self._send_ranking_message(
                 context,
-                message.chat_id,
+                _ranking_reply_chat_id,
                 self.coefficient_ranking_text(_ranking_chat_id, scope, days),
             )
             return True
@@ -3130,28 +3469,28 @@ class CommunityFeatures:
         # "oggi" is optional in the natural manual forms.
         # Route the more specific club command first.
         if re.fullmatch(r"classifica\s+globale\s+club(?:\s+(?:di\s+)?oggi)?", q0, re.I):
-            await self._send_ranking_message(context, message.chat_id, self.global_club_ranking_text(_ranking_chat_id, monthly=False))
+            await self._send_ranking_message(context, _ranking_reply_chat_id, self.global_club_ranking_text(_ranking_chat_id, monthly=False))
             return True
         if re.fullmatch(r"classifica\s+globale(?:\s+(?:di\s+)?oggi)?", q0, re.I):
             await context.bot.send_message(
-                chat_id=message.chat_id,
+                chat_id=_ranking_reply_chat_id,
                 text=self.global_ranking_text(_ranking_chat_id, 0),
             )
             return True
         if re.fullmatch(r"classifica\s+globale\s+mensile", q0, re.I):
-            await self._send_ranking_message(context, message.chat_id, self.global_monthly_ranking_text(_ranking_chat_id))
+            await self._send_ranking_message(context, _ranking_reply_chat_id, self.global_monthly_ranking_text(_ranking_chat_id))
             return True
         if re.fullmatch(r"classifica\s+globale\s+club\s+mensile", q0, re.I):
-            await self._send_ranking_message(context, message.chat_id, self.global_club_ranking_text(_ranking_chat_id, monthly=True))
+            await self._send_ranking_message(context, _ranking_reply_chat_id, self.global_club_ranking_text(_ranking_chat_id, monthly=True))
             return True
         if re.fullmatch(r"classifica\s+(?:dei\s+)?club\s+(?:di\s+)?oggi", q0, re.I):
             await context.bot.send_message(
-                chat_id=message.chat_id,
+                chat_id=_ranking_reply_chat_id,
                 text=self.club_trophy_ranking_text(_ranking_chat_id, 0),
             )
             return True
         if re.fullmatch(r"classifica(?:\s+(?:della\s+community))?(?:\s+di)?\s+oggi", q0, re.I):
-            await self._send_ranking_message(context, message.chat_id, self.ranking_text(_ranking_chat_id, 0))
+            await self._send_ranking_message(context, _ranking_reply_chat_id, self.ranking_text(_ranking_chat_id, 0))
             return True
         _club_default_fast = re.fullmatch(
             r"classific(?:a|he)\\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)",
@@ -3159,7 +3498,7 @@ class CommunityFeatures:
         )
         if _club_default_fast:
             _club_name = self.CLUB_ALIASES[_club_default_fast.group(1).lower()]
-            await context.bot.send_message(chat_id=message.chat_id, text=self.stat_ranking_text(_ranking_chat_id, "trofei", _club_name))
+            await context.bot.send_message(chat_id=_ranking_reply_chat_id, text=self.stat_ranking_text(_ranking_chat_id, "trofei", _club_name))
             return True
 
         registered = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
@@ -3273,7 +3612,7 @@ class CommunityFeatures:
             guide_lines = PROGRESSION_GUIDE_TEXT.splitlines()
             guide_url = self._publish_telegraph("Guida Progressione — TITANI ABUSIVI", guide_lines)
             if guide_url:
-                await self._send_ranking_message(context, message.chat_id, self._telegraph_reply(
+                await self._send_ranking_message(context, _ranking_reply_chat_id, self._telegraph_reply(
                     [
                         "🔥 GUIDA PROGRESSIONE — TITANI ABUSIVI",
                         "",
@@ -3293,7 +3632,7 @@ class CommunityFeatures:
             command_lines = HELP_TEXT.splitlines()
             command_url = self._publish_telegraph("Comandi Sens GPT — TITANI ABUSIVI", command_lines)
             if command_url:
-                await self._send_ranking_message(context, message.chat_id, self._telegraph_reply(
+                await self._send_ranking_message(context, _ranking_reply_chat_id, self._telegraph_reply(
                     ["COMANDI SENS GPT", "Apri l'elenco completo dei comandi disponibili."],
                     command_url, command_lines
                 ))
@@ -4204,13 +4543,13 @@ class CommunityFeatures:
             "record classificata carriera":"classificata carriera", "record ranked carriera":"classificata carriera",
         }
         if ql in ("statistiche","stats community","statistiche community","tutte le statistiche","tutte le classifiche"):
-            await message.reply_text(self.all_stats_text(_ranking_chat_id)); return True
+            await _ranking_reply(self.all_stats_text(_ranking_chat_id)); return True
         club_all=re.fullmatch(r"(?:statistiche|stats|tutte le statistiche|tutte le classifiche)(?:\s+(?:del|dei|di))?\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)",q,re.I)
         if club_all:
-            await message.reply_text(self.all_stats_text(_ranking_chat_id,self.CLUB_ALIASES[club_all.group(1).lower()])); return True
+            await _ranking_reply(self.all_stats_text(_ranking_chat_id,self.CLUB_ALIASES[club_all.group(1).lower()])); return True
         stat=re.fullmatch(r"classific(?:a|he)(?:\s+(?:player|giocatori))?(?:\s+(?:della\s+)?community)?(?:\s+(?:per|di))?\s+(3v3|vittorie 3v3|solo|vittorie solo|duo|vittorie duo|trofei|coppe|brawlers?|livello(?: account)?|prestigio|classificata(?: attuale| stagione| carriera)?|ranked(?: attuale| stagione| carriera)?|record classificata (?:stagione|carriera)|record ranked (?:stagione|carriera))",q,re.I)
         if stat:
-            await message.reply_text(self.stat_ranking_text(_ranking_chat_id, stat_aliases[stat.group(1).lower()])); return True
+            await _ranking_reply(self.stat_ranking_text(_ranking_chat_id, stat_aliases[stat.group(1).lower()])); return True
         club_default=re.fullmatch(r"classific(?:a|he)\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)",q,re.I)
         if club_default:
             club_name=self.CLUB_ALIASES[club_default.group(1).lower()]
@@ -4218,10 +4557,10 @@ class CommunityFeatures:
             return True
         clubstat=re.fullmatch(r"classific(?:a|he)\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)(?:\s+(?:per|di))?\s+(3v3|vittorie 3v3|solo|vittorie solo|duo|vittorie duo|trofei|coppe|brawlers?|livello(?: account)?|prestigio|classificata(?: attuale| stagione| carriera)?|ranked(?: attuale| stagione| carriera)?|record classificata (?:stagione|carriera)|record ranked (?:stagione|carriera))",q,re.I)
         if clubstat:
-            await message.reply_text(self.stat_ranking_text(_ranking_chat_id, stat_aliases[clubstat.group(2).lower()], self.CLUB_ALIASES[clubstat.group(1).lower()])); return True
+            await _ranking_reply(self.stat_ranking_text(_ranking_chat_id, stat_aliases[clubstat.group(2).lower()], self.CLUB_ALIASES[clubstat.group(1).lower()])); return True
         if re.search(r"\bclassific(?:a|he)\b",ql) and "3v3" in ql:
             club_name=next((v for k,v in self.CLUB_ALIASES.items() if k in ql),None)
-            await message.reply_text(self.stat_ranking_text(_ranking_chat_id, "3v3", club_name)); return True
+            await _ranking_reply(self.stat_ranking_text(_ranking_chat_id, "3v3", club_name)); return True
         ranked_delta = re.fullmatch(
             r"classific(?:a|he)(?:\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?))?\s+(?:elo\s+)?(?:ranked|classificata)(?:\s+(oggi|7|15|30)(?:\s+giorni)?)?",
             q, re.I,
@@ -4231,13 +4570,13 @@ class CommunityFeatures:
             club_name = self.CLUB_ALIASES.get(club_key.lower()) if club_key else None
             period = ranked_delta.group(2) or "oggi"
             days = 0 if period.lower() == "oggi" else int(period)
-            await message.reply_text(self.ranked_elo_ranking_text(_ranking_chat_id, days, club_name))
+            await _ranking_reply(self.ranked_elo_ranking_text(_ranking_chat_id, days, club_name))
             return True
 
         if re.search(r"\bclassific(?:a|he)\b", ql) and re.search(r"\b(?:classificata|ranked)\b", ql):
             club_name=next((v for k,v in self.CLUB_ALIASES.items() if k in ql),None)
             stat_key="classificata carriera" if "carriera" in ql else ("classificata stagione" if "stagione" in ql else "classificata")
-            await message.reply_text(self.stat_ranking_text(_ranking_chat_id, stat_key, club_name)); return True
+            await _ranking_reply(self.stat_ranking_text(_ranking_chat_id, stat_key, club_name)); return True
 
         if ql == "classifica":
             await message.reply_text(
@@ -4256,7 +4595,7 @@ class CommunityFeatures:
             re.I,
         )
         if match:
-            await message.reply_text(self.ranking_text(_ranking_chat_id, 0))
+            await _ranking_reply(self.ranking_text(_ranking_chat_id, 0))
             return True
 
         match = re.fullmatch(
@@ -4266,7 +4605,7 @@ class CommunityFeatures:
         )
         if match:
             days = int(match.group(1))
-            await message.reply_text(self.ranking_text(_ranking_chat_id, days))
+            await _ranking_reply(self.ranking_text(_ranking_chat_id, days))
             return True
 
         if ql in ("club", "profilo club", "stato club"):
@@ -4331,8 +4670,28 @@ class CommunityFeatures:
                 await message.reply_text(self.recruitments_text(message.chat_id))
             return True
 
-        if ql == "report":
-            await message.reply_text(self.operational_report_text(message.chat_id, "weekly"))
+        report_match = re.fullmatch(
+            r"report(?:\\s+(community|club|globale\\s+club|titani|tamarri|tornadi|talenti|club\\s+globale\\s+(?:titani|tamarri|tornadi|talenti)))?\\s*(oggi|giornaliero|7|15|30|mensile)?",
+            q, re.I,
+        )
+        if report_match:
+            raw_scope = (report_match.group(1) or "community").casefold()
+            requested = (report_match.group(2) or "7").casefold()
+            if requested in ("oggi", "giornaliero"):
+                await message.reply_text(self.operational_report_text(message.chat_id, "daily"))
+                return True
+            days = 30 if requested == "mensile" else int(requested)
+            if raw_scope == "community":
+                scope = "community"
+            elif raw_scope == "club":
+                scope = "community_club"
+            elif raw_scope == "globale club":
+                scope = "global_clubs"
+            elif raw_scope.startswith("club globale "):
+                scope = "global_single:" + raw_scope.removeprefix("club globale ").strip()
+            else:
+                scope = raw_scope
+            await message.reply_text(self.periodic_report_text(message.chat_id, scope, days))
             return True
 
         match = re.fullmatch(r"report\s+(giornaliero|settimanale)\s+(on|off)", q, re.I)
