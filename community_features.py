@@ -1,4 +1,5 @@
 import os
+import base64
 import re
 import logging
 import io
@@ -372,6 +373,51 @@ Bonus = +75
 Coeff. Progressione = 1,150000
 
 Più il coefficiente supera 1, più le coppe ottenute nel periodo sono state valorizzate dalle fasce trofei dei Brawler utilizzati.
+
+📊 TABELLA PESI DEL COEFFICIENTE
+0–49 → x1,0000
+50–99 → x1,0250
+100–199 → x1,0285
+200–299 → x1,0320
+300–499 → x1,0500
+500–599 → x1,0590
+600–799 → x1,0680
+800–999 → x1,0970
+1.000–1.099 → x1,1180
+1.100–1.199 → x1,1360
+1.200–1.299 → x1,1650
+1.300–1.499 → x1,1900
+1.500–1.799 → x1,2080
+1.800–1.999 → x1,2370
+2.000–2.199 → x1,5500
+2.200–2.299 → x1,5900
+2.300–2.399 → x1,6300
+2.400–2.499 → x1,6700
+2.500–2.599 → x1,7285
+2.600–2.699 → x1,8000
+2.700–2.799 → x1,8800
+2.800–2.999 → x2,0000
+3.000+ → x1,0000 sui trofei oltre 3.000
+
+Il peso viene applicato per fasce marginali: non moltiplica tutti i trofei del Brawler per il peso della sua fascia finale.
+
+🔥 BONUS E REGOLE OSSERVATE
+Sotto 2.000 trofei il battle log può mostrare coppe aggiuntive rispetto al delta base. Il bot misura questo extra come Bonus osservato.
+
+Win Streak: il sistema 2026 può arrivare fino a +10 sotto 2.000 trofei. Il battle log, però, non espone in modo affidabile la causa dell'extra: il bot non etichetta automaticamente un extra come Win Streak se non può dimostrarlo.
+
+Underdog / Sfavorito: può modificare il trophyChange sotto 2.000. Anche in questo caso viene registrato l'extra osservato senza inventarne la causa.
+
+Bot / partite protette: possono avere un'economia diversa da una partita ordinaria; i casi non classificabili restano esplicitamente non classificati.
+
+Da 2.000 trofei: Win Streak, bot e sfavorito sono OFF nel modello 2026.
+
+👥 TEAM VALUE
+Il Team Value viene registrato nel tracking delle battaglie per descrivere il livello della squadra e per l'analisi del contesto. Non viene usato come riferimento per pesare la Progressione personale: il peso della Progressione usa i trofei del Brawler del giocatore al momento della battaglia.
+
+🎮 DELTA BASE
+Per 3v3/5v5 e altre modalità a squadre, una vittoria ordinaria osservata sotto 2.000 parte da +10; eventuali coppe sopra il delta base vengono separate come Bonus osservato quando classificabili.
+Solo, Duo e Trio usano invece le rispettive tabelle di piazzamento verificate.
 
 ⚔️ TITANI ABUSIVI
 La Progressione non guarda soltanto quante coppe hai guadagnato: tiene conto di dove le hai conquistate, Brawler per Brawler."""
@@ -1265,9 +1311,18 @@ class CommunityFeatures:
                 continue
             command_name = re.fullmatch(r"\[\[CMDNAME:(.+?)\]\]", value)
             if command_name:
+                command_text = command_name.group(1)
                 if is_command_guide:
                     nodes.append({"tag": "p", "children": ["\u00a0"]})
-                nodes.append({"tag": "p", "children": [{"tag": "strong", "children": [f"⌨️ {command_name.group(1)}"]}]})
+                encoded = base64.urlsafe_b64encode(command_text.encode("utf-8")).decode("ascii").rstrip("=")
+                if len("run_" + encoded) <= 64:
+                    nodes.append({"tag": "p", "children": [{
+                        "tag": "a",
+                        "attrs": {"href": f"https://t.me/SensGPT_TitaniAbusiviBot?start=run_{encoded}"},
+                        "children": [f"▶️ {command_text}"],
+                    }]})
+                else:
+                    nodes.append({"tag": "p", "children": [{"tag": "strong", "children": [f"⌨️ {command_text}"]}]})
                 continue
             command_link = re.fullmatch(r"\[\[CMD:([a-z0-9_]+)\|(.+?)\]\]", value, re.I)
             if command_link:
