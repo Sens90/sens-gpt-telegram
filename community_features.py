@@ -1703,8 +1703,6 @@ class CommunityFeatures:
             mode_key = str(row.get("mode") or "").casefold()
             max_trophies, team = team_context(row)
             reference = t0
-            if mode_key not in {"soloshowdown", "solo"} and max_trophies is not None:
-                reference = max(t0, int(max_trophies))
             points = weighted_delta(row)
             lines += [
                 "",
@@ -1875,7 +1873,7 @@ class CommunityFeatures:
                 "limit": "5000",
             })
             available = sorted({str(x.get("brawler_name") or "") for x in available_rows or [] if x.get("brawler_name")})
-            suffix = ("\nBrawler di oggi: " + ", ".join(available)) if available else ""
+            suffix = ("\nBrawler osservati nel periodo: " + ", ".join(available)) if available else ""
             return f"Nessuna battaglia valida di {wanted} osservata nel periodo {period}.{suffix}"
 
         try:
@@ -1990,7 +1988,7 @@ class CommunityFeatures:
             t1 = max(0, t0 + d)
             p = points(row)
             max_t, team = team_context(row)
-            reference_trophies = t0 if str(row.get("mode") or "").casefold() in {"soloshowdown", "solo"} else max(t0, int(max_t)) if max_t is not None else t0
+            reference_trophies = t0
             w = weight_at(reference_trophies)
             expected = row.get("expected_base_delta")
             extra = row.get("observed_extra")
