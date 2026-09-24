@@ -660,12 +660,12 @@ def load_user_conversation_memory(telegram_user_id, limit=12):
     return "\n".join(parts)
 
 
-def save_user_conversation_memory(message, user_text, assistant_text):
-    """Persist addressed Gemini conversation without affecting deterministic commands."""
+def save_user_conversation_memory(message, user_text, assistant_text=None):
+    """Persist per-user conversation context; assistant text is optional for silent group learning."""
     user=getattr(message,"from_user",None)
-    if not user or not user_text or not assistant_text: return
+    if not user or not user_text: return
     try:
-        payload={"telegram_user_id":int(user.id),"telegram_username":getattr(user,"username",None),"user_name":getattr(user,"first_name",None),"user_message":compact_source_text(str(user_text).strip(),2000),"assistant_message":compact_source_text(str(assistant_text).strip(),3000),"source_chat_type":str(getattr(getattr(message,"chat",None),"type",None) or "unknown")}
+        payload={"telegram_user_id":int(user.id),"telegram_username":getattr(user,"username",None),"user_name":getattr(user,"first_name",None),"user_message":compact_source_text(str(user_text).strip(),2000),"assistant_message":compact_source_text(str(assistant_text).strip(),3000) if assistant_text else None,"source_chat_type":str(getattr(getattr(message,"chat",None),"type",None) or "unknown")}
         response=requests.post(SUPABASE_URL+"/rest/v1/user_conversation_memory",headers={**_supabase_headers(),"Prefer":"return=minimal"},json=payload,timeout=8); response.raise_for_status()
         old=requests.get(SUPABASE_URL+"/rest/v1/user_conversation_memory",headers=_supabase_headers(),params={"select":"id","telegram_user_id":f"eq.{int(user.id)}","order":"created_at.desc","offset":"40","limit":"200"},timeout=8); old.raise_for_status()
         ids=[str(r.get("id")) for r in old.json() or [] if r.get("id") is not None]
@@ -3451,7 +3451,15 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         and not _explicit_bot_mention
         and not _reply_to_bot
     ):
-        print("GROUP FREE CHAT IGNORED: bot not addressed", flush=True)
+        # Silent relationship memory: learn from ordinary member conversation
+        # without invoking Gemini and without replying in the group.
+        await asyncio.to_thread(
+            save_user_conversation_memory,
+            message,
+            message.text,
+            None,
+        )
+        print("GROUP FREE CHAT SILENT MEMORY: stored without reply", flush=True)
         return
 
     if not _voice_group_exception and _deterministic_group_command:
