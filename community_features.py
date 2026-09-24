@@ -2997,33 +2997,32 @@ class CommunityFeatures:
         return False
 
     def operational_report_text(self, chat_id, period="weekly"):
+        period_key = str(period or "weekly").strip().casefold()
+        period_days = {"daily": 0, "giornaliero": 0, "today": 0, "weekly": 7, "settimanale": 7, "7": 7, "15": 15, "30": 30}.get(period_key, 7)
+        period_label = "OGGI" if period_days == 0 else f"{period_days} GIORNI"
+        title = "REPORT GIORNALIERO" if period_days == 0 else f"REPORT {period_days} GIORNI"
         members = self.members(chat_id)
-        ranking = self.ranking(chat_id, 7)
+        ranking = self.ranking(chat_id, period_days)
         inactive = self.inactivity_rows(chat_id)
         valid_growth = [x for x in ranking if x["delta"] is not None]
         growth = sum(x["delta"] for x in valid_growth)
-        title = "REPORT SETTIMANALE" if period == "weekly" else "REPORT GIORNALIERO"
         lines = [
             f"TITANI ABUSIVI - {title}",
             "",
             f"Membri tracciati: {len(members)}",
             f"Giocatori registrati: {sum(1 for m in members if m.get('player_tag'))}",
-            (f"Crescita trofei (7 giorni): {'+' if growth > 0 else ''}{growth}" if valid_growth else "Crescita trofei (7 giorni): storico non ancora disponibile"),
+            (f"Crescita trofei ({period_label.lower()}): {'+' if growth > 0 else ''}{growth}" if valid_growth else f"Crescita trofei ({period_label.lower()}): storico non ancora disponibile"),
             f"Membri sopra soglia inattività: {len(inactive)}",
         ]
         if valid_growth:
-            lines.append("\nTop crescita:")
+            lines.append("\n🏆 Top crescita:")
             for row in valid_growth[:5]:
                 lines.append(f"- {row['name']}: {'+' if row['delta'] > 0 else ''}{row['delta']}")
 
-        # Weekly Progressione top uses the same 7-day RPC and scoring model as
-        # the dedicated Progressione ranking, so the report cannot drift from it.
         try:
             progression_members = self._get("community_members", {
                 "select": "player_tag,player_name,display_name",
-                "is_active": "eq.true",
-                "player_tag": "not.is.null",
-                "limit": "1000",
+                "is_active": "eq.true", "player_tag": "not.is.null", "limit": "1000",
             }) or []
             progression_by_tag = {
                 str(m.get("player_tag") or "").strip().lstrip("#").upper(): m
@@ -3034,7 +3033,7 @@ class CommunityFeatures:
                 response = requests.post(
                     f"{self.supabase_url}/rest/v1/rpc/coefficient_progression_rows_v2",
                     headers=self._headers(),
-                    json={"p_player_tags": list(progression_by_tag), "p_days": 7},
+                    json={"p_player_tags": list(progression_by_tag), "p_days": period_days},
                     timeout=20,
                 )
                 response.raise_for_status()
@@ -3042,20 +3041,14 @@ class CommunityFeatures:
             for row in progression_rows:
                 member = progression_by_tag.get(str(row.get("player_tag") or "").upper(), {})
                 row["_name"] = row.get("player_name") or member.get("player_name") or member.get("display_name") or row.get("player_tag")
-            progression_rows = [
-                row for row in progression_rows
-                if row.get("progression_value") is not None and int(row.get("battle_count") or 0) > 0
-            ]
-            progression_rows.sort(
-                key=lambda row: (
-                    int(row.get("progression_value") or 0),
-                    (float(row.get("progression_value") or 0) / int(row.get("positive_trophies") or 0))
-                    if int(row.get("positive_trophies") or 0) > 0 else 0,
-                ),
-                reverse=True,
-            )
+            progression_rows = [row for row in progression_rows if row.get("progression_value") is not None and int(row.get("battle_count") or 0) > 0]
+            progression_rows.sort(key=lambda row: (
+                int(row.get("progression_value") or 0),
+                (float(row.get("progression_value") or 0) / int(row.get("positive_trophies") or 0))
+                if int(row.get("positive_trophies") or 0) > 0 else 0,
+            ), reverse=True)
             if progression_rows:
-                lines.append("\n🔥 Top Progressione (7 giorni):")
+                lines.append(f"\n🔥 Top Progressione ({period_label.lower()}):")
                 for row in progression_rows[:5]:
                     value = int(row.get("progression_value") or 0)
                     cups = int(row.get("positive_trophies") or 0)
@@ -3067,8 +3060,8 @@ class CommunityFeatures:
                         f"Coeff. {coeff:.6f})"
                     )
         except Exception as exc:
-            LOG.error("WEEKLY REPORT PROGRESSION ERROR: %r", exc)
-            lines.append("\n🔥 Top Progressione (7 giorni): dati momentaneamente non disponibili")
+            LOG.error("REPORT PROGRESSION ERROR: %r", exc)
+            lines.append(f"\n🔥 Top Progressione ({period_label.lower()}): dati momentaneamente non disponibili")
 
         if inactive:
             lines.append("\nDa controllare:")
@@ -4441,8 +4434,11 @@ class CommunityFeatures:
                 await message.reply_text(self.recruitments_text(message.chat_id))
             return True
 
-        if ql == "report":
-            await message.reply_text(self.operational_report_text(message.chat_id, "weekly"))
+        report_match = re.fullmatch(r"report(?:\\s+(oggi|giornaliero|7|15|30))?", q, re.I)
+        if report_match:
+            requested = (report_match.group(1) or "7").casefold()
+            period = "daily" if requested in ("oggi", "giornaliero") else requested
+            await message.reply_text(self.operational_report_text(message.chat_id, period))
             return True
 
         match = re.fullmatch(r"report\s+(giornaliero|settimanale)\s+(on|off)", q, re.I)
