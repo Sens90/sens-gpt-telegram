@@ -2070,7 +2070,21 @@ class CommunityFeatures:
             coefficient = f'{float(row["coefficient"]):.6f}'.replace(".", ",")
             value = int(row["value"])
             value_text = ("+" if value > 0 and days is not None else "") + self.number_formatter(value)
-            lines.append(f'{index}. {row["name"]} — Progressione: {value_text} — Coefficiente: {coefficient}')
+            if days is None:
+                lines.append(f'{index}. {row["name"]} — Valore coefficiente: {value_text} — Coeff. Abusivo: {coefficient}')
+            else:
+                cups = int(row.get("positive_trophies") or 0)
+                bonus = value - cups
+                cups_text = ("+" if cups > 0 else "") + self.number_formatter(cups)
+                bonus_text = ("+" if bonus > 0 else "") + self.number_formatter(bonus)
+                lines += [
+                    f'{index}. {row["name"]}',
+                    f'🏆 Coppe: {cups_text}',
+                    f'⚡ Bonus: {bonus_text}',
+                    f'🔥 Progressione: {value_text}',
+                    f'🧮 Coeff. Abusivo: {coefficient}',
+                    "",
+                ]
         report_url = self._publish_telegraph(f"{title} — {period}", lines)
         if report_url:
             summary = [f"{title} — {period}", "", *lines[3:13]]
