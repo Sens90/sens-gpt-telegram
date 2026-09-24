@@ -2073,12 +2073,14 @@ class CommunityFeatures:
             if days is None:
                 lines.append(f'{index}. {row["name"]} — Valore coefficiente: {value_text} — Coeff. Abusivo: {coefficient}')
             else:
+                battles = int(row.get("battle_count") or 0)
                 cups = int(row.get("positive_trophies") or 0)
                 bonus = value - cups
                 cups_text = ("+" if cups > 0 else "") + self.number_formatter(cups)
                 bonus_text = ("+" if bonus > 0 else "") + self.number_formatter(bonus)
                 lines += [
                     f'{index}. {row["name"]}',
+                    f'🎮 Partite: {battles}',
                     f'🏆 Coppe: {cups_text}',
                     f'⚡ Bonus: {bonus_text}',
                     f'🔥 Progressione: {value_text}',
@@ -2087,7 +2089,21 @@ class CommunityFeatures:
                 ]
         report_url = self._publish_telegraph(f"{title} — {period}", lines)
         if report_url:
-            summary = [f"{title} — {period}", "", *lines[3:13]]
+            if days is None:
+                summary = [f"{title} — {period}", "", *lines[3:6]]
+            else:
+                # Three complete positions in Telegram; the full ranking stays on Telegraph.
+                summary_lines = []
+                positions = 0
+                for line in lines[3:]:
+                    if re.match(r"^\d+\.\s", line):
+                        positions += 1
+                        if positions > 3:
+                            break
+                    summary_lines.append(line)
+                while summary_lines and not summary_lines[-1]:
+                    summary_lines.pop()
+                summary = [f"{title} — {period}", "", *summary_lines]
             return self._telegraph_reply(summary, report_url, lines)
         return "\n".join(lines)
 
