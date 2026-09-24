@@ -3378,11 +3378,66 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     # Every manual command issued in a group is executed with the group as
     # its data/permission scope, but all interactive output is delivered in
-    # private to the requester. Automatic jobs bypass answer() and stay public.
-    _private_message = await _ensure_private_command_delivery(message, context)
-    if _private_message is None:
+    # private to the requester. Voice interaction commands are the exception:
+    # "leggi" and explicit "rispondi a voce" stay in the source chat.
+    _voice_group_exception = bool(
+        re.fullmatch(r"(?:leggi|leggilo|leggi questo|leggi a voce)", _raw_command.strip(), re.I)
+        or re.search(r"(?:rispondi|rspondi|rispomdi|rispndi|rispodi)\s+(?:a\s+voce|voce)\s*$", (message.text or "").strip(), re.I)
+    )
+    # Only deterministic bot commands are moved to private/deleted. Normal
+    # conversation (greetings, advice, questions handled by Gemini) stays in
+    # the group together with the bot reply.
+    _deterministic_group_command = bool(
+        community.is_deterministic_command(_raw_command)
+        if hasattr(community, "is_deterministic_command")
+        else re.match(
+            r"^(?:classifica|progressione|report|stats|statistiche|profilo|scheda|status|stato|"
+            r"registrami|registra|skin|ranked|draft|counter|grafico|club|elenco|inattivi|assenza|"
+            r"eventi|partecipo|reclutamento|regole|faq|sito|discord|comandi|aiuto|help|funzioni|"
+            r"coefficiente)\b",
+            _raw_command.strip(),
+            re.I,
+        )
+    )
+    # In groups, free-form Gemini conversation is opt-in: reply only when
+    # the bot is explicitly mentioned or when the user replies to a bot message.
+    # Deterministic commands do not require a mention.
+    _is_group_chat = getattr(message.chat, "type", None) in {"group", "supergroup"}
+    _bot_username = (getattr(context.bot, "username", None) or "").lstrip("@")
+    _explicit_bot_mention = bool(
+        _bot_username
+        and re.search(r"@" + re.escape(_bot_username) + r"\\b", message.text or "", re.I)
+    )
+    _reply_to_bot = bool(
+        message.reply_to_message
+        and getattr(message.reply_to_message, "from_user", None)
+        and getattr(message.reply_to_message.from_user, "id", None) == context.bot.id
+    )
+    if (
+        _is_group_chat
+        and not _deterministic_group_command
+        and not _voice_group_exception
+        and not _explicit_bot_mention
+        and not _reply_to_bot
+    ):
+        print("GROUP FREE CHAT IGNORED: bot not addressed", flush=True)
         return
-    message = _private_message
+
+    if not _voice_group_exception and _deterministic_group_command:
+        _source_group_message = message
+        _private_message = await _ensure_private_command_delivery(message, context)
+        if _private_message is None:
+            return
+        message = _private_message
+        if getattr(_source_group_message.chat, "type", None) in {"group", "supergroup"}:
+            try:
+                await context.bot.delete_message(
+                    chat_id=_source_group_message.chat_id,
+                    message_id=_source_group_message.message_id,
+                )
+                print("MANUAL COMMAND DELETED FROM GROUP:", repr(_raw_command), flush=True)
+            except Exception as exc:
+                print("MANUAL COMMAND DELETE ERROR:", type(exc).__name__, flush=True)
     # A malformed bot mention can swallow the first command token
     # (e.g. @SensGPT_TitaniAbusiviBotregistrami). Treat every text containing
     # an explicit registration attempt as registration traffic and NEVER let it
