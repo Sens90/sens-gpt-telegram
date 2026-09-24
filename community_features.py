@@ -1094,6 +1094,11 @@ class CommunityFeatures:
                         {"tag": "strong", "children": [f"{icon} {label.strip()}:"]},
                         detail,
                     ]})
+                    if is_ranking_report and normalized_label == "data":
+                        nodes.extend([
+                            {"tag": "p", "children": ["\u00a0"]},
+                            {"tag": "p", "children": ["\u00a0"]},
+                        ])
                     continue
             nodes.append({"tag": "p", "children": [value]})
         return nodes
