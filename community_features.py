@@ -3282,11 +3282,14 @@ class CommunityFeatures:
             full.append("Battaglie osservate non ancora disponibili.")
 
         total_battles = sum(int(r.get("battle_count") or 0) for r in progression_rows)
+        # Real current trophy total for the exact report scope (not period gains).
+        total_real_trophies = sum(int(r.get("current") or 0) for r in trophy_rows)
         total_cups = sum(r["_cups"] for r in progression_rows)
         total_progression = sum(r["_value"] for r in progression_rows)
         full.extend([
             "📊 RESOCONTO",
             f"👥 Giocatori monitorati: {len(tags)}",
+            f"🏆 Coppe totali reali: {self.number_formatter(total_real_trophies)}",
             f"🎮 Battaglie analizzate: {total_battles}",
             f"🏆 Coppe positive: +{self.number_formatter(total_cups)}",
             f"⚡ Bonus Progressione: +{self.number_formatter(total_progression-total_cups)}",
@@ -3312,6 +3315,7 @@ class CommunityFeatures:
         summary.extend([
             "", "📊 RESOCONTO",
             f"👥 Giocatori monitorati: {len(tags)}",
+            f"🏆 Coppe totali reali: {self.number_formatter(total_real_trophies)}",
             f"🎮 Battaglie analizzate: {total_battles}",
             f"🔥 Progressione complessiva: +{self.number_formatter(total_progression)}",
         ])
