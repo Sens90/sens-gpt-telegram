@@ -3506,13 +3506,13 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # delivery. Registration and full-profile commands keep their dedicated
     # validation/enrichment routes below.
     _fast_dispatch_excluded = bool(
-        re.match(r"^(?:registrami|tegistrami|registra)\\b", _raw_command.strip(), re.I)
+        re.match(r"^(?:registrami|tegistrami|registra)\b", _raw_command.strip(), re.I)
         or re.fullmatch(r"(?:stats|statistiche|profilo|scheda|status|stato)", _raw_command.strip(), re.I)
         or re.fullmatch(
-            r"(?:tag|stats|statistiche|profilo|scheda|status(?:\\s+(?:del\\s+)?giocatore)?|stato(?:\\s+(?:del\\s+)?giocatore)?)\\s*(?:di\\s+)?#?[0289PYLQGRJCUV]{3,15}",
+            r"(?:tag|stats|statistiche|profilo|scheda|status(?:\s+(?:del\s+)?giocatore)?|stato(?:\s+(?:del\s+)?giocatore)?)\s*(?:di\s+)?#?[0289PYLQGRJCUV]{3,15}",
             _raw_command.strip(), re.I,
         )
-        or re.match(r"^(?:profilo ai|profilo grafico|immagine profilo|profile image)\\b", _raw_command.strip(), re.I)
+        or re.match(r"^(?:profilo ai|profilo grafico|immagine profilo|profile image)\b", _raw_command.strip(), re.I)
     )
     if _deterministic_group_command and not _voice_group_exception and not _fast_dispatch_excluded:
         print("DETERMINISTIC FAST DISPATCH START:", repr(_raw_command), flush=True)
@@ -3525,6 +3525,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("DETERMINISTIC FAST DISPATCH DONE:", repr(_raw_command), "handled=" + str(bool(_handled_fast)), flush=True)
         if _handled_fast:
             return
+        # Other deterministic families have dedicated handlers later in this
+        # function. The final firewall below still forbids a Gemini fallback.
 
     # A malformed bot mention can swallow the first command token
     # (e.g. @SensGPT_TitaniAbusiviBotregistrami). Treat every text containing
@@ -4931,6 +4933,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Draft Ranked attiva: non ho riconosciuto questo passaggio. "
                 "Resta nella Draft e riprova con ban/pick oppure scrivi 'Draft reset'."
             )
+            return
+
+        if _deterministic_group_command:
+            await message.reply_text("Non ho riconosciuto questo comando. Scrivi 'comandi' per consultare la guida.")
             return
 
         # Structured Brawl Stars intents must never silently fall through to Gemini.
