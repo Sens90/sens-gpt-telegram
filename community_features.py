@@ -2046,7 +2046,7 @@ class CommunityFeatures:
         member_by_tag = unique
         try:
             response = requests.post(
-                f"{self.supabase_url}/rest/v1/rpc/coefficient_progression_rows",
+                f"{self.supabase_url}/rest/v1/rpc/coefficient_progression_rows_v2",
                 headers=self._headers(),
                 json={"p_player_tags": list(member_by_tag), "p_days": days},
                 timeout=20,
@@ -2070,10 +2070,45 @@ class CommunityFeatures:
             coefficient = f'{float(row["coefficient"]):.6f}'.replace(".", ",")
             value = int(row["value"])
             value_text = ("+" if value > 0 and days is not None else "") + self.number_formatter(value)
-            lines.append(f'{index}. {row["name"]} — Progressione: {value_text} — Coefficiente: {coefficient}')
+            if days is None:
+                lines.append(f'{index}. {row["name"]} — Valore coefficiente: {value_text} — Coeff. Abusivo: {coefficient}')
+            else:
+                battles = int(row.get("battle_count") or 0)
+                cups = int(row.get("positive_trophies") or 0)
+                bonus = value - cups
+                cups_text = ("+" if cups > 0 else "") + self.number_formatter(cups)
+                bonus_text = ("+" if bonus > 0 else "") + self.number_formatter(bonus)
+                play_seconds = int(row.get("play_seconds") or 0)
+                hours, remainder = divmod(play_seconds, 3600)
+                minutes = remainder // 60
+                play_time = f"{hours}h {minutes:02d}m" if hours else f"{minutes}m"
+                lines += [
+                    f'{index}. {row["name"]}',
+                    f'⏱️ Tempo di gioco: {play_time}',
+                    f'🎮 Partite: {battles}',
+                    f'🏆 Coppe: {cups_text}',
+                    f'⚡ Bonus: {bonus_text}',
+                    f'🔥 Progressione: {value_text}',
+                    f'🧮 Coeff. Abusivo: {coefficient}',
+                    "",
+                ]
         report_url = self._publish_telegraph(f"{title} — {period}", lines)
         if report_url:
-            summary = [f"{title} — {period}", "", *lines[3:13]]
+            if days is None:
+                summary = [f"{title} — {period}", "", *lines[3:6]]
+            else:
+                # Three complete positions in Telegram; the full ranking stays on Telegraph.
+                summary_lines = []
+                positions = 0
+                for line in lines[3:]:
+                    if re.match(r"^\d+\.\s", line):
+                        positions += 1
+                        if positions > 3:
+                            break
+                    summary_lines.append(line)
+                while summary_lines and not summary_lines[-1]:
+                    summary_lines.pop()
+                summary = [f"{title} — {period}", "", *summary_lines]
             return self._telegraph_reply(summary, report_url, lines)
         return "\n".join(lines)
 
