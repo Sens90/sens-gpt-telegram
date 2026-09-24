@@ -5679,13 +5679,6 @@ def _startup_brawltrack_meta_sync_once():
         print("BRAWLTRACK META SYNC ONCE ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
 
 if __name__ == "__main__":
-    def _startup_netsons_proxy_smoke():
-        try:
-            response = requests.get("https://titaniabusivi.it/brawl-proxy.php", timeout=8)
-            print("NETSONS PROXY SMOKE HTTP:", response.status_code, flush=True)
-        except Exception as exc:
-            print("NETSONS PROXY SMOKE ERROR:", type(exc).__name__, repr(exc), flush=True)
-
     def _startup_supercell_proxy_audit():
         try:
             with app.test_request_context("/internal/supercell-proxy-audit"):
@@ -5693,7 +5686,6 @@ if __name__ == "__main__":
         except Exception as exc:
             print("SUPERCELL PROXY AUDIT STARTUP ERROR:", repr(exc), flush=True)
 
-    threading.Thread(target=_startup_netsons_proxy_smoke, daemon=True).start()
     threading.Thread(target=_startup_supercell_proxy_audit, daemon=True).start()
     threading.Thread(
         target=automatic_trophy_monitor,
