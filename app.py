@@ -2103,7 +2103,7 @@ def save_coefficient_snapshot(player, is_registered=True):
             headers=_supabase_headers(),
             params={
                 "player_tag": "eq." + payload["player_tag"],
-                "select": "coefficient_score,trophies,formula_version,recorded_at",
+                "select": "coefficient_score,trophies,formula_version,recorded_at,brawler_trophy_values",
                 "order": "recorded_at.desc",
                 "limit": "1",
             },
@@ -2113,7 +2113,9 @@ def save_coefficient_snapshot(player, is_registered=True):
         previous = (latest.json() or [None])[0]
         if (previous and previous.get("coefficient_score") == payload["coefficient_score"]
                 and previous.get("trophies") == payload["trophies"]
-                and previous.get("formula_version") == COEFFICIENT_FORMULA_VERSION):
+                and previous.get("formula_version") == COEFFICIENT_FORMULA_VERSION
+                and isinstance(previous.get("brawler_trophy_values"), list)
+                and previous.get("brawler_trophy_values")):
             recorded = datetime.fromisoformat(str(previous["recorded_at"]).replace("Z", "+00:00"))
             if datetime.now(timezone.utc) - recorded < timedelta(hours=1):
                 return True

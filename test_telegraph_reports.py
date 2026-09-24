@@ -43,6 +43,36 @@ class CoefficientSnapshotDistributionTests(unittest.TestCase):
         self.assertNotIn("brawler_trophies", payload)
         self.assertNotIn("test-secret", str(payload))
 
+    @patch("app.requests.post")
+    @patch("app.requests.get")
+    @patch.dict(os.environ, {
+        "TELEGRAM_TOKEN": "000000:test-token",
+        "SUPABASE_URL": "https://example.supabase.co",
+        "SUPABASE_SERVICE_ROLE_KEY": "test-secret",
+    })
+    def test_legacy_snapshot_without_distribution_is_not_deduplicated(self, get, post):
+        import app
+
+        get.return_value.raise_for_status.return_value = None
+        get.return_value.json.return_value = [{
+            "coefficient_score": 500,
+            "trophies": 500,
+            "formula_version": app.COEFFICIENT_FORMULA_VERSION,
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "brawler_trophy_values": None,
+        }]
+        post.return_value.raise_for_status.return_value = None
+        with patch.object(app, "SUPABASE_URL", "https://example.supabase.co"), patch.object(
+            app, "SUPABASE_SERVICE_ROLE_KEY", "test-secret"
+        ):
+            self.assertTrue(app.save_coefficient_snapshot({
+                "tag": "#2GU9UV2RG", "name": "Sens", "trophies": 500,
+                "brawler_trophies": [{"name": "NITA", "trophies": 500}],
+            }))
+
+        post.assert_called_once()
+        self.assertEqual(post.call_args.kwargs["json"]["brawler_trophy_values"], [500])
+
 
 class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
     def make_features(self):
