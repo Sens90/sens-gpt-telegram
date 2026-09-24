@@ -1057,6 +1057,13 @@ class CommunityFeatures:
                 medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(position) if is_ranking_report else None
                 rendered = f"{medal} {ranking.group(2)}" if medal else value
                 children = [{"tag": "strong", "children": [rendered]}]
+                # Add extra vertical separation only in Telegraph ranking reports.
+                # Telegram summaries are rendered from the original lines unchanged.
+                if is_ranking_report and position > 1:
+                    nodes.extend([
+                        {"tag": "p", "children": ["\u00a0"]},
+                        {"tag": "p", "children": ["\u00a0"]},
+                    ])
                 nodes.append({"tag": "p", "children": children})
                 continue
             heading = section_headings.get(value.rstrip(":").upper())
