@@ -80,6 +80,54 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.number_formatter = lambda value: f"{int(value):,}".replace(",", ".")
         return obj
 
+    @patch("community_features.requests.post")
+    def test_periodic_report_summary_and_scope(self, post):
+        obj = self.make_features()
+        obj.supabase_url = "https://example.supabase.co"
+        obj.supabase_key = "test-secret"
+        members = [
+            {"player_tag": "AAA", "player_name": "Titan", "club_name": "TITANI ABUSIVI"},
+            {"player_tag": "BBB", "player_name": "Outside", "club_name": "OTHER"},
+        ]
+        roster = [
+            {"player_tag": "AAA", "player_name": "Titan", "club_name": "TITANI ABUSIVI"},
+            {"player_tag": "CCC", "player_name": "Unregistered", "club_name": "TITANI ABUSIVI"},
+        ]
+        def get_rows(table, params):
+            if table == "community_members":
+                return members
+            if table == "club_roster_daily":
+                if params.get("select") == "snapshot_date":
+                    return [{"snapshot_date": "2026-09-24"}]
+                return roster if params.get("club_name") == "eq.TITANI ABUSIVI" else []
+            return []
+        obj._get = Mock(side_effect=get_rows)
+        obj.history_fetcher = Mock(side_effect=lambda tag, days: [{"trophies": {"AAA": 100, "BBB": 200, "CCC": 300}[tag]}])
+        obj.change_calculator = Mock(side_effect=lambda history, current: {"7d": None if current == 100 else 10})
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/full")
+        post.return_value.json.return_value = [{
+            "player_tag": "AAA", "player_name": "Titan", "progression_value": 15,
+            "positive_trophies": 10, "battle_count": 1,
+        }]
+        post.return_value.raise_for_status.return_value = None
+
+        for scope, expected_tags, expected_cups in (
+            ("community", {"AAA", "BBB"}, "300"),
+            ("community_club", {"AAA"}, "100"),
+            ("global_single:titani", {"AAA", "CCC"}, "400"),
+        ):
+            with self.subTest(scope=scope):
+                summary = obj.periodic_report_text(123, scope, 7)
+                sent_tags = set(post.call_args.kwargs["json"]["p_player_tags"])
+                self.assertEqual(sent_tags, expected_tags)
+                self.assertIn("🏆 Coppe totali reali: " + expected_cups, summary)
+                self.assertIn("🏆 CLASSIFICA TROFEI", summary)
+                self.assertIn("📋 RESOCONTO", summary)
+                self.assertIn("📊 REPORT COMPLETO", summary)
+                self.assertNotIn("CLASSIFICA PROGRESSIONE", summary)
+                self.assertNotIn("Coeff.", summary)
+                self.assertIn("CLASSIFICA PROGRESSIONE", "\n".join(obj._publish_telegraph.call_args.args[1]))
+
     async def test_coefficient_guide_routes_directly_to_telegraph(self):
         obj = self.make_features()
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/guida-coefficiente")
