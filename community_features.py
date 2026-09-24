@@ -2078,8 +2078,14 @@ class CommunityFeatures:
                 bonus = value - cups
                 cups_text = ("+" if cups > 0 else "") + self.number_formatter(cups)
                 bonus_text = ("+" if bonus > 0 else "") + self.number_formatter(bonus)
+                # Battle logs do not expose exact match duration. Keep the ranking label
+                # as "Tempo di gioco" and mark the calculated value with "~".
+                estimated_minutes = battles * 2
+                hours, minutes = divmod(estimated_minutes, 60)
+                play_time = f"{hours}h {minutes:02d}m" if hours else f"{minutes}m"
                 lines += [
                     f'{index}. {row["name"]}',
+                    f'⏱️ Tempo di gioco: ~{play_time}',
                     f'🎮 Partite: {battles}',
                     f'🏆 Coppe: {cups_text}',
                     f'⚡ Bonus: {bonus_text}',
