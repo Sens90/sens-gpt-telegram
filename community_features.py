@@ -139,7 +139,12 @@ Mostra lo storico della collezione Skin nel periodo scelto.
 [[CMDNAME:mostrami la skin NOME_SKIN di NOME_BRAWLER]]
 Mostra l'immagine disponibile della Skin specificata.
 
-🏆 CLASSIFICHE COMMUNITY
+🏆 CLASSIFICHE & REPORT
+[[CMDNAME:Classifiche]]
+Apre un unico Telegraph con tutte le famiglie di Classifiche e Report, divise per OGGI, 7, 15 e 30 giorni. Ogni voce contiene la descrizione dell'ambito e il collegamento alla pagina completa.
+
+I comandi specifici restano disponibili per compatibilità e uso avanzato.
+
 [[CMD:cmd_classifica|Classifica]]
 Mostra i periodi e le classifiche disponibili.
 
@@ -3465,6 +3470,19 @@ class CommunityFeatures:
             payload = self._telegraph_reply(summary, report_url, guide) if report_url else "\n".join(guide)
             await self._send_ranking_message(context, _ranking_reply_chat_id, payload)
             return True
+        if q0l in ("classifiche", "classifiche e report", "dashboard classifiche", "dashboard classifiche e report"):
+            try:
+                payload = await asyncio.wait_for(
+                    asyncio.to_thread(self.rankings_dashboard_text, _ranking_chat_id),
+                    timeout=120,
+                )
+            except asyncio.TimeoutError:
+                LOG.error("CLASSIFICHE DASHBOARD TIMEOUT chat=%s", _ranking_chat_id)
+                await message.reply_text("La dashboard Classifiche & Report sta impiegando troppo tempo. Riprova tra poco.")
+                return True
+            await self._send_ranking_message(context, int(message.from_user.id), payload)
+            return True
+
         if q0l in ("elenco registrati", "registrati", "membri registrati", "account registrati"):
             await message.reply_text(self.registered_members_text(message.chat_id))
             return True
