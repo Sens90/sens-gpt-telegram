@@ -5605,7 +5605,7 @@ async def _send_auto_ranking_slot(context, slot, frozen_only=False):
 
 
 async def automatic_periodic_report_job(context):
-    """Publish registered + complete-roster Trophy/Progressione reports for 7/15/30 days."""
+    """Publish all registered and complete-roster Trophy/Progressione report families for 7/15/30 days."""
     data = context.job.data or {}
     days = int(data.get("days") or 7)
     now = datetime.now(ROME)
@@ -5616,9 +5616,25 @@ async def automatic_periodic_report_job(context):
     except Exception as exc:
         print("REPORT PERIODICO SETTINGS ERROR:", days, repr(exc), flush=True)
         return
+    # Keep every automatic period aligned with the complete Progressione
+    # family exposed by the manual commands. Registered scopes and complete
+    # roster scopes remain deliberately separate.
+    automatic_scopes = (
+        ("community", "PROGRESSIONE"),
+        ("community_club", "PROGRESSIONE CLUB"),
+        ("global_clubs", "PROGRESSIONE GLOBALE CLUB"),
+        ("titani", "PROGRESSIONE TITANI"),
+        ("tamarri", "PROGRESSIONE TAMARRI"),
+        ("tornadi", "PROGRESSIONE TORNADI"),
+        ("talenti", "PROGRESSIONE TALENTI"),
+        ("global_single:titani", "PROGRESSIONE CLUB GLOBALE TITANI"),
+        ("global_single:tamarri", "PROGRESSIONE CLUB GLOBALE TAMARRI"),
+        ("global_single:tornadi", "PROGRESSIONE CLUB GLOBALE TORNADI"),
+        ("global_single:talenti", "PROGRESSIONE CLUB GLOBALE TALENTI"),
+    )
     for row in settings_rows or []:
         chat_id = int(row["chat_id"])
-        for scope, label in (("community", "REGISTRATI"), ("global_clubs", "GLOBALE CLUB")):
+        for scope, label in automatic_scopes:
             try:
                 text_report = await asyncio.to_thread(
                     community.periodic_report_text, chat_id, scope, days
@@ -5752,8 +5768,8 @@ def main():
             first=75,
             name="classifica_oggi_watchdog"
         )
-        # Automatic combined reports. Each run publishes both scopes:
-        # registered users and complete 4-club roster (registered + non-registered).
+        # Automatic combined reports. Each run publishes every Progressione family:
+        # all registered scopes plus complete four-club and single-club rosters.
         application.job_queue.run_daily(
             automatic_periodic_report_job,
             time=dt_time(hour=6, minute=5, tzinfo=ROME),
