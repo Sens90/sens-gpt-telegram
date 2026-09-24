@@ -2552,8 +2552,7 @@ class CommunityFeatures:
         try:
             return self._get("club_roster_daily", {
                 "select": "snapshot_date,club_name,club_tag,player_tag,player_name,first_trophies,last_trophies,first_seen_at,last_seen_at,source",
-                "snapshot_date": f"gte.{start_date.isoformat()}",
-                "and": f"(snapshot_date.lt.{end_date.isoformat()})",
+                "and": f"(snapshot_date.gte.{start_date.isoformat()},snapshot_date.lt.{end_date.isoformat()})",
                 "order": "snapshot_date.asc,player_tag.asc",
                 "limit": "10000",
             }) or []
