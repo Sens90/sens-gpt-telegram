@@ -3072,6 +3072,185 @@ class CommunityFeatures:
                 lines.append(f"- {name}: {inactive_days} giorni{' - RISCHIO KICK' if risk else ''}")
         return "\n".join(lines)
 
+    def periodic_report_text(self, chat_id, scope="community", days=7):
+        """Combined Trophy + Progressione report. Telegram gets Top 5; Telegraph keeps the full lists."""
+        days = int(days)
+        if days not in (7, 15, 30):
+            return "I report periodici sono disponibili per 7, 15 o 30 giorni."
+
+        scope_key = str(scope or "community").strip().casefold()
+        allowed_clubs = {name.casefold(): name for name in self.CLUB_ALIASES.values()}
+        members = []
+        scope_label = "UTENTI REGISTRATI"
+        scope_note = "utenti registrati con tag Brawl Stars collegato"
+
+        if scope_key == "community":
+            members = self._get("community_members", {
+                "select": "player_tag,player_name,display_name,club_name",
+                "is_active": "eq.true", "player_tag": "not.is.null", "limit": "1000",
+            }) or []
+        elif scope_key == "community_club":
+            rows = self._get("community_members", {
+                "select": "player_tag,player_name,display_name,club_name",
+                "is_active": "eq.true", "player_tag": "not.is.null", "limit": "1000",
+            }) or []
+            members = [m for m in rows if str(m.get("club_name") or "").casefold() in allowed_clubs]
+            scope_label = "CLUB — REGISTRATI"
+            scope_note = "utenti registrati appartenenti ai 4 club ABUSIVI"
+        else:
+            global_scope = scope_key == "global_clubs" or scope_key.startswith("global_single:")
+            club_key = scope_key.split(":", 1)[1] if scope_key.startswith("global_single:") else scope_key
+            club_name = self.CLUB_ALIASES.get(club_key) or self.CLUB_ALIASES.get(club_key.replace(" abusivi", ""))
+            if global_scope:
+                wanted = [club_name] if club_name else sorted(set(self.CLUB_ALIASES.values()))
+                seen = set()
+                for name in wanted:
+                    latest = self._get("club_roster_daily", {
+                        "select": "snapshot_date", "club_name": f"eq.{name}",
+                        "order": "snapshot_date.desc", "limit": "1",
+                    })
+                    latest_date = latest[0].get("snapshot_date") if latest else None
+                    if not latest_date:
+                        continue
+                    for m in self._get("club_roster_daily", {
+                        "select": "player_tag,player_name,club_name",
+                        "club_name": f"eq.{name}", "snapshot_date": f"eq.{latest_date}", "limit": "100",
+                    }) or []:
+                        tag = str(m.get("player_tag") or "").lstrip("#").upper()
+                        if tag and tag not in seen:
+                            seen.add(tag); members.append(m)
+                scope_label = f"CLUB GLOBALE — {club_name}" if club_name else "GLOBALE CLUB"
+                scope_note = ("roster completo del club, registrati + non registrati" if club_name
+                              else "roster completo dei 4 club ABUSIVI, registrati + non registrati")
+            elif club_name:
+                members = self._get("community_members", {
+                    "select": "player_tag,player_name,display_name,club_name",
+                    "is_active": "eq.true", "player_tag": "not.is.null",
+                    "club_name": f"eq.{club_name}", "limit": "1000",
+                }) or []
+                scope_label = club_name
+                scope_note = f"utenti registrati di {club_name}"
+            else:
+                return "Ambito report non riconosciuto."
+
+        by_tag = {}
+        for m in members:
+            tag = str(m.get("player_tag") or "").strip().lstrip("#").upper()
+            if tag and tag not in by_tag:
+                by_tag[tag] = m
+        tags = list(by_tag)
+
+        trophy_rows = []
+        for tag, m in by_tag.items():
+            try:
+                history = self.history_fetcher(tag, days=max(days + 2, 10))
+                current = None
+                if history:
+                    last = history[-1] if isinstance(history, list) else None
+                    if isinstance(last, dict):
+                        current = last.get("trophies")
+                if current is None:
+                    state = self._get("player_tracking_state", {
+                        "select": "trophies", "player_tag": f"eq.{tag}", "limit": "1",
+                    })
+                    current = state[0].get("trophies") if state else None
+                if current is None:
+                    continue
+                changes = self.change_calculator(history, int(current))
+                delta = changes.get({7: "7d", 15: "15d", 30: "30d"}[days])
+                if delta is None:
+                    continue
+                trophy_rows.append({
+                    "name": m.get("player_name") or m.get("display_name") or tag,
+                    "tag": tag, "delta": int(delta), "current": int(current),
+                })
+            except Exception:
+                continue
+        trophy_rows.sort(key=lambda r: (r["delta"], r["current"]), reverse=True)
+
+        progression_rows = []
+        if tags:
+            try:
+                response = requests.post(
+                    f"{self.supabase_url}/rest/v1/rpc/coefficient_progression_rows_v2",
+                    headers=self._headers(), json={"p_player_tags": tags, "p_days": days}, timeout=30,
+                )
+                response.raise_for_status()
+                progression_rows = response.json() or []
+            except Exception as exc:
+                LOG.error("PERIODIC REPORT PROGRESSION ERROR: %r", exc)
+        for row in progression_rows:
+            m = by_tag.get(str(row.get("player_tag") or "").upper(), {})
+            row["_name"] = row.get("player_name") or m.get("player_name") or m.get("display_name") or row.get("player_tag")
+            row["_value"] = int(row.get("progression_value") or 0)
+            row["_cups"] = int(row.get("positive_trophies") or 0)
+            row["_bonus"] = row["_value"] - row["_cups"]
+            row["_coeff"] = (row["_value"] / row["_cups"]) if row["_cups"] > 0 else 0.0
+        progression_rows = [r for r in progression_rows if int(r.get("battle_count") or 0) > 0]
+        progression_rows.sort(key=lambda r: (r["_value"], r["_coeff"]), reverse=True)
+
+        title = f"🔥 REPORT {scope_label} — {days} GIORNI"
+        full = [title, f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}", "", f"👥 Ambito: {scope_note}", ""]
+        full.append("🏆 CLASSIFICA TROFEI")
+        if trophy_rows:
+            for i, r in enumerate(trophy_rows, 1):
+                sign = "+" if r["delta"] > 0 else ""
+                full.append(f"{i}. {r['name']} — {sign}{self.number_formatter(r['delta'])}")
+        else:
+            full.append("Storico trofei non ancora disponibile.")
+        full.extend(["", "🔥 CLASSIFICA PROGRESSIONE"])
+        if progression_rows:
+            for i, r in enumerate(progression_rows, 1):
+                full.extend([
+                    f"{i}. {r['_name']}",
+                    f"🎮 Partite: {int(r.get('battle_count') or 0)}",
+                    f"🏆 Coppe: +{self.number_formatter(r['_cups'])}",
+                    f"⚡ Bonus: +{self.number_formatter(r['_bonus'])}",
+                    f"🔥 Progressione: +{self.number_formatter(r['_value'])}",
+                    f"🧮 Coeff. Progressione: {r['_coeff']:.6f}".replace(".", ","),
+                    "",
+                ])
+        else:
+            full.append("Battaglie osservate non ancora disponibili.")
+
+        total_battles = sum(int(r.get("battle_count") or 0) for r in progression_rows)
+        total_cups = sum(r["_cups"] for r in progression_rows)
+        total_progression = sum(r["_value"] for r in progression_rows)
+        full.extend([
+            "📊 RESOCONTO",
+            f"👥 Giocatori monitorati: {len(tags)}",
+            f"🎮 Battaglie analizzate: {total_battles}",
+            f"🏆 Coppe positive: +{self.number_formatter(total_cups)}",
+            f"⚡ Bonus Progressione: +{self.number_formatter(total_progression-total_cups)}",
+            f"🔥 Progressione complessiva: +{self.number_formatter(total_progression)}",
+        ])
+
+        report_url = self._publish_telegraph(title, full)
+        summary = [title, "", f"👥 Ambito: {scope_note}", "", "🏆 CLASSIFICA TROFEI"]
+        for i, r in enumerate(trophy_rows[:5], 1):
+            sign = "+" if r["delta"] > 0 else ""
+            summary.append(f"{i}. {r['name']} — {sign}{self.number_formatter(r['delta'])}")
+        if not trophy_rows:
+            summary.append("Storico trofei non ancora disponibile.")
+        summary.extend(["", "🔥 CLASSIFICA PROGRESSIONE"])
+        for i, r in enumerate(progression_rows[:5], 1):
+            summary.append(
+                f"{i}. {r['_name']} — +{self.number_formatter(r['_value'])} "
+                f"(Coppe +{self.number_formatter(r['_cups'])} · Bonus +{self.number_formatter(r['_bonus'])} · "
+                f"Coeff. {r['_coeff']:.6f})".replace(".", ",")
+            )
+        if not progression_rows:
+            summary.append("Battaglie osservate non ancora disponibili.")
+        summary.extend([
+            "", "📊 RESOCONTO",
+            f"👥 Giocatori monitorati: {len(tags)}",
+            f"🎮 Battaglie analizzate: {total_battles}",
+            f"🔥 Progressione complessiva: +{self.number_formatter(total_progression)}",
+        ])
+        if report_url:
+            summary.extend(["", f"📖 Classifiche complete: {report_url}"])
+        return "\n".join(summary)
+
     async def _send_ranking_message(self, context, chat_id, text):
         """Deliver ranking replies with bounded retries on transient Telegram timeouts."""
         from telegram.error import NetworkError, RetryAfter, TelegramError, TimedOut
