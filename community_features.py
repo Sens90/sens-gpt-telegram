@@ -3323,6 +3323,83 @@ class CommunityFeatures:
             summary.extend(["", f"📖 Classifiche complete: {report_url}"])
         return "\n".join(summary)
 
+    def rankings_dashboard_text(self, chat_id):
+        """Create one Telegraph index for every ranking/report family without flooding Telegram."""
+        now = datetime.now(ROME)
+        periods = [(0, "OGGI"), (7, "7 GIORNI"), (15, "15 GIORNI"), (30, "30 GIORNI")]
+        families = [
+            ("Progressione", "community", "Tutti gli utenti registrati, indipendentemente dal club."),
+            ("Progressione Club", "community_club", "Utenti registrati che appartengono ai quattro club ABUSIVI."),
+            ("Progressione Globale Club", "global_clubs", "Roster completi dei quattro club ABUSIVI: registrati e non registrati."),
+            ("Progressione TITANI", "titani", "Utenti registrati dei TITANI ABUSIVI."),
+            ("Progressione TAMARRI", "tamarri", "Utenti registrati dei TAMARRI ABUSIVI."),
+            ("Progressione TORNADI", "tornadi", "Utenti registrati dei TORNADI ABUSIVI."),
+            ("Progressione TALENTI", "talenti", "Utenti registrati dei TALENTI ABUSIVI."),
+            ("Progressione Club Globale TITANI", "global_single:titani", "Roster completo TITANI ABUSIVI, registrati e non registrati."),
+            ("Progressione Club Globale TAMARRI", "global_single:tamarri", "Roster completo TAMARRI ABUSIVI, registrati e non registrati."),
+            ("Progressione Club Globale TORNADI", "global_single:tornadi", "Roster completo TORNADI ABUSIVI, registrati e non registrati."),
+            ("Progressione Club Globale TALENTI", "global_single:talenti", "Roster completo TALENTI ABUSIVI, registrati e non registrati."),
+        ]
+        lines = [
+            "CLASSIFICHE & REPORT — TITANI ABUSIVI",
+            f"Aggiornato: {now:%d/%m/%Y %H:%M}",
+            "",
+            "Dashboard unica della community. Ogni voce spiega esattamente chi viene conteggiato e apre la classifica o il report completo.",
+        ]
+        for days, label in periods:
+            lines.extend(["", f"══ {label} ═=", ""])
+            # Trophy/report family.
+            if days in (0, 7, 15, 30):
+                trophy_text = self.ranking_text(chat_id, days)
+                trophy_url = self._publish_telegraph(f"Classifica Community — {label}", trophy_text.splitlines())
+                lines.extend([
+                    f"🏆 Classifica Community — {label}",
+                    "Andamento trofei di tutti gli utenti registrati della community.",
+                    f"📖 Apri: {trophy_url}" if trophy_url else "📖 Pagina temporaneamente non disponibile.",
+                    "",
+                ])
+                club_text = self.club_trophy_ranking_text(chat_id, days)
+                club_url = self._publish_telegraph(f"Classifica Club — {label}", club_text.splitlines())
+                lines.extend([
+                    f"🏆 Classifica Club — {label}",
+                    "Confronta i quattro club ABUSIVI sommando l'andamento trofei dei membri registrati.",
+                    f"📖 Apri: {club_url}" if club_url else "📖 Pagina temporaneamente non disponibile.",
+                    "",
+                ])
+            for name, scope, description in families:
+                try:
+                    ranking = self.coefficient_ranking_text(chat_id, scope, days)
+                    url = self._publish_telegraph(f"{name} — {label}", ranking.splitlines())
+                except Exception as exc:
+                    LOG.error("TELEGRAPH DASHBOARD FAMILY ERROR: family=%s days=%s error=%r", name, days, exc)
+                    url = None
+                lines.extend([
+                    f"🔥 {name} — {label}",
+                    description + " Progressione calcolata battaglia per battaglia e Brawler per Brawler.",
+                    f"📖 Apri: {url}" if url else "📖 Pagina temporaneamente non disponibile.",
+                    "",
+                ])
+            # Combined reports already supported by the report engine.
+            if days in (7, 15, 30):
+                for report_name, scope, description in [
+                    ("Report Community", "community", "Trofei, Progressione e resoconto degli utenti registrati."),
+                    ("Report Club", "community_club", "Trofei, Progressione e resoconto dei registrati nei quattro club ABUSIVI."),
+                    ("Report Globale Club", "global_clubs", "Trofei, Progressione e resoconto dei roster completi dei quattro club."),
+                ]:
+                    try:
+                        report = self.periodic_report_text(chat_id, scope, days)
+                        lines.extend([f"📊 {report_name} — {label}", description, report, ""])
+                    except Exception as exc:
+                        LOG.error("TELEGRAPH DASHBOARD REPORT ERROR: report=%s days=%s error=%r", report_name, days, exc)
+        dashboard_url = self._publish_telegraph("Classifiche & Report — TITANI ABUSIVI", lines)
+        if not dashboard_url:
+            return "Dashboard Classifiche & Report temporaneamente non disponibile."
+        return self._telegraph_reply(
+            ["📊 CLASSIFICHE & REPORT — TITANI ABUSIVI", f"Aggiornato: {now:%d/%m/%Y %H:%M}", "", "Tutte le famiglie in un'unica dashboard."],
+            dashboard_url,
+            lines,
+        )
+
     async def _send_ranking_message(self, context, chat_id, text):
         """Deliver ranking replies with bounded retries on transient Telegram timeouts."""
         from telegram.error import NetworkError, RetryAfter, TelegramError, TimedOut
