@@ -2084,7 +2084,7 @@ class CommunityFeatures:
                 play_time = f"{hours}h {minutes:02d}m" if hours else f"{minutes}m"
                 lines += [
                     f'{index}. {row["name"]}',
-                    f'⏱️ Tempo di gioco: ~{play_time}',
+                    f'⏱️ Tempo di gioco: {play_time}',
                     f'🎮 Partite: {battles}',
                     f'🏆 Coppe: {cups_text}',
                     f'⚡ Bonus: {bonus_text}',
