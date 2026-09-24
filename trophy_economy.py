@@ -5,7 +5,7 @@ Unknown, protected/bot and survival cases intentionally remain unclassified.
 """
 
 
-SURVIVAL_MODES = {"soloShowdown", "duoShowdown"}
+SURVIVAL_MODES = {"soloShowdown", "duoShowdown", "trioShowdown"}
 SOLO_SHOWDOWN_BASES = (
     (0, 49, (13, 10, 10, 8, 6, 5, 5, 5, 5, 5)),
     (50, 99, (13, 10, 9, 7, 5, 4, 3, 2, 1, -1)),
@@ -23,16 +23,26 @@ SOLO_SHOWDOWN_BASES = (
     (1800, 1999, (13, 10, 8, 5, 0, -3, -5, -7, -9, -12)),
 )
 
-# Duo remains deliberately limited to genuine two-player-team observations.
-# The public 2026 graphic covers Solo only, so unknown Duo cells stay unknown.
+# Current Duo/Trio Showdown placement tables. Positive trophyChange may
+# include Win Streak / Underdog; the table stores the ordinary base delta.
 SURVIVAL_PLACEMENT_BASES = {}
 DUO_SHOWDOWN_BASES = (
-    (900, 999, {2: 5}),
-    (1000, 1099, {1: 11, 2: 5, 3: -1, 4: -6, 5: -5}),
-    # These losses are confirmed by the observed delta plus the maximum +4
-    # Underdog compensation in matches with a much lower-trophy teammate.
-    (1100, 1199, {1: 11, 3: -5, 4: -8}),
-    (1800, 1999, {3: -6}),
+    (0, 49, (12, 6, 5, 5, 5)), (50, 99, (12, 6, 4, 2, -1)),
+    (100, 199, (12, 6, 3, 1, -1)), (200, 299, (12, 6, 2, -1, -1)),
+    (300, 599, (12, 6, 2, -1, -2)), (600, 799, (12, 6, 2, -2, -3)),
+    (800, 999, (12, 6, 2, -2, -4)), (1000, 1099, (12, 6, -1, -3, -5)),
+    (1100, 1199, (12, 6, -1, -4, -6)), (1200, 1299, (12, 6, -1, -4, -7)),
+    (1300, 1499, (12, 6, -2, -5, -8)), (1500, 1799, (12, 6, -2, -5, -9)),
+    (1800, 1999, (12, 6, -2, -6, -10)),
+)
+TRIO_SHOWDOWN_BASES = (
+    (0, 49, (12, 5, 5, 5)), (50, 99, (11, 5, 4, -1)),
+    (100, 199, (11, 5, 3, -1)), (200, 299, (11, 5, 2, -1)),
+    (300, 499, (11, 5, 2, -2)), (500, 599, (11, 5, 1, -2)),
+    (600, 799, (11, 5, 1, -3)), (800, 999, (11, 5, 1, -4)),
+    (1000, 1099, (11, 5, 0, -6)), (1100, 1199, (11, 5, 0, -7)),
+    (1200, 1299, (11, 5, 0, -8)), (1300, 1499, (11, 5, 0, -9)),
+    (1500, 1799, (11, 5, -5, -10)), (1800, 1999, (11, 5, -5, -11)),
 )
 
 # Exact negative deltas repeatedly observed for the same range and placement.
@@ -86,15 +96,17 @@ def classify_trophy_change(mode, result, trophies_before, trophy_change, placeme
                     base = placement_bases[rank - 1]
                     break
         else:
-            base = SURVIVAL_PLACEMENT_BASES.get(mode, {}).get(rank)
-            for lower, upper, placement_bases in DUO_SHOWDOWN_BASES:
-                if lower <= trophies <= upper and rank in placement_bases:
-                    base = placement_bases[rank]
-                    break
+            tables = DUO_SHOWDOWN_BASES if mode == "duoShowdown" else TRIO_SHOWDOWN_BASES
+            max_rank = 5 if mode == "duoShowdown" else 4
+            if 1 <= rank <= max_rank:
+                for lower, upper, placement_bases in tables:
+                    if lower <= trophies <= upper:
+                        base = placement_bases[rank - 1]
+                        break
         if base is not None and 0 <= trophies <= 1999 and base <= change <= base + 14:
             extra = change - base
             streak_finish = (mode == "soloShowdown" and rank <= 4) or (
-                mode == "duoShowdown" and rank <= 2
+                mode in {"duoShowdown", "trioShowdown"} and rank <= 2
             )
             bonus = ("win_streak_plus_underdog_observed" if extra > 10 and streak_finish
                      else "win_streak_observed" if extra and streak_finish else
