@@ -3645,6 +3645,9 @@ class CommunityFeatures:
         ql = q.lower()
 
         if ql in ("novita memoria", "novità memoria", "comunicazione memoria", "telegraph memoria"):
+            # Internal publishing trigger: keep it out of the normal manual
+            # command/private-delivery family. It exists only to create the
+            # official Telegraph page through the runtime token.
             announcement_lines = MEMORY_ANNOUNCEMENT_TEXT.splitlines()
             announcement_url = self._publish_telegraph("Novità Sens GPT — Memoria personale", announcement_lines)
             if announcement_url:
