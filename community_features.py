@@ -3462,6 +3462,25 @@ class CommunityFeatures:
         # Deterministic community commands must be handled before Skin/AI-like parsing.
         q0 = re.sub(r"\\s+", " ", question.strip())
         q0l = q0.casefold()
+        _ranking_chat_id = message.chat_id
+        if getattr(message.chat, "type", None) == "private":
+            _ranking_member = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
+            if _ranking_member and _ranking_member.get("chat_id") is not None:
+                _ranking_chat_id = int(_ranking_member["chat_id"])
+        _manual_ranking_request = bool(re.match(r"^(?:classific(?:a|he)|statistiche(?:\\s|$)|tutte\\s+le\\s+classifiche)", q0, re.I))
+        _ranking_reply_chat_id = int(message.from_user.id) if _manual_ranking_request and getattr(message.chat, "type", None) != "private" else int(message.chat_id)
+        if q0l == "report":
+            LOG.info("MANUAL REPORT FAST ROUTE chat=%s", message.chat_id)
+            try:
+                report_text = await asyncio.wait_for(asyncio.to_thread(self.periodic_report_text, message.chat_id, "community", 7), timeout=60)
+            except asyncio.TimeoutError:
+                LOG.error("MANUAL REPORT FAST ROUTE TIMEOUT chat=%s", message.chat_id)
+                await message.reply_text("Il report sta impiegando troppo tempo. Riprova tra poco.")
+                return True
+            await message.reply_text(report_text)
+            LOG.info("MANUAL REPORT FAST ROUTE DELIVERED user=%s", message.from_user.id)
+            return True
+
         if q0l in ("come funziona il coefficiente abusivo", "guida coefficiente abusivo", "coefficiente abusivo guida"):
             guide = coefficient_guide_lines()
             report_url = await asyncio.to_thread(self._publish_telegraph, guide[0], guide)
@@ -3490,25 +3509,6 @@ class CommunityFeatures:
             # Registration is handled later in this method; keeping this explicit
             # guard documents that it must never fall through to the generic AI.
             pass
-
-        # Rankings requested in a private chat must read the community roster,
-        # not the user's private Telegram chat id. Resolve the registered member's
-        # original community chat while keeping the reply in the current private chat.
-        _ranking_chat_id = message.chat_id
-        if getattr(message.chat, "type", None) == "private":
-            _ranking_member = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
-            if _ranking_member and _ranking_member.get("chat_id") is not None:
-                _ranking_chat_id = int(_ranking_member["chat_id"])
-
-        # Manual leaderboard requests made in a group are delivered privately to
-        # the requester. Scheduled/automatic publications do not pass through
-        # handle_command and therefore continue to be posted in the community.
-        _manual_ranking_request = bool(re.match(r"^(?:classific(?:a|he)|statistiche(?:\\s|$)|tutte\\s+le\\s+classifiche)", q0, re.I))
-        _ranking_reply_chat_id = (
-            int(message.from_user.id)
-            if _manual_ranking_request and getattr(message.chat, "type", None) != "private"
-            else int(message.chat_id)
-        )
 
         async def _ranking_reply(text):
             try:
