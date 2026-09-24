@@ -1700,19 +1700,72 @@ class CommunityFeatures:
         if not token:
             return None
         content = self._telegraph_nodes(lines)
-        try:
-            response = requests.post("https://api.telegra.ph/createPage", data={"access_token": token, "title": str(title)[:256], "author_name": "TITANI ABUSIVI", "content": __import__("json").dumps(content, ensure_ascii=False), "return_content": "false"}, timeout=20)
+
+        def create_page(page_title, nodes):
+            response = requests.post(
+                "https://api.telegra.ph/createPage",
+                data={
+                    "access_token": token,
+                    "title": str(page_title)[:256],
+                    "author_name": "TITANI ABUSIVI",
+                    "content": __import__("json").dumps(nodes, ensure_ascii=False),
+                    "return_content": "false",
+                },
+                timeout=20,
+            )
             response.raise_for_status()
             payload = response.json()
             if not payload.get("ok"):
-                LOG.error("TELEGRAPH API ERROR: status=%s error=%s", response.status_code, str(payload.get("error") or "unknown")[:300])
+                LOG.error(
+                    "TELEGRAPH API ERROR: status=%s error=%s",
+                    response.status_code,
+                    str(payload.get("error") or "unknown")[:300],
+                )
                 return None
             url = payload.get("result", {}).get("url")
             if not url:
                 LOG.error("TELEGRAPH API ERROR: status=%s error=missing_result_url", response.status_code)
                 return None
-            print("TELEGRAPH PAGE CREATED: title=%s url=%s" % (str(title)[:120], url), flush=True)
+            print(
+                "TELEGRAPH PAGE CREATED: title=%s url=%s" % (str(page_title)[:120], url),
+                flush=True,
+            )
             return url
+
+        try:
+            json_module = __import__("json")
+            if len(json_module.dumps(content, ensure_ascii=False).encode("utf-8")) <= 50000:
+                return create_page(title, content)
+
+            chunks = []
+            current = []
+            for node in content:
+                candidate = current + [node]
+                if current and len(json_module.dumps(candidate, ensure_ascii=False).encode("utf-8")) > 45000:
+                    chunks.append(current)
+                    current = [node]
+                else:
+                    current = candidate
+            if current:
+                chunks.append(current)
+
+            part_urls = []
+            for index, chunk in enumerate(chunks, 1):
+                part_title = f"{title} — Parte {index}/{len(chunks)}"
+                part_url = create_page(part_title, chunk)
+                if not part_url:
+                    return None
+                part_urls.append(part_url)
+
+            index_nodes = [{"tag": "h3", "children": [f"📊 {title}"]}]
+            for index, url in enumerate(part_urls, 1):
+                index_nodes.append({
+                    "tag": "p",
+                    "children": [{"tag": "a", "attrs": {"href": url}, "children": [
+                        f"📄 Apri parte {index}/{len(part_urls)}"
+                    ]}],
+                })
+            return create_page(title, index_nodes)
         except Exception as exc:
             LOG.error("TELEGRAPH API ERROR: type=%s message=%s", type(exc).__name__, str(exc)[:300])
             return None

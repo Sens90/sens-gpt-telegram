@@ -42,6 +42,36 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("CONTENT_TOO_BIG", logs)
         self.assertNotIn("test-token", logs)
 
+    @patch.dict(os.environ, {"TELEGRAPH_ACCESS_TOKEN": "test-token"})
+    @patch("community_features.requests.post")
+    def test_large_report_is_split_and_returns_index_page(self, post):
+        counter = {"value": 0}
+
+        def response_for_page(*args, **kwargs):
+            counter["value"] += 1
+            response = Mock()
+            response.raise_for_status.return_value = None
+            response.status_code = 200
+            response.json.return_value = {
+                "ok": True,
+                "result": {"url": f"https://telegra.ph/page-{counter['value']}"},
+            }
+            return response
+
+        post.side_effect = response_for_page
+        obj = self.make_features()
+        obj._telegraph_nodes = Mock(return_value=[
+            {"tag": "p", "children": ["x" * 2000]} for _ in range(60)
+        ])
+
+        url = obj._publish_telegraph("Progressione completa", ["dati"])
+
+        self.assertGreater(post.call_count, 2)
+        self.assertEqual(url, f"https://telegra.ph/page-{post.call_count}")
+        index_payload = post.call_args.kwargs["data"]["content"]
+        self.assertIn("Apri parte 1/", index_payload)
+        self.assertNotIn("test-token", index_payload)
+
     async def test_sender_uses_inline_report_button(self):
         bot = SimpleNamespace(send_message=AsyncMock())
         context = SimpleNamespace(bot=bot)
