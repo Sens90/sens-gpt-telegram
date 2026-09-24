@@ -78,7 +78,7 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(app.community, "_get", return_value=self.settings),
             patch.object(app.community, "ranking_text", return_value="TROFEI"),
-            patch.object(app.community, "coefficient_ranking_text", return_value="PROGRESSIONE"),
+            patch.object(app.community, "coefficient_ranking_text", return_value="PROGRESSIONE") as progression,
             patch.object(app.community, "club_trophy_ranking_text", return_value="CLUB"),
             patch.object(app.community, "global_ranking_text", return_value="GLOBALE"),
             patch.object(app.community, "global_club_ranking_text", return_value="CLUB GLOBALE"),
@@ -91,7 +91,7 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(sender.await_count, 6)
         progression_calls = [
-            call.args for call in app.community.coefficient_ranking_text.call_args_list
+            call.args for call in progression.call_args_list
         ]
         self.assertIn((-100123, "community_club", 0), progression_calls)
         self.assertEqual(database_patch.call_args.kwargs["json"]["last_auto_ranking_slot"], "2026-09-23-2359")
