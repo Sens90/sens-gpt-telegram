@@ -5551,22 +5551,30 @@ async def _send_auto_ranking_slot(context, slot, frozen_only=False):
                 # Freeze every payload before the first send. A failed 23:59
                 # delivery can then resume after midnight without recalculating
                 # "oggi" against the new calendar day.
-                text = await asyncio.to_thread(community.ranking_text, chat_id, 0)
-                progression_text = await asyncio.to_thread(
-                    community.coefficient_ranking_text, chat_id, "community", 0
-                )
                 final_slot = slot.hour == 23 and slot.minute == 59
-                payloads = [("trofei", text), ("progressione", progression_text)]
                 if final_slot:
-                    progression_club_text = await asyncio.to_thread(
-                        community.coefficient_ranking_text, chat_id, "community_club", 0
-                    )
-                    payloads.extend([
-                        ("progressione club", progression_club_text),
-                        ("club", await asyncio.to_thread(community.club_trophy_ranking_text, chat_id, 0)),
-                        ("globale", await asyncio.to_thread(community.global_ranking_text, chat_id, 0)),
-                        ("club globale", await asyncio.to_thread(community.global_club_ranking_text, chat_id, False)),
-                    ])
+                    # 23:59 is the daily close: publish reports instead of the
+                    # intermediate leaderboard family.
+                    payloads = [
+                        ("report oggi", await asyncio.to_thread(community.ranking_text, chat_id, 0)),
+                        ("report progressione oggi", await asyncio.to_thread(
+                            community.coefficient_ranking_text, chat_id, "community", 0
+                        )),
+                        ("report progressione oggi club", await asyncio.to_thread(
+                            community.coefficient_ranking_text, chat_id, "community_club", 0
+                        )),
+                        ("report club", await asyncio.to_thread(
+                            community.club_trophy_ranking_text, chat_id, 0
+                        )),
+                    ]
+                else:
+                    # 06:00 / 12:00 / 18:00 stay as intermediate rankings.
+                    payloads = [
+                        ("trofei", await asyncio.to_thread(community.ranking_text, chat_id, 0)),
+                        ("progressione", await asyncio.to_thread(
+                            community.coefficient_ranking_text, chat_id, "community", 0
+                        )),
+                    ]
                 pending = {"slot": key, "payloads": payloads, "next_index": 0}
                 await asyncio.to_thread(_persist_auto_ranking_pending, chat_id, previous_slot, pending)
                 _AUTO_RANKING_PENDING[flight_key] = pending
@@ -5624,7 +5632,7 @@ async def _send_auto_ranking_slot(context, slot, frozen_only=False):
 
 
 async def automatic_periodic_report_job(context):
-    """Publish registered + complete-roster Trophy/Progressione reports for 7/15/30 days."""
+    """Publish the report family for the configured 7/15/30-day close."""
     data = context.job.data or {}
     days = int(data.get("days") or 7)
     now = datetime.now(ROME)
@@ -5635,32 +5643,52 @@ async def automatic_periodic_report_job(context):
     except Exception as exc:
         print("REPORT PERIODICO SETTINGS ERROR:", days, repr(exc), flush=True)
         return
+
     for row in settings_rows or []:
         chat_id = int(row["chat_id"])
-        for scope, label in (("community", "REGISTRATI"), ("global_clubs", "GLOBALE CLUB")):
-            try:
-                text_report = await asyncio.to_thread(
-                    community.periodic_report_text, chat_id, scope, days
-                )
-                await context.bot.send_message(chat_id=chat_id, text=text_report)
-                print("REPORT PERIODICO AUTO: chat=%s scope=%s days=%s local=%s" % (
-                    chat_id, label, days, now.strftime("%Y-%m-%d %H:%M:%S")
-                ), flush=True)
-            except Exception as exc:
-                print("REPORT PERIODICO AUTO SEND ERROR:", chat_id, label, days, repr(exc), flush=True)
         try:
-            progression_global = await asyncio.to_thread(
-                community.coefficient_ranking_text, chat_id, "global_clubs", days
-            )
-            await community._send_ranking_message(context, chat_id, progression_global)
-            print("REPORT PERIODICO AUTO: chat=%s scope=PROGRESSIONE GLOBALE CLUB days=%s local=%s" % (
-                chat_id, days, now.strftime("%Y-%m-%d %H:%M:%S")
-            ), flush=True)
+            if days in (7, 15):
+                # Same four-report family used at the daily close.
+                payloads = [
+                    (f"REPORT {days} GIORNI", await asyncio.to_thread(
+                        community.ranking_text, chat_id, days
+                    )),
+                    (f"REPORT PROGRESSIONE {days} GIORNI", await asyncio.to_thread(
+                        community.coefficient_ranking_text, chat_id, "community", days
+                    )),
+                    (f"REPORT PROGRESSIONE CLUB {days} GIORNI", await asyncio.to_thread(
+                        community.coefficient_ranking_text, chat_id, "community_club", days
+                    )),
+                    (f"REPORT CLUB {days} GIORNI", await asyncio.to_thread(
+                        community.club_trophy_ranking_text, chat_id, days
+                    )),
+                ]
+            else:
+                # Monthly close uses the complete-roster/global family.
+                payloads = [
+                    ("REPORT GLOBALE 30 GIORNI", await asyncio.to_thread(
+                        community.global_monthly_ranking_text, chat_id
+                    )),
+                    ("REPORT PROGRESSIONE GLOBALE 30 GIORNI", await asyncio.to_thread(
+                        community.coefficient_ranking_text, chat_id, "global_clubs", 30
+                    )),
+                    ("REPORT GLOBALE CLUB 30 GIORNI", await asyncio.to_thread(
+                        community.global_club_ranking_text, chat_id, True
+                    )),
+                ]
+
+            for label, report_text in payloads:
+                delivered = await community._send_ranking_message(context, chat_id, report_text)
+                print(
+                    "REPORT PERIODICO AUTO: chat=%s report=%s days=%s ok=%s local=%s" % (
+                        chat_id, label, days, delivered, now.strftime("%Y-%m-%d %H:%M:%S")
+                    ),
+                    flush=True,
+                )
+                if not delivered:
+                    raise RuntimeError(f"Telegram delivery failed: {label}")
         except Exception as exc:
-            print(
-                "REPORT PERIODICO AUTO SEND ERROR:",
-                chat_id, "PROGRESSIONE GLOBALE CLUB", days, repr(exc), flush=True
-            )
+            print("REPORT PERIODICO AUTO SEND ERROR:", chat_id, days, repr(exc), flush=True)
 
 
 async def log_automatic_ranking_schedule(context):
