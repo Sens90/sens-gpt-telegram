@@ -259,8 +259,40 @@ Mostra gli eventi community aperti.
 [[CMDNAME:partecipo ID]]
 Conferma la partecipazione all'evento identificato dall'ID.
 
-[[CMDNAME:report]]
-Mostra il report operativo disponibile.
+📑 REPORT PERIODICI — TROFEI + PROGRESSIONE
+I report 7/15/30 uniscono Classifica Trofei, Classifica Progressione e resoconto. Telegram mostra la Top 5; il Telegraph collegato contiene le classifiche complete.
+
+[[CMDNAME:report 7]]
+Report 7 giorni degli utenti registrati.
+
+[[CMDNAME:report 15]]
+Report 15 giorni degli utenti registrati.
+
+[[CMDNAME:report 30]]
+Report 30 giorni degli utenti registrati.
+
+[[CMDNAME:report club 7]]
+[[CMDNAME:report club 15]]
+[[CMDNAME:report club 30]]
+Report degli utenti registrati appartenenti ai quattro club ABUSIVI.
+
+[[CMDNAME:report globale club 7]]
+[[CMDNAME:report globale club 15]]
+[[CMDNAME:report globale club 30]]
+Report del roster completo dei quattro club: registrati + non registrati.
+
+[[CMDNAME:report titani 7]]
+[[CMDNAME:report titani 15]]
+[[CMDNAME:report titani 30]]
+Report dei registrati di TITANI ABUSIVI. Gli stessi comandi sono disponibili sostituendo titani con tamarri, tornadi o talenti.
+
+[[CMDNAME:report club globale titani 7]]
+[[CMDNAME:report club globale titani 15]]
+[[CMDNAME:report club globale titani 30]]
+Report del roster completo TITANI, registrati + non registrati. Gli stessi comandi sono disponibili per tamarri, tornadi e talenti.
+
+[[CMDNAME:report oggi]]
+Il report giornaliero operativo resta separato: le classifiche giornaliere continuano a essere pubblicate come Classifiche.
 
 [[CMDNAME:reclutamento]]
 Avvia la procedura di candidatura/reclutamento.
@@ -4615,11 +4647,28 @@ class CommunityFeatures:
                 await message.reply_text(self.recruitments_text(message.chat_id))
             return True
 
-        report_match = re.fullmatch(r"report(?:\\s+(oggi|giornaliero|7|15|30))?", q, re.I)
+        report_match = re.fullmatch(
+            r"report(?:\\s+(community|club|globale\\s+club|titani|tamarri|tornadi|talenti|club\\s+globale\\s+(?:titani|tamarri|tornadi|talenti)))?\\s*(oggi|giornaliero|7|15|30|mensile)?",
+            q, re.I,
+        )
         if report_match:
-            requested = (report_match.group(1) or "7").casefold()
-            period = "daily" if requested in ("oggi", "giornaliero") else requested
-            await message.reply_text(self.operational_report_text(message.chat_id, period))
+            raw_scope = (report_match.group(1) or "community").casefold()
+            requested = (report_match.group(2) or "7").casefold()
+            if requested in ("oggi", "giornaliero"):
+                await message.reply_text(self.operational_report_text(message.chat_id, "daily"))
+                return True
+            days = 30 if requested == "mensile" else int(requested)
+            if raw_scope == "community":
+                scope = "community"
+            elif raw_scope == "club":
+                scope = "community_club"
+            elif raw_scope == "globale club":
+                scope = "global_clubs"
+            elif raw_scope.startswith("club globale "):
+                scope = "global_single:" + raw_scope.removeprefix("club globale ").strip()
+            else:
+                scope = raw_scope
+            await message.reply_text(self.periodic_report_text(message.chat_id, scope, days))
             return True
 
         match = re.fullmatch(r"report\s+(giornaliero|settimanale)\s+(on|off)", q, re.I)
