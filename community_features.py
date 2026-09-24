@@ -240,6 +240,9 @@ Chiude la Draft corrente e azzera la sessione.
 [[CMDNAME:counter NOME_BRAWLER]]
 Mostra i counter verificati disponibili per il Brawler indicato.
 
+🧠 MEMORIA CONVERSAZIONALE
+Sens GPT mantiene un contesto personale separato per ogni utente nelle conversazioni Gemini che gli vengono rivolte. Serve a rendere il rapporto più coerente nel tempo e non modifica Stats, classifiche, Progressione o altri comandi deterministici. Nei gruppi la memoria entra in gioco solo quando il bot viene menzionato o quando si risponde a un suo messaggio.
+
 🤝 COMMUNITY
 [[CMDNAME:club]]
 Mostra il riepilogo della community e dei club configurati.
