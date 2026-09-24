@@ -70,20 +70,20 @@ def test_verified_team_base_and_unresolved_extra_are_classified():
     row = observed_battle_rows("2GU9UV2RG", "DeSS", payload)[0]
     assert row["expected_base_delta"] == 10
     assert row["observed_extra"] == 7
-    assert row["bonus_type"] == "win_streak_observed"
+    assert row["bonus_type"] == "bonus_observed"
 
 
 def test_low_trophy_and_combined_victory_bonuses_are_classified():
     from trophy_economy import classify_trophy_change
 
     assert classify_trophy_change("siege", "victory", 0, 15) == (
-        10, 5, "win_streak_observed"
+        10, 5, "bonus_observed"
     )
     assert classify_trophy_change("brawlBall", "victory", 1393, 21) == (
-        10, 11, "win_streak_plus_underdog_observed"
+        10, 11, "bonus_observed"
     )
     assert classify_trophy_change("soloShowdown", None, 112, 20, 1) == (
-        13, 7, "win_streak_observed"
+        13, 7, "bonus_observed"
     )
 
 
@@ -115,15 +115,15 @@ def test_verified_survival_positive_placement_bases_are_classified():
     from trophy_economy import classify_trophy_change
 
     assert classify_trophy_change("soloShowdown", None, 900, 23, 1) == (
-        13, 10, "win_streak_observed"
+        13, 10, "bonus_observed"
     )
     assert classify_trophy_change("duoShowdown", None, 1500, 11, 1) == (None, None, None)
     assert classify_trophy_change("soloShowdown", None, 500, 15, 4) == (
-        5, 10, "win_streak_observed"
+        5, 10, "bonus_observed"
     )
     assert classify_trophy_change("soloShowdown", None, 900, 2, 5) == (2, 0, None)
     assert classify_trophy_change("soloShowdown", None, 900, 3, 5) == (
-        2, 1, "underdog_observed"
+        2, 1, "bonus_observed"
     )
     assert classify_trophy_change("soloShowdown", None, 700, 1, 6) == (1, 0, None)
     assert classify_trophy_change("soloShowdown", None, 700, -2, 7) == (-2, 0, None)
@@ -152,26 +152,26 @@ def test_solo_showdown_excess_is_measured_from_the_correct_band_base():
     from trophy_economy import classify_trophy_change
 
     assert classify_trophy_change("soloShowdown", None, 1050, 11, 3) == (
-        8, 3, "win_streak_observed"
+        8, 3, "bonus_observed"
     )
     assert classify_trophy_change("duoShowdown", None, 1030, -3, 4) == (
-        -6, 3, "underdog_observed"
+        -3, 0, None
     )
 
 
-def test_verified_duo_cells_include_underdog_compensation():
+def test_verified_duo_cells_use_the_complete_placement_table():
     from trophy_economy import classify_trophy_change
 
     assert classify_trophy_change("duoShowdown", None, 1016, -1, 3) == (-1, 0, None)
     assert classify_trophy_change("duoShowdown", None, 1038, -5, 5) == (-5, 0, None)
     assert classify_trophy_change("duoShowdown", None, 1141, -1, 3) == (
-        -5, 4, "underdog_observed"
+        -1, 0, None
     )
     assert classify_trophy_change("duoShowdown", None, 1167, -4, 4) == (
-        -8, 4, "underdog_observed"
+        -4, 0, None
     )
     assert classify_trophy_change("duoShowdown", None, 1833, -2, 3) == (
-        -6, 4, "underdog_observed"
+        -2, 0, None
     )
 
 
@@ -179,7 +179,7 @@ def test_verified_team_loss_can_expose_a_small_unresolved_bonus():
     from trophy_economy import classify_trophy_change
 
     assert classify_trophy_change("brawlBall", "defeat", 1150, -5) == (
-        -6, 1, "underdog_observed"
+        -6, 1, "bonus_observed"
     )
     assert classify_trophy_change("brawlBall", "defeat", 1150, -1) == (None, None, None)
 

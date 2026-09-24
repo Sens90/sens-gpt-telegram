@@ -105,20 +105,16 @@ def classify_trophy_change(mode, result, trophies_before, trophy_change, placeme
                         break
         if base is not None and 0 <= trophies <= 1999 and base <= change <= base + 14:
             extra = change - base
-            streak_finish = (mode == "soloShowdown" and rank <= 4) or (
-                mode in {"duoShowdown", "trioShowdown"} and rank <= 2
-            )
-            bonus = ("win_streak_plus_underdog_observed" if extra > 10 and streak_finish
-                     else "win_streak_observed" if extra and streak_finish else
-                "underdog_observed" if extra else None
-            )
-            return base, extra, bonus
+            # The official battle log exposes the measurable extra but no
+            # reliable cause field. Placement or extra size alone cannot prove
+            # Win Streak or Underdog, so keep the cause explicitly unresolved.
+            return base, extra, "bonus_observed" if extra else None
         for loss_mode, lower, upper, placement_bases in SURVIVAL_LOSS_BASES:
             expected = placement_bases.get(rank)
             if (mode == loss_mode and lower <= trophies <= upper
                     and expected is not None and expected <= change <= expected + 4):
                 extra = change - expected
-                return expected, extra, "underdog_observed" if extra else None
+                return expected, extra, "bonus_observed" if extra else None
         return None, None, None
 
     normalized_result = str(result or "").lower()
@@ -127,15 +123,13 @@ def classify_trophy_change(mode, result, trophies_before, trophy_change, placeme
         # observed ordinary team base; +11..+20 carry an unresolved bonus.
         if 10 <= change <= 24:
             extra = change - 10
-            bonus = ("win_streak_plus_underdog_observed" if extra > 10
-                     else "win_streak_observed" if extra else None)
-            return 10, extra, bonus
+            return 10, extra, "bonus_observed" if extra else None
         return None, None, None
 
     if normalized_result == "defeat":
         for lower, upper, expected in TEAM_LOSS_BY_RANGE:
             if lower <= trophies <= upper and expected <= change <= expected + 4:
                 extra = change - expected
-                return expected, extra, "underdog_observed" if extra else None
+                return expected, extra, "bonus_observed" if extra else None
 
     return None, None, None
