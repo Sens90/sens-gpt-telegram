@@ -4729,7 +4729,8 @@ class CommunityFeatures:
             raw_scope = (report_match.group(1) or "community").casefold()
             requested = (report_match.group(2) or "7").casefold()
             if requested in ("oggi", "giornaliero"):
-                await message.reply_text(self.operational_report_text(message.chat_id, "daily"))
+                report_text = await asyncio.to_thread(self.operational_report_text, message.chat_id, "daily")
+                await message.reply_text(report_text)
                 return True
             days = 30 if requested == "mensile" else int(requested)
             if raw_scope == "community":
@@ -4742,7 +4743,8 @@ class CommunityFeatures:
                 scope = "global_single:" + raw_scope.removeprefix("club globale ").strip()
             else:
                 scope = raw_scope
-            await message.reply_text(self.periodic_report_text(message.chat_id, scope, days))
+            report_text = await asyncio.to_thread(self.periodic_report_text, message.chat_id, scope, days)
+            await message.reply_text(report_text)
             return True
 
         match = re.fullmatch(r"report\s+(giornaliero|settimanale)\s+(on|off)", q, re.I)
