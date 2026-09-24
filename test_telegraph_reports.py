@@ -113,6 +113,55 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Partite osservate valide: 1", payload["text"])
         self.assertIn("Data:", payload["fallback"])
         self.assertIn("Sessioni:", payload["fallback"])
+        self.assertIn("LOG BATTAGLIE", payload["fallback"])
+        self.assertIn("Brawler: Nita", payload["fallback"])
+        self.assertIn("Risultato: Risultato non disponibile", payload["fallback"])
+
+    def test_progressione_oggi_includes_localized_team_solo_loss_and_bonus(self):
+        obj = self.make_features()
+        now = datetime.now(timezone.utc).isoformat()
+        team_battle = {
+            "player_name": "Giorgio", "battle_time": now,
+            "brawler_name": "EL PRIMO", "brawler_trophies_before": 1800,
+            "mode": "trioShowdown", "result": "victory", "placement": 1,
+            "trophy_change": 13, "expected_base_delta": 11,
+            "observed_extra": 2, "current_win_streak": None,
+            "bonus_type": "bonus_observed", "team_max_brawler_trophies": 1900,
+            "team_composition": [
+                {"name": "Giorgio", "brawler_name": "EL PRIMO", "brawler_trophies": 1800},
+                {"name": "Compagno", "brawler_name": "SURGE", "brawler_trophies": 1900},
+            ],
+            "raw_battle": {},
+        }
+        solo_loss = {
+            "player_name": "Giorgio", "battle_time": now,
+            "brawler_name": "NITA", "brawler_trophies_before": 1000,
+            "mode": "soloShowdown", "result": None, "placement": 9,
+            "trophy_change": -10, "expected_base_delta": -10,
+            "observed_extra": 0, "current_win_streak": None,
+            "bonus_type": None, "team_max_brawler_trophies": None,
+            "team_composition": None, "raw_battle": {"battle": {}},
+        }
+        obj._get = Mock(side_effect=[
+            [team_battle, solo_loss],
+            [
+                {"name_en": "EL PRIMO", "name_it": "EL PRIMO"},
+                {"name_en": "SURGE", "name_it": "ENERGETIK"},
+                {"name_en": "NITA", "name_it": "NITA"},
+            ],
+        ])
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/progressione-giorgio")
+
+        payload = obj.progression_detail_text("2LVRCLV8LV", 0)
+
+        report = payload["fallback"]
+        self.assertIn("Sopravvivenza in trio", report)
+        self.assertIn("Risultato: Vittoria", report)
+        self.assertIn("Extra osservato: +2 (Bonus osservato)", report)
+        self.assertIn("Compagno — ENERGETIK — 1900", report)
+        self.assertIn("Team Value: 1900", report)
+        self.assertIn("Squadra: Modalità Solo", report)
+        self.assertIn("Punti Progressione: 0 (sconfitta non conteggiata)", report)
 
     def test_progressione_brawler_recovers_and_localizes_raw_team(self):
         obj = self.make_features()
@@ -208,6 +257,16 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("🥈", str(nodes[2]))
         self.assertIn("🥉", str(nodes[3]))
         self.assertNotIn("h3", str(nodes[4:]))
+
+    def test_telegraph_battle_numbers_do_not_receive_ranking_medals(self):
+        nodes = self.make_features()._telegraph_nodes([
+            "PROGRESSIONE NITA", "LOG BATTAGLIE", "1. 10:00 — Footbrawl",
+            "2. 10:03 — Arraffagemme", "3. 10:06 — Trio",
+        ])
+        rendered = str(nodes)
+        self.assertNotIn("🥇", rendered)
+        self.assertNotIn("🥈", rendered)
+        self.assertNotIn("🥉", rendered)
 
     def test_telegraph_fields_get_coherent_icons(self):
         nodes = self.make_features()._telegraph_nodes([

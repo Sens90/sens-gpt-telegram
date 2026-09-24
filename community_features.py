@@ -1010,6 +1010,8 @@ class CommunityFeatures:
     @staticmethod
     def _telegraph_nodes(lines):
         nodes = []
+        first_value = next((str(item or "").strip() for item in lines if str(item or "").strip()), "")
+        is_ranking_report = first_value.upper().startswith("CLASSIFICA")
         section_headings = {
             "PROFILO": "👤 PROFILO",
             "RANKED": "🏅 RANKED",
@@ -1034,6 +1036,8 @@ class CommunityFeatures:
             "serie di vittorie osservata": "🔥", "peso fascia iniziale": "⚖️",
             "fasce": "🎯", "orario": "🕐", "squadra": "👥",
             "massimo squadra": "👑", "trofei": "🏆", "brawler": "🦸",
+            "team value": "👑", "valore di riferimento": "🎯",
+            "peso fascia di riferimento": "⚖️",
             "club": "🛡️", "tag": "🏷️", "tag club": "🏷️", "livello": "⚡",
             "punti esperienza": "✨", "fama": "🌠", "livello clip": "📎",
             "punti clip": "📎", "qualificazione championship": "🏆",
@@ -1049,9 +1053,9 @@ class CommunityFeatures:
             ranking = re.match(r"^(\d+)\.\s*(.+)$", value)
             if ranking:
                 position = int(ranking.group(1))
-                medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(position)
+                medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(position) if is_ranking_report else None
                 rendered = f"{medal} {ranking.group(2)}" if medal else value
-                children = [{"tag": "strong", "children": [rendered]}] if medal else [rendered]
+                children = [{"tag": "strong", "children": [rendered]}]
                 nodes.append({"tag": "p", "children": children})
                 continue
             heading = section_headings.get(value.rstrip(":").upper())
@@ -1487,7 +1491,7 @@ class CommunityFeatures:
             period = f"ULTIMI {int(days)} GIORNI"
         try:
             rows = self._get("observed_trophy_battles", {
-                "select": "player_name,battle_time,brawler_name,brawler_trophies_before,mode,trophy_change,observed_extra,bonus_type,team_max_brawler_trophies",
+                "select": "player_name,battle_time,brawler_name,brawler_trophies_before,mode,result,placement,trophy_change,expected_base_delta,observed_extra,current_win_streak,bonus_type,team_max_brawler_trophies,team_composition,raw_battle",
                 "player_tag": f"eq.{tag}",
                 "battle_time": f"gte.{start_local.astimezone(timezone.utc).isoformat()}",
                 "trophy_change": "not.is.null",
@@ -1520,6 +1524,64 @@ class CommunityFeatures:
                 if team_max is not None:
                     reference = max(reference, team_max)
             return float(score_brawler_trophies(reference + d) - score_brawler_trophies(reference))
+
+        def weight_at(trophies):
+            value = max(0, int(trophies or 0))
+            for start, end, weight in TROPHY_COEFFICIENT_BANDS:
+                if start <= value < end:
+                    return float(weight)
+            return 1.0
+
+        try:
+            catalog_rows = self._get("brawlers_catalog", {"select": "name_en,name_it"}) or []
+        except Exception as exc:
+            LOG.warning("PROGRESSION DETAIL LOCALIZATION ERROR: type=%s", type(exc).__name__)
+            catalog_rows = []
+        brawler_names_it = {
+            str(item.get("name_en") or "").strip().casefold():
+                str(item.get("name_it") or item.get("name_en") or "").strip()
+            for item in catalog_rows if item.get("name_en")
+        }
+
+        def brawler_name_it(value):
+            source = str(value or "").strip()
+            return brawler_names_it.get(source.casefold()) or source or "Brawler"
+
+        def team_context(row):
+            team = row.get("team_composition")
+            if isinstance(team, list) and team:
+                return row.get("team_max_brawler_trophies"), team
+            raw = row.get("raw_battle")
+            battle = raw.get("battle") if isinstance(raw, dict) else None
+            teams = battle.get("teams") if isinstance(battle, dict) else None
+            if not isinstance(teams, list):
+                return None, None
+            for candidate in teams:
+                if not isinstance(candidate, list):
+                    continue
+                members = []
+                contains_target = False
+                for member in candidate:
+                    if not isinstance(member, dict):
+                        continue
+                    member_tag = str(member.get("tag") or "").replace("#", "").upper()
+                    if member_tag == tag:
+                        contains_target = True
+                    member_brawler = member.get("brawler") if isinstance(member.get("brawler"), dict) else {}
+                    try:
+                        trophies = int(member_brawler.get("trophies"))
+                    except (TypeError, ValueError):
+                        trophies = None
+                    members.append({
+                        "tag": member_tag or None,
+                        "name": member.get("name"),
+                        "brawler_name": str(member_brawler.get("name") or "").strip() or None,
+                        "brawler_trophies": trophies,
+                    })
+                if contains_target and members:
+                    values = [member["brawler_trophies"] for member in members if member["brawler_trophies"] is not None]
+                    return (max(values) if values else None), members
+            return None, None
 
         def band_labels(lo, hi):
             a, b = sorted((max(0, lo), max(0, hi)))
@@ -1569,6 +1631,57 @@ class CommunityFeatures:
                 sr=sum(int(x.get("trophy_change") or 0) for x in ss)
                 sw=int(Decimal(str(sum(weighted_delta(x) for x in ss))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
                 lines.append(f"• {dt_local(ss[0]['battle_time']):%H:%M}–{dt_local(ss[-1]['battle_time']):%H:%M}: {len(ss)} partite, {'+' if sr>0 else ''}{sr} coppe, {'+' if sw>0 else ''}{sw} punti")
+        lines += ["", "LOG BATTAGLIE"]
+        for index, row in enumerate(rows, 1):
+            t0 = max(0, int(row.get("brawler_trophies_before") or 0))
+            delta = int(row.get("trophy_change") or 0)
+            t1 = max(0, t0 + delta)
+            mode_key = str(row.get("mode") or "").casefold()
+            max_trophies, team = team_context(row)
+            reference = t0
+            if mode_key not in {"soloshowdown", "solo"} and max_trophies is not None:
+                reference = max(t0, int(max_trophies))
+            points = weighted_delta(row)
+            lines += [
+                "",
+                f"{index}. {dt_local(row['battle_time']):%H:%M} — {self._progression_mode_it(row.get('mode'))}",
+                f"Brawler: {brawler_name_it(row.get('brawler_name'))}",
+                f"Coppe: {t0} → {t1} ({'+' if delta > 0 else ''}{delta})",
+                f"Risultato: {self._progression_result_it(row.get('result'), row.get('placement'))}",
+                f"Valore di riferimento: {reference} 🏆",
+                f"Peso fascia di riferimento: ×{weight_at(reference):.4f}".replace(".", ","),
+                ("Punti Progressione: 0 (sconfitta non conteggiata)" if delta < 0 else
+                 f"Punti Progressione: {'+' if points > 0 else ''}{points:.2f}".replace(".", ",")),
+            ]
+            expected = row.get("expected_base_delta")
+            if expected is not None:
+                lines.append(f"Delta base previsto: {'+' if int(expected) > 0 else ''}{int(expected)}")
+            extra = row.get("observed_extra")
+            if extra is not None and int(extra) != 0:
+                lines.append(
+                    f"Extra osservato: +{int(extra)} ({self._progression_bonus_it(row.get('bonus_type'))})"
+                )
+            if row.get("current_win_streak") is not None:
+                lines.append(f"Serie di vittorie osservata: {int(row['current_win_streak'])}")
+            if isinstance(team, list) and team:
+                lines.append("Squadra:")
+                for member in team:
+                    member_trophies = member.get("brawler_trophies")
+                    crown = (
+                        " 👑" if max_trophies is not None and member_trophies is not None
+                        and int(member_trophies) == int(max_trophies) else ""
+                    )
+                    lines.append(
+                        f"• {member.get('name') or member.get('tag') or 'Giocatore'} — "
+                        f"{brawler_name_it(member.get('brawler_name'))} — "
+                        f"{member_trophies if member_trophies is not None else '?'} 🏆{crown}"
+                    )
+                if max_trophies is not None:
+                    lines.append(f"Team Value: {int(max_trophies)} 🏆")
+            elif mode_key in {"soloshowdown", "solo"}:
+                lines.append("Squadra: Modalità Solo")
+            else:
+                lines.append("Squadra: non disponibile nel battle log.")
         lines.insert(1, f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}")
         report_url = self._publish_telegraph(f"Progressione {name} — {period}", lines)
         if report_url:
