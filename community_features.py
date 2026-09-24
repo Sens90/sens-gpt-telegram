@@ -1698,6 +1698,7 @@ class CommunityFeatures:
     def _publish_telegraph(self, title, lines):
         token = os.getenv("TELEGRAPH_ACCESS_TOKEN", "").strip()
         if not token:
+            LOG.warning("TELEGRAPH UNAVAILABLE: access token not configured")
             return None
         content = self._telegraph_nodes(lines)
 
@@ -2672,6 +2673,8 @@ class CommunityFeatures:
                     )
                     summary = [*full_lines[:first_numbered], *numbered[:10]]
                     text = self._telegraph_reply(summary, report_url, full_lines)
+                else:
+                    LOG.warning("TELEGRAPH RANKING FALLBACK: chat=%s report=%s", chat_id, full_lines[0][:100])
         report_url = text.get("report_url") if isinstance(text, dict) else None
         fallback = text.get("fallback") if isinstance(text, dict) else text
         message_text = text.get("text") if isinstance(text, dict) else text
@@ -2684,6 +2687,8 @@ class CommunityFeatures:
                 await context.bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, connect_timeout=20, read_timeout=30, write_timeout=30, pool_timeout=20)
                 if report_url:
                     print("TELEGRAPH REPORT DELIVERED: chat=%s url=%s" % (chat_id, report_url), flush=True)
+                elif isinstance(message_text, str) and message_text.lstrip().upper().startswith("CLASSIFICA"):
+                    print("TELEGRAPH RANKING SENT WITHOUT REPORT: chat=%s" % chat_id, flush=True)
                 return True
             except RetryAfter as exc:
                 delay = exc.retry_after.total_seconds() if hasattr(exc.retry_after, "total_seconds") else float(exc.retry_after)

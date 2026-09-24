@@ -97,6 +97,25 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("11. Player 11", kwargs["text"])
         self.assertIsNotNone(kwargs["reply_markup"])
 
+    async def test_ranking_telegraph_failure_is_logged_and_telegram_still_sends(self):
+        obj = self.make_features()
+        obj._publish_telegraph = Mock(return_value=None)
+        bot = SimpleNamespace(send_message=AsyncMock())
+        context = SimpleNamespace(bot=bot)
+        full = "CLASSIFICA OGGI\n\n1. Giorgio — +42\n2. Anna — +20"
+        with self.assertLogs("community_features", level="WARNING") as captured:
+            delivered = await obj._send_ranking_message(context, 123, full)
+        self.assertTrue(delivered)
+        self.assertEqual(bot.send_message.await_args.kwargs["text"], full)
+        self.assertIsNone(bot.send_message.await_args.kwargs["reply_markup"])
+        self.assertIn("TELEGRAPH RANKING FALLBACK", " ".join(captured.output))
+
+    @patch.dict(os.environ, {"TELEGRAPH_ACCESS_TOKEN": ""})
+    def test_missing_telegraph_configuration_reports_safe_reason(self):
+        with self.assertLogs("community_features", level="WARNING") as captured:
+            self.assertIsNone(self.make_features()._publish_telegraph("Report", ["Dato"]))
+        self.assertIn("access token not configured", " ".join(captured.output))
+
     async def test_numbered_battle_log_is_not_republished_as_ranking(self):
         obj = self.make_features()
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/should-not-be-used")
