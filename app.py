@@ -3384,7 +3384,22 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         re.fullmatch(r"(?:leggi|leggilo|leggi questo|leggi a voce)", _raw_command.strip(), re.I)
         or re.search(r"(?:rispondi|rspondi|rispomdi|rispndi|rispodi)\s+(?:a\s+voce|voce)\s*$", (message.text or "").strip(), re.I)
     )
-    if not _voice_group_exception:
+    # Only deterministic bot commands are moved to private/deleted. Normal
+    # conversation (greetings, advice, questions handled by Gemini) stays in
+    # the group together with the bot reply.
+    _deterministic_group_command = bool(
+        community.is_deterministic_command(_raw_command)
+        if hasattr(community, "is_deterministic_command")
+        else re.match(
+            r"^(?:classifica|progressione|report|stats|statistiche|profilo|scheda|status|stato|"
+            r"registrami|registra|skin|ranked|draft|counter|grafico|club|elenco|inattivi|assenza|"
+            r"eventi|partecipo|reclutamento|regole|faq|sito|discord|comandi|aiuto|help|funzioni|"
+            r"coefficiente)\\b",
+            _raw_command.strip(),
+            re.I,
+        )
+    )
+    if not _voice_group_exception and _deterministic_group_command:
         _source_group_message = message
         _private_message = await _ensure_private_command_delivery(message, context)
         if _private_message is None:
@@ -3398,8 +3413,6 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 print("MANUAL COMMAND DELETED FROM GROUP:", repr(_raw_command), flush=True)
             except Exception as exc:
-                # Delivery must still work even if Telegram has not granted
-                # the bot permission to delete messages in this group.
                 print("MANUAL COMMAND DELETE ERROR:", type(exc).__name__, flush=True)
     # A malformed bot mention can swallow the first command token
     # (e.g. @SensGPT_TitaniAbusiviBotregistrami). Treat every text containing
