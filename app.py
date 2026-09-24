@@ -643,6 +643,37 @@ def compact_source_text(text, limit):
     )
 
 
+def load_user_conversation_memory(telegram_user_id, limit=12):
+    """Load a small private context window for free-form Gemini replies only."""
+    if not telegram_user_id:
+        return ""
+    try:
+        response = requests.get(SUPABASE_URL + "/rest/v1/user_conversation_memory", headers=_supabase_headers(), params={"select":"user_message,assistant_message,created_at","telegram_user_id":f"eq.{int(telegram_user_id)}","order":"created_at.desc","limit":str(max(1,min(int(limit),20)))}, timeout=8)
+        response.raise_for_status(); rows=list(reversed(response.json() or []))
+    except Exception as exc:
+        print("USER MEMORY LOAD ERROR:", type(exc).__name__, flush=True); return ""
+    parts=[]
+    for row in rows:
+        u=compact_source_text(str(row.get("user_message") or "").strip(),900); a=compact_source_text(str(row.get("assistant_message") or "").strip(),1200)
+        if u: parts.append("Utente: "+u)
+        if a: parts.append("Sens GPT: "+a)
+    return "\n".join(parts)
+
+
+def save_user_conversation_memory(message, user_text, assistant_text=None):
+    """Persist per-user conversation context; assistant text is optional for silent group learning."""
+    user=getattr(message,"from_user",None)
+    if not user or not user_text: return
+    try:
+        payload={"telegram_user_id":int(user.id),"telegram_username":getattr(user,"username",None),"user_name":getattr(user,"first_name",None),"user_message":compact_source_text(str(user_text).strip(),2000),"assistant_message":compact_source_text(str(assistant_text).strip(),3000) if assistant_text else None,"source_chat_type":str(getattr(getattr(message,"chat",None),"type",None) or "unknown")}
+        response=requests.post(SUPABASE_URL+"/rest/v1/user_conversation_memory",headers={**_supabase_headers(),"Prefer":"return=minimal"},json=payload,timeout=8); response.raise_for_status()
+        old=requests.get(SUPABASE_URL+"/rest/v1/user_conversation_memory",headers=_supabase_headers(),params={"select":"id","telegram_user_id":f"eq.{int(user.id)}","order":"created_at.desc","offset":"40","limit":"200"},timeout=8); old.raise_for_status()
+        ids=[str(r.get("id")) for r in old.json() or [] if r.get("id") is not None]
+        if ids: requests.delete(SUPABASE_URL+"/rest/v1/user_conversation_memory",headers=_supabase_headers(),params={"id":"in.("+",".join(ids)+")"},timeout=8).raise_for_status()
+    except Exception as exc:
+        print("USER MEMORY SAVE ERROR:", type(exc).__name__, flush=True)
+
+
 def build_web_context(results, exhaustive=False):
     """Build a bounded, source-labelled context for the generation call.
 
@@ -3420,7 +3451,15 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         and not _explicit_bot_mention
         and not _reply_to_bot
     ):
-        print("GROUP FREE CHAT IGNORED: bot not addressed", flush=True)
+        # Silent relationship memory: learn from ordinary member conversation
+        # without invoking Gemini and without replying in the group.
+        await asyncio.to_thread(
+            save_user_conversation_memory,
+            message,
+            message.text,
+            None,
+        )
+        print("GROUP FREE CHAT SILENT MEMORY: stored without reply", flush=True)
         return
 
     if not _voice_group_exception and _deterministic_group_command:
@@ -4818,6 +4857,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{question_for_ai}"
             )
 
+        _memory_context = await asyncio.to_thread(load_user_conversation_memory, message.from_user.id if message.from_user else None)
+        if _memory_context:
+            instructions += ("\n\nMEMORIA CONVERSAZIONALE PRIVATA DELL'UTENTE:\n"+_memory_context+"\n\nUsa questa memoria solo per continuità, tono e rapporto personale. Non citarla come database e non inventare ricordi mancanti. Dai sempre priorità al messaggio corrente.\n")
+
         # Keep a final hard ceiling even if a future Tavily response contains
         # unexpectedly large fields. The normal context builder stays well
         # below this value; this is only a last-resort safety net.
@@ -5164,6 +5207,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         final_text = final_text.replace("*", "").strip()
+
+        await asyncio.to_thread(save_user_conversation_memory, message, question_for_ai, final_text)
 
         for chunk in telegram_text_chunks(final_text):
             await send_mode_aware_text(
