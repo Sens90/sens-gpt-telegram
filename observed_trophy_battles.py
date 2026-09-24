@@ -14,11 +14,38 @@ def _battle_time_iso(value):
         try:
             return datetime.strptime(raw, pattern).replace(tzinfo=timezone.utc).isoformat()
         except ValueError:
-            continue
+            pass
     try:
-        return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat()
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc).isoformat()
     except ValueError:
         return None
+
+
+def semantic_battle_identity(row):
+    """Match the database semantic unique index without depending on battle_key."""
+    return (
+        str(row.get("player_tag") or "").replace("#", "").upper(),
+        _battle_time_iso(row.get("battle_time")),
+        str(row.get("brawler_name") or ""),
+        int(row["brawler_trophies_before"]) if row.get("brawler_trophies_before") is not None else -1,
+        int(row.get("trophy_change") or 0),
+    )
+
+
+def filter_new_semantic_battles(rows, existing_rows):
+    """Drop already persisted battles even when an older battle_key differs."""
+    known = {semantic_battle_identity(row) for row in existing_rows or []}
+    output = []
+    for row in rows or []:
+        identity = semantic_battle_identity(row)
+        if identity in known:
+            continue
+        known.add(identity)
+        output.append(row)
+    return output
 
 
 def _find_player(node, player_tag):

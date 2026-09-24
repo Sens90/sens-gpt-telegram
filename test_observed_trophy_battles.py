@@ -1,4 +1,33 @@
-from observed_trophy_battles import observed_battle_rows
+from observed_trophy_battles import filter_new_semantic_battles, observed_battle_rows
+
+
+def test_semantic_duplicate_with_legacy_battle_key_is_filtered():
+    existing = [{
+        "player_tag": "ABC123",
+        "battle_time": "2026-09-23T16:07:00+00:00",
+        "brawler_name": "MEEPLE",
+        "brawler_trophies_before": 1049,
+        "trophy_change": 12,
+        "battle_key": "legacy-key",
+    }]
+    incoming = [{
+        **existing[0],
+        "battle_time": "2026-09-23T16:07:00Z",
+        "battle_key": "new-stable-key",
+    }]
+
+    assert filter_new_semantic_battles(incoming, existing) == []
+
+
+def test_semantic_filter_keeps_distinct_battles_and_deduplicates_batch():
+    first = {
+        "player_tag": "ABC123", "battle_time": "2026-09-23T16:07:00Z",
+        "brawler_name": "MEEPLE", "brawler_trophies_before": 1049,
+        "trophy_change": 12, "battle_key": "one",
+    }
+    second = {**first, "battle_time": "2026-09-23T16:09:00Z", "battle_key": "two"}
+
+    assert filter_new_semantic_battles([first, first.copy(), second], []) == [first, second]
 
 
 def test_unverified_team_change_stays_unclassified():
