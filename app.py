@@ -3394,7 +3394,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             r"^(?:classifica|progressione|report|stats|statistiche|profilo|scheda|status|stato|"
             r"registrami|registra|skin|ranked|draft|counter|grafico|club|elenco|inattivi|assenza|"
             r"eventi|partecipo|reclutamento|regole|faq|sito|discord|comandi|aiuto|help|funzioni|"
-            r"coefficiente)\\b",
+            r"coefficiente)\b",
             _raw_command.strip(),
             re.I,
         )
