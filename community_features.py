@@ -65,6 +65,9 @@ PROGRESSION_BONUS_NAMES_IT = {
     "bot": "Battaglia contro bot",
     "low_trophy": "Bonus trofei bassi",
     "combined": "Bonus combinato",
+    "bonus_observed": "Bonus osservato",
+    "win_streak_observed": "Serie di vittorie osservata",
+    "underdog_observed": "Sfavorito osservato",
 }
 
 
@@ -4072,7 +4075,5 @@ class CommunityFeatures:
                                 "telegram_user_id": f"eq.{int(member['telegram_user_id'])}",
                             },
                         )
-            except Exception as exc:
-                            print("ERRORE AUTOKICK:", repr(exc), flush=True)
             except Exception as exc:
                 print("ERRORE JOB INATTIVITA:", repr(exc), flush=True)
