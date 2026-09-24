@@ -5558,7 +5558,11 @@ async def _send_auto_ranking_slot(context, slot, frozen_only=False):
                 final_slot = slot.hour == 23 and slot.minute == 59
                 payloads = [("trofei", text), ("progressione", progression_text)]
                 if final_slot:
+                    progression_club_text = await asyncio.to_thread(
+                        community.coefficient_ranking_text, chat_id, "community_club", 0
+                    )
                     payloads.extend([
+                        ("progressione club", progression_club_text),
                         ("club", await asyncio.to_thread(community.club_trophy_ranking_text, chat_id, 0)),
                         ("globale", await asyncio.to_thread(community.global_ranking_text, chat_id, 0)),
                         ("club globale", await asyncio.to_thread(community.global_club_ranking_text, chat_id, False)),
@@ -5644,6 +5648,19 @@ async def automatic_periodic_report_job(context):
                 ), flush=True)
             except Exception as exc:
                 print("REPORT PERIODICO AUTO SEND ERROR:", chat_id, label, days, repr(exc), flush=True)
+        try:
+            progression_global = await asyncio.to_thread(
+                community.coefficient_ranking_text, chat_id, "global_clubs", days
+            )
+            await community._send_ranking_message(context, chat_id, progression_global)
+            print("REPORT PERIODICO AUTO: chat=%s scope=PROGRESSIONE GLOBALE CLUB days=%s local=%s" % (
+                chat_id, days, now.strftime("%Y-%m-%d %H:%M:%S")
+            ), flush=True)
+        except Exception as exc:
+            print(
+                "REPORT PERIODICO AUTO SEND ERROR:",
+                chat_id, "PROGRESSIONE GLOBALE CLUB", days, repr(exc), flush=True
+            )
 
 
 async def log_automatic_ranking_schedule(context):
