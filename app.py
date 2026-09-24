@@ -5505,53 +5505,30 @@ async def _send_auto_ranking_slot(context, slot, frozen_only=False):
 
 
 async def automatic_periodic_report_job(context):
-    """Publish combined Trophy + Progressione reports for the configured 7/15-day cycle."""
+    """Publish registered + complete-roster Trophy/Progressione reports for 7/15/30 days."""
     data = context.job.data or {}
     days = int(data.get("days") or 7)
     now = datetime.now(ROME)
-    # 7-day report: every Monday. 15-day report: day 15 of each month.
-    if days == 7 and now.weekday() != 0:
-        return
-    if days == 15 and now.day != 15:
-        return
     try:
-        settings_rows = await asyncio.to_thread(community._get, "community_settings", {"select": "chat_id"})
+        settings_rows = await asyncio.to_thread(
+            community._get, "community_settings", {"select": "chat_id"}
+        )
     except Exception as exc:
         print("REPORT PERIODICO SETTINGS ERROR:", days, repr(exc), flush=True)
         return
     for row in settings_rows or []:
         chat_id = int(row["chat_id"])
-        try:
-            text_report = await asyncio.to_thread(community.periodic_report_text, chat_id, "global_clubs", days)
-            await context.bot.send_message(chat_id=chat_id, text=text_report)
-            print("REPORT PERIODICO AUTO: chat=%s days=%s local=%s" % (
-                chat_id, days, now.strftime("%Y-%m-%d %H:%M:%S")
-            ), flush=True)
-        except Exception as exc:
-            print("REPORT PERIODICO AUTO SEND ERROR:", chat_id, days, repr(exc), flush=True)
-
-
-async def automatic_monthly_global_rankings_job(context):
-    """On day 1, send the two complete-roster rankings for the previous calendar month."""
-    now = datetime.now(ROME)
-    if now.day != 1:
-        return
-    month_key = now.strftime("%Y-%m")
-    try:
-        settings_rows = await asyncio.to_thread(community._get, "community_settings", {"select": "chat_id"})
-    except Exception as exc:
-        print("CLASSIFICA MENSILE SETTINGS ERROR:", repr(exc), flush=True)
-        return
-    for row in settings_rows or []:
-        chat_id = int(row["chat_id"])
-        try:
-            individual = await asyncio.to_thread(community.global_monthly_ranking_text, chat_id)
-            clubs = await asyncio.to_thread(community.global_club_ranking_text, chat_id, True)
-            await context.bot.send_message(chat_id=chat_id, text=individual)
-            await context.bot.send_message(chat_id=chat_id, text=clubs)
-            print("CLASSIFICA MENSILE AUTO: chat=%s month=%s" % (chat_id, month_key), flush=True)
-        except Exception as exc:
-            print("CLASSIFICA MENSILE AUTO SEND ERROR:", chat_id, repr(exc), flush=True)
+        for scope, label in (("community", "REGISTRATI"), ("global_clubs", "GLOBALE CLUB")):
+            try:
+                text_report = await asyncio.to_thread(
+                    community.periodic_report_text, chat_id, scope, days
+                )
+                await context.bot.send_message(chat_id=chat_id, text=text_report)
+                print("REPORT PERIODICO AUTO: chat=%s scope=%s days=%s local=%s" % (
+                    chat_id, label, days, now.strftime("%Y-%m-%d %H:%M:%S")
+                ), flush=True)
+            except Exception as exc:
+                print("REPORT PERIODICO AUTO SEND ERROR:", chat_id, label, days, repr(exc), flush=True)
 
 
 async def log_automatic_ranking_schedule(context):
@@ -5675,14 +5652,14 @@ def main():
             first=75,
             name="classifica_oggi_watchdog"
         )
-        # Periodic combined reports. Daily classifications keep their four exact slots.
-        # 7 days: Monday 06:05. 15 days: day 15 at 06:10.
+        # Automatic combined reports. Each run publishes both scopes:
+        # registered users and complete 4-club roster (registered + non-registered).
         application.job_queue.run_daily(
             automatic_periodic_report_job,
             time=dt_time(hour=6, minute=5, tzinfo=ROME),
             days=(0,),
             data={"days": 7},
-            name="report_globale_7_giorni",
+            name="report_7_giorni",
             job_kwargs={"misfire_grace_time": 1800, "coalesce": True, "max_instances": 1},
         )
         application.job_queue.run_monthly(
@@ -5690,15 +5667,15 @@ def main():
             when=dt_time(hour=6, minute=10, tzinfo=ROME),
             day=15,
             data={"days": 15},
-            name="report_globale_15_giorni",
+            name="report_15_giorni",
             job_kwargs={"misfire_grace_time": 1800, "coalesce": True, "max_instances": 1},
         )
-        # Previous completed calendar month: existing monthly global publication.
         application.job_queue.run_monthly(
-            automatic_monthly_global_rankings_job,
-            when=dt_time(hour=6, minute=5, tzinfo=ROME),
+            automatic_periodic_report_job,
+            when=dt_time(hour=6, minute=15, tzinfo=ROME),
             day=1,
-            name="classifiche_globali_mensili",
+            data={"days": 30},
+            name="report_30_giorni",
             job_kwargs={"misfire_grace_time": 1800, "coalesce": True, "max_instances": 1},
         )
         # Exact Rome-local delivery times requested for the automatic "classifica oggi".
