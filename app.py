@@ -3415,6 +3415,15 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         re.fullmatch(r"(?:leggi|leggilo|leggi questo|leggi a voce)", _raw_command.strip(), re.I)
         or re.search(r"(?:rispondi|rspondi|rispomdi|rispndi|rispodi)\s+(?:a\s+voce|voce)\s*$", (message.text or "").strip(), re.I)
     )
+    # Technical Telegraph publisher: execute in the source group only.
+    # Do not route it to private, Gemini, or silent conversational memory.
+    _telegraph_memory_group_trigger = bool(
+        re.fullmatch(
+            r"(?:telegraph\s+memoria|comunicazione\s+memoria|novit[aà]\s+memoria)",
+            _raw_command.strip(),
+            re.I,
+        )
+    )
     # Only deterministic bot commands are moved to private/deleted. Normal
     # conversation (greetings, advice, questions handled by Gemini) stays in
     # the group together with the bot reply.
@@ -3448,6 +3457,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _is_group_chat
         and not _deterministic_group_command
         and not _voice_group_exception
+        and not _telegraph_memory_group_trigger
         and not _explicit_bot_mention
         and not _reply_to_bot
     ):
@@ -3462,7 +3472,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("GROUP FREE CHAT SILENT MEMORY: stored without reply", flush=True)
         return
 
-    if not _voice_group_exception and _deterministic_group_command:
+    if not _voice_group_exception and not _telegraph_memory_group_trigger and _deterministic_group_command:
         _source_group_message = message
         _private_message = await _ensure_private_command_delivery(message, context)
         if _private_message is None:
@@ -3477,6 +3487,11 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 print("MANUAL COMMAND DELETED FROM GROUP:", repr(_raw_command), flush=True)
             except Exception as exc:
                 print("MANUAL COMMAND DELETE ERROR:", type(exc).__name__, flush=True)
+    if _telegraph_memory_group_trigger:
+        print("TELEGRAPH MEMORY DIRECT GROUP ROUTE:", repr(_raw_command), flush=True)
+        await community.handle_command(message, context, _raw_command)
+        return
+
     # A malformed bot mention can swallow the first command token
     # (e.g. @SensGPT_TitaniAbusiviBotregistrami). Treat every text containing
     # an explicit registration attempt as registration traffic and NEVER let it
