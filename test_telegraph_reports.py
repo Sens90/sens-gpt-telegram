@@ -8,6 +8,42 @@ from community_features import CommunityFeatures
 from coefficient_guide import coefficient_guide_lines
 
 
+class CoefficientSnapshotDistributionTests(unittest.TestCase):
+    @patch("app.requests.post")
+    @patch("app.requests.get")
+    @patch.dict(os.environ, {
+        "TELEGRAM_TOKEN": "000000:test-token",
+        "SUPABASE_URL": "https://example.supabase.co",
+        "SUPABASE_SERVICE_ROLE_KEY": "test-secret",
+    })
+    def test_snapshot_stores_only_numeric_brawler_trophy_distribution(self, get, post):
+        import app
+
+        get.return_value.raise_for_status.return_value = None
+        get.return_value.json.return_value = []
+        post.return_value.raise_for_status.return_value = None
+        with patch.object(app, "SUPABASE_URL", "https://example.supabase.co"), patch.object(
+            app, "SUPABASE_SERVICE_ROLE_KEY", "test-secret"
+        ):
+            saved = app.save_coefficient_snapshot({
+                "tag": "#2GU9UV2RG",
+                "name": "Sens",
+                "trophies": 1600,
+                "brawler_trophies": [
+                    {"name": "NITA", "trophies": 500},
+                    {"name": "GRIFF", "trophies": "1100"},
+                    {"name": "IGNORA", "trophies": None},
+                    "invalid-row",
+                ],
+            })
+
+        self.assertTrue(saved)
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(payload["brawler_trophy_values"], [500, 1100, 0])
+        self.assertNotIn("brawler_trophies", payload)
+        self.assertNotIn("test-secret", str(payload))
+
+
 class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
     def make_features(self):
         obj = CommunityFeatures.__new__(CommunityFeatures)

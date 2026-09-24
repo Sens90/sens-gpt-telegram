@@ -2074,6 +2074,14 @@ def save_coefficient_snapshot(player, is_registered=True):
         return False
     try:
         result = calculate_trophy_coefficient(player.get("brawler_trophies"), player.get("trophies"))
+        brawler_trophy_values = []
+        for row in player.get("brawler_trophies") or []:
+            if not isinstance(row, dict):
+                continue
+            try:
+                brawler_trophy_values.append(max(0, int(row.get("trophies") or 0)))
+            except (TypeError, ValueError):
+                continue
         payload = {
             "player_tag": str(player.get("tag") or "").replace("#", "").upper(),
             "player_name": player.get("name"),
@@ -2084,6 +2092,9 @@ def save_coefficient_snapshot(player, is_registered=True):
             "coefficient_value": int(result["score"]) - int(result["official_total"]),
             "coefficient": float(result["coefficient"]),
             "formula_version": COEFFICIENT_FORMULA_VERSION,
+            # Numeric distribution only: enough to audit/calibrate trophy bands
+            # without duplicating the full Brawler profile payload.
+            "brawler_trophy_values": brawler_trophy_values,
         }
         if not payload["player_tag"]:
             return False
