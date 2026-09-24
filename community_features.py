@@ -2046,7 +2046,7 @@ class CommunityFeatures:
         member_by_tag = unique
         try:
             response = requests.post(
-                f"{self.supabase_url}/rest/v1/rpc/coefficient_progression_rows",
+                f"{self.supabase_url}/rest/v1/rpc/coefficient_progression_rows_v2",
                 headers=self._headers(),
                 json={"p_player_tags": list(member_by_tag), "p_days": days},
                 timeout=20,
