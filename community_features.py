@@ -87,95 +87,214 @@ FAQ_TEXT = (
     "- Reclutamento: titaniabusivi.it"
 )
 
-HELP_TEXT = """COMANDI SENS GPT - SOCI
+HELP_TEXT = """COMANDI SENS GPT — GUIDA COMPLETA
+
+Questa pagina raccoglie i comandi disponibili e spiega cosa fa ciascuno. Dove trovi ▶️ puoi toccare il comando per aprire Sens GPT ed eseguirlo in privato.
 
 ESECUZIONE RAPIDA
-Tocca un comando per aprire Sens GPT ed eseguirlo in privato.
 [[CMD:cmd_stats|Stats]]
+Mostra la scheda completa del tuo account registrato: profilo, Ranked, vittorie, collezione, livelli Brawler, prestigio e altri dati disponibili.
+
 [[CMD:cmd_skin|Skin]]
+Mostra il riepilogo della tua collezione Skin, con possedute, mancanti e valori disponibili.
+
 [[CMD:cmd_classifica|Classifica]]
+Mostra le classifiche e i periodi disponibili.
+
 [[CMD:cmd_progressione|Progressione]]
+Mostra la tua Progressione di oggi, calcolata Brawler per Brawler sulle battaglie osservate.
+
 [[CMD:cmd_progressione_oggi|Progressione oggi]]
+Mostra partite, coppe positive, Bonus, Progressione, Coeff. Progressione e dettaglio dei Brawler giocati da mezzanotte.
+
 [[CMD:cmd_guida_progressione|Guida Progressione]]
+Apre la guida dedicata che spiega calcolo, periodi e comandi della Progressione.
+
 [[CMD:cmd_draft_ranked|Draft Ranked]]
+Avvia in chat privata la procedura guidata per ban e pick della Draft Ranked.
 
 ACCOUNT E PROFILO
-- registrami #TAG — collega il tuo account Brawl Stars principale
-- aggiungi account #TAG — collega un account secondario/terziario
-- i miei account — mostra tutti i tuoi account collegati
-- profilo #TAG / stats #TAG — scheda completa del giocatore
-- ranked #TAG — Classificata attuale e record
-- storico ranked #TAG — ultime variazioni della Classificata
+registrami #TAG
+Collega il tuo account Brawl Stars principale al tuo utente Telegram. Esempio: registrami #2LVRCLV8LV
+
+aggiungi account #TAG
+Collega un account Brawl Stars secondario o successivo al tuo profilo.
+
+i miei account
+Mostra l'account principale e tutti gli account aggiuntivi collegati.
+
+profilo #TAG / stats #TAG
+Genera la scheda completa del giocatore indicato. Senza #TAG, Stats usa il tuo account registrato.
+
+ranked #TAG
+Mostra la Classificata attuale e i record Ranked disponibili del giocatore.
+
+storico ranked #TAG
+Mostra le variazioni Ranked registrate nel tempo.
 
 SKIN ACCOUNT
-- skin / quante skin ho — riepilogo delle skin possedute
-- skin account NOME_BRAWLER — situazione skin di un Brawler
-- quante skin ho di NOME_BRAWLER
-- quali skin di NOME_BRAWLER ho / mi mancano
-- quante skin RARITÀ ho — filtro per categoria/rarità
-- quali skin RARITÀ ho / mi mancano
-- grafico skin [RARITÀ] [7|15|30|60|90|180|365] — storico Skin Account
-- mostrami la skin NOME_SKIN di NOME_BRAWLER — immagine della skin
+skin / quante skin ho
+Riepiloga la collezione Skin del tuo account: possedute, mancanti e valori disponibili.
+
+skin account NOME_BRAWLER
+Mostra la situazione Skin completa del Brawler indicato.
+
+quante skin ho di NOME_BRAWLER
+Conta quante Skin possiedi per quel Brawler.
+
+quali skin di NOME_BRAWLER ho
+Elenca le Skin possedute del Brawler.
+
+quali skin di NOME_BRAWLER mi mancano
+Elenca le Skin mancanti del Brawler.
+
+quante skin RARITÀ ho
+Conta le Skin possedute nella categoria o rarità indicata.
+
+quali skin RARITÀ ho / mi mancano
+Elenca possedute o mancanti filtrando per categoria o rarità.
+
+grafico skin [RARITÀ] [7|15|30|60|90|180|365]
+Mostra lo storico della collezione Skin nel periodo scelto.
+
+mostrami la skin NOME_SKIN di NOME_BRAWLER
+Mostra l'immagine disponibile della Skin specificata.
 
 CLASSIFICHE COMMUNITY
-- classifica — mostra i periodi disponibili
-- classifica oggi / 7 / 15 / 30 — andamento trofei
-- classifica trofei
-- classifica brawler
-- classifica livello
-- classifica prestigio
-- classifica 3v3
-- classifica solo
-- classifica duo
-- classifica classificata / classifica ranked — Classificata attuale
-- classifica ranked oggi / 7 / 15 / 30 — variazione ELO nel periodo
-- classifica classificata stagione / classifica ranked stagione — record stagione
-- classifica classificata carriera / classifica ranked carriera — record carriera
-- coefficiente abusivo #TAG — dettaglio del Coefficiente Abusivo\n- progressione [oggi|7|15|30] [#TAG] — riepilogo personale e Progressione di tutti i Brawler giocati
-- progressione NOME_BRAWLER [oggi|7|15|30] [#TAG] — dettaglio del singolo Brawler con partite, vittorie, sconfitte, coppe, bonus e coefficiente
-- guida progressione — apre la guida completa su Telegraph
-- classifica progressione [community|globale|club] [oggi|7|15|30] — classifica della Progressione ponderata del periodo
-- statistiche / tutte le classifiche — riepilogo statistiche
+classifica
+Mostra i periodi e le classifiche disponibili.
+
+classifica oggi / 7 / 15 / 30
+Ordina i giocatori in base all'andamento trofei nel periodo scelto.
+
+classifica trofei
+Ordina i giocatori per trofei attuali.
+
+classifica brawler
+Confronta il numero di Brawler dei giocatori.
+
+classifica livello
+Ordina i giocatori per livello account disponibile.
+
+classifica prestigio
+Ordina i giocatori in base al Prestigio Brawler registrato.
+
+classifica 3v3
+Ordina i giocatori per vittorie 3v3.
+
+classifica solo
+Ordina i giocatori per vittorie Sopravvivenza Solo.
+
+classifica duo
+Ordina i giocatori per vittorie Sopravvivenza Duo.
+
+classifica classificata / classifica ranked
+Mostra la classifica Ranked attuale.
+
+classifica ranked oggi / 7 / 15 / 30
+Mostra la variazione Ranked/ELO osservata nel periodo.
+
+classifica ranked stagione
+Confronta il record Ranked della stagione corrente disponibile.
+
+classifica ranked carriera
+Confronta il record Ranked massimo di carriera disponibile.
+
+coefficiente abusivo #TAG
+Calcola il Coefficiente Abusivo strutturale del giocatore, separato dalla Progressione del periodo.
+
+progressione [oggi|7|15|30] [#TAG]
+Mostra il riepilogo Progressione del giocatore e tutti i Brawler realmente giocati nel periodo.
+
+progressione NOME_BRAWLER [oggi|7|15|30] [#TAG]
+Analizza un singolo Brawler: partite, vittorie, sconfitte, pareggi, win rate, coppe positive/perse, saldo, Bonus, Progressione e Coeff. Progressione. Esempio: progressione Brock 7
+
+guida progressione
+Apre la guida Telegraph dedicata e spiega esattamente come viene calcolata la Progressione.
+
+classifica progressione [community|globale|club] [oggi|7|15|30]
+Ordina i giocatori usando la Progressione ponderata nel periodo e mostra Coppe, Bonus e Coeff. Progressione.
+
+statistiche / tutte le classifiche
+Mostra un riepilogo delle statistiche e classifiche disponibili.
 
 CLASSIFICHE DEI 4 CLUB
-Aggiungi titani, tamarri, tornadi o talenti alla classifica; puoi scrivere anche il nome completo con "abusivi".
-Esempi: classifica titani 3v3; classifica tamarri trofei; classifica tornadi abusivi prestigio; classifica talenti duo.
-- statistiche titani / tamarri / tornadi / talenti — riepilogo del club
+classifica titani / tamarri / tornadi / talenti + METRICA
+Applica una classifica al singolo club ABUSIVO. Esempi: classifica titani 3v3; classifica tamarri trofei; classifica tornadi prestigio; classifica talenti duo.
+
+statistiche titani / tamarri / tornadi / talenti
+Mostra il riepilogo statistico del club scelto.
 
 GRAFICI
-- grafico 7|15|30|90 #TAG — andamento di un giocatore
-- grafico community 7|15|30|90 — totale giocatori registrati
-- grafico titani 7|15|30|90
-- grafico tamarri 7|15|30|90
-- grafico tornadi 7|15|30|90
-- grafico talenti 7|15|30|90
+grafico 7|15|30|90 #TAG
+Mostra l'andamento storico del giocatore nel periodo.
 
-DRAFT RANKED — SOLO IN CHAT PRIVATA
-- La Draft Ranked funziona esclusivamente in privato con Sens GPT e non nel gruppo.
-- Draft Ranked — avvia la Draft guidata
-- puoi indicare mappa e fascia Ranked, oppure una modalità per scegliere tra le mappe Ranked correnti
-- durante la Draft: ban, primo pick nostro/avversario e pick vengono gestiti passo per passo
-- draft stato / draft riepilogo — mostra la situazione della Draft
-- draft reset — chiude e azzera la Draft
-- counter NOME_BRAWLER — mostra counter verificati disponibili
+grafico community 7|15|30|90
+Mostra l'andamento aggregato dei giocatori registrati.
+
+grafico titani 7|15|30|90
+Mostra l'andamento del club TITANI ABUSIVI.
+
+grafico tamarri 7|15|30|90
+Mostra l'andamento del club TAMARRI ABUSIVI.
+
+grafico tornadi 7|15|30|90
+Mostra l'andamento del club TORNADI ABUSIVI.
+
+grafico talenti 7|15|30|90
+Mostra l'andamento del club TALENTI ABUSIVI.
+
+DRAFT RANKED — SOLO CHAT PRIVATA
+Draft Ranked
+Avvia la Draft guidata. Puoi indicare una mappa e una fascia Ranked oppure scegliere una modalità e poi una mappa Ranked corrente.
+
+draft stato / draft riepilogo
+Mostra ban, pick e stato corrente della Draft in corso.
+
+draft reset
+Chiude la Draft corrente e azzera la sessione.
+
+counter NOME_BRAWLER
+Mostra i counter verificati disponibili per il Brawler indicato.
 
 COMMUNITY
-- club — riepilogo community
-- elenco registrati — account collegati
-- inattivi — situazione inattività visibile dal bot
-- assenza N — segnala N giorni di assenza
-- eventi — eventi aperti
-- partecipo ID — conferma partecipazione
-- report — report operativo
-- reclutamento — avvia una candidatura
-- regole / faq — regolamento
-- sito — sito ufficiale
-- discord — server Discord
+club
+Mostra il riepilogo della community e dei club configurati.
 
-BRAWL STARS
-Puoi inoltre chiedere direttamente a Sens GPT meta, mappe, composizioni, Ladder o Classificata, Brawler, configurazioni, gadget, abilità stellari, equipaggiamenti, overdrive e consigli su cosa pushare.
+elenco registrati
+Mostra gli account della community collegati al bot.
 
-Scrivi comandi in qualsiasi momento per rivedere questa guida."""
+inattivi
+Mostra la situazione di inattività disponibile al bot.
+
+assenza N
+Registra una segnalazione di assenza per il numero di giorni indicato.
+
+eventi
+Mostra gli eventi community aperti.
+
+partecipo ID
+Conferma la partecipazione all'evento identificato dall'ID.
+
+report
+Mostra il report operativo disponibile.
+
+reclutamento
+Avvia la procedura di candidatura/reclutamento.
+
+regole / faq
+Mostra il regolamento e le risposte rapide della community.
+
+sito
+Mostra il sito ufficiale della community.
+
+discord
+Mostra il collegamento al server Discord della community.
+
+BRAWL STARS — RICHIESTE LIBERE
+Sens GPT può inoltre rispondere a richieste su meta, mappe, composizioni, Ladder o Classificata, Brawler, configurazioni, gadget, abilità stellari, equipaggiamenti, overdrive e consigli di gioco. Queste non sono sintassi rigide come i comandi sopra.
+
+Scrivi comandi in qualsiasi momento per riaprire questa guida."""
 
 
 PROGRESSION_GUIDE_TEXT = """GUIDA PROGRESSIONE — TITANI ABUSIVI
