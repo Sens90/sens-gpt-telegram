@@ -151,8 +151,8 @@ def _sync_official_catalog_startup():
     """Populate/update the official Brawler catalog after every service start."""
     try:
         time.sleep(5)
-        from brawler_catalog_sync import sync_official_brawlers
-        count=sync_official_brawlers(timeout=30)
+        from brawler_catalog_sync import sync_official_brawlers_startup
+        count=sync_official_brawlers_startup(timeout=30)
         print("CATALOGO SUPERCELL STARTUP OK:",count,flush=True)
     except Exception as exc:
         print("CATALOGO SUPERCELL STARTUP ERRORE:",repr(exc),flush=True)

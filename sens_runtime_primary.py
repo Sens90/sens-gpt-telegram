@@ -162,8 +162,8 @@ print("SUPERCELL OFFICIAL PRIMARY GUARD INSTALLATA",flush=True)
 def _sync_catalog_runtime():
     try:
         time.sleep(5)
-        from brawler_catalog_sync import sync_official_brawlers
-        count=sync_official_brawlers(timeout=30)
+        from brawler_catalog_sync import sync_official_brawlers_startup
+        count=sync_official_brawlers_startup(timeout=30)
         print("CATALOGO SUPERCELL STARTUP OK:",count,flush=True)
     except Exception as exc:
         print("CATALOGO SUPERCELL STARTUP ERRORE:",repr(exc),flush=True)

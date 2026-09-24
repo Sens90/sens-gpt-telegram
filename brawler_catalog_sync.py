@@ -1,7 +1,11 @@
 import os
 import re
+import threading
 from datetime import datetime, timezone
 import requests
+
+_STARTUP_SYNC_LOCK = threading.Lock()
+_STARTUP_SYNC_COUNT = None
 
 def _headers():
     key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -97,5 +101,15 @@ def sync_official_brawlers(timeout=30):
     details={"via":"brawl-proxy","official":True,"brawlers":len(brawlers),"gadgets":len(gadgets),"star_powers":len(stars),"gears":len(gears_by_id),"hypercharges":len(hypers)}
     state={"dataset":"brawlers","source":"supercell_official","last_success_at":now,"last_attempt_at":now,"last_status":"ok","records_seen":len(brawlers),"details":details,"updated_at":now};_upsert(url,"content_sync_state","dataset",[state],timeout)
     print("CATALOGO SUPERCELL COMPLETO:",details,flush=True);return len(brawlers)
+
+def sync_official_brawlers_startup(timeout=30):
+    """Serialize duplicate startup hooks and cache only a successful result."""
+    global _STARTUP_SYNC_COUNT
+    with _STARTUP_SYNC_LOCK:
+        if _STARTUP_SYNC_COUNT is not None:
+            return _STARTUP_SYNC_COUNT
+        count = sync_official_brawlers(timeout=timeout)
+        _STARTUP_SYNC_COUNT = count
+        return count
 
 if __name__=="__main__":sync_official_brawlers()
