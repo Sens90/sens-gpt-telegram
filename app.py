@@ -3399,6 +3399,30 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             re.I,
         )
     )
+    # In groups, free-form Gemini conversation is opt-in: reply only when
+    # the bot is explicitly mentioned or when the user replies to a bot message.
+    # Deterministic commands do not require a mention.
+    _is_group_chat = getattr(message.chat, "type", None) in {"group", "supergroup"}
+    _bot_username = (getattr(context.bot, "username", None) or "").lstrip("@")
+    _explicit_bot_mention = bool(
+        _bot_username
+        and re.search(r"@" + re.escape(_bot_username) + r"\\b", message.text or "", re.I)
+    )
+    _reply_to_bot = bool(
+        message.reply_to_message
+        and getattr(message.reply_to_message, "from_user", None)
+        and getattr(message.reply_to_message.from_user, "id", None) == context.bot.id
+    )
+    if (
+        _is_group_chat
+        and not _deterministic_group_command
+        and not _voice_group_exception
+        and not _explicit_bot_mention
+        and not _reply_to_bot
+    ):
+        print("GROUP FREE CHAT IGNORED: bot not addressed", flush=True)
+        return
+
     if not _voice_group_exception and _deterministic_group_command:
         _source_group_message = message
         _private_message = await _ensure_private_command_delivery(message, context)
