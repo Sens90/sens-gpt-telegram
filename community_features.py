@@ -3011,6 +3011,8 @@ class CommunityFeatures:
             "",
             f"Membri tracciati: {len(members)}",
             f"Giocatori registrati: {sum(1 for m in members if m.get('player_tag'))}",
+            "Ambito trofei: solo utenti registrati con tag Brawl Stars collegato",
+            "Ambito Progressione: solo utenti registrati con battaglie osservate valide",
             (f"Crescita trofei ({period_label.lower()}): {'+' if growth > 0 else ''}{growth}" if valid_growth else f"Crescita trofei ({period_label.lower()}): storico non ancora disponibile"),
             f"Membri sopra soglia inattività: {len(inactive)}",
         ]
