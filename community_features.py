@@ -2073,21 +2073,30 @@ class CommunityFeatures:
             row["name"] = row.get("player_name") or member.get("player_name") or member.get("display_name") or row.get("player_tag")
             row["value"] = row.get("coefficient_value") if days is None else row.get("progression_value")
         rows = [row for row in rows if row.get("value") is not None]
-        rows.sort(key=lambda row: (int(row["value"]), float(row.get("coefficient") or 0)), reverse=True)
+        rows.sort(
+            key=lambda row: (
+                int(row["value"]),
+                (float(row["value"]) / int(row.get("positive_trophies") or 0))
+                if days is not None and int(row.get("positive_trophies") or 0) > 0 else 0,
+            ),
+            reverse=True,
+        )
         if not rows:
             return f"{title}\n\nStorico non ancora disponibile per questo periodo."
         period = "ATTUALE" if days is None else ("OGGI" if days == 0 else f"{days} GIORNI")
         lines = [f"{title} — {period}", f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}", ""]
         for index, row in enumerate(rows[:200], 1):
-            coefficient = f'{float(row["coefficient"]):.6f}'.replace(".", ",")
+            account_coefficient = f'{float(row["coefficient"]):.6f}'.replace(".", ",")
             value = int(row["value"])
             value_text = ("+" if value > 0 and days is not None else "") + self.number_formatter(value)
             if days is None:
-                lines.append(f'{index}. {row["name"]} — Valore coefficiente: {value_text} — Coeff. Abusivo: {coefficient}')
+                lines.append(f'{index}. {row["name"]} — Valore coefficiente: {value_text} — Coeff. Abusivo: {account_coefficient}')
             else:
                 battles = int(row.get("battle_count") or 0)
                 cups = int(row.get("positive_trophies") or 0)
                 bonus = value - cups
+                progression_coefficient = (float(value) / cups) if cups > 0 else 0.0
+                progression_coefficient_text = f"{progression_coefficient:.6f}".replace(".", ",")
                 cups_text = ("+" if cups > 0 else "") + self.number_formatter(cups)
                 bonus_text = ("+" if bonus > 0 else "") + self.number_formatter(bonus)
                 play_seconds = int(row.get("play_seconds") or 0)
@@ -2101,7 +2110,7 @@ class CommunityFeatures:
                     f'🏆 Coppe: {cups_text}',
                     f'⚡ Bonus: {bonus_text}',
                     f'🔥 Progressione: {value_text}',
-                    f'🧮 Coeff. Abusivo: {coefficient}',
+                    f'🧮 Coeff. Progressione: {progression_coefficient_text}',
                     "",
                 ]
         report_url = self._publish_telegraph(f"{title} — {period}", lines)
