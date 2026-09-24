@@ -1373,13 +1373,9 @@ class CommunityFeatures:
                 medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(position) if is_ranking_report else None
                 rendered = f"{medal} {ranking.group(2)}" if medal else value
                 children = [{"tag": "strong", "children": [rendered]}]
-                # Add extra vertical separation only in Telegraph ranking reports.
-                # Telegram summaries are rendered from the original lines unchanged.
-                if is_ranking_report and position > 1:
-                    nodes.extend([
-                        {"tag": "p", "children": ["\u00a0"]},
-                        {"tag": "p", "children": ["\u00a0"]},
-                    ])
+                # Telegraph spacing rule shared by every report:
+                # compact one-line ranking rows stay adjacent; detailed multi-line
+                # player blocks are separated by the block renderer, not here.
                 nodes.append({"tag": "p", "children": children})
                 continue
             command_sections = {
