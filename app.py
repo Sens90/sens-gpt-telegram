@@ -2395,10 +2395,13 @@ def get_registered_player_tags():
 
 
 def get_registered_players_for_battle_monitor():
-    """Return the small active registered roster used by the fast battle poller."""
+    """Return every player that must be battle-tracked: registered users plus all four current club rosters."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         return []
     try:
+        players = []
+        seen = set()
+
         response = requests.get(
             f"{SUPABASE_URL}/rest/v1/community_members",
             headers=_tracking_headers(),
@@ -2411,14 +2414,48 @@ def get_registered_players_for_battle_monitor():
             timeout=15,
         )
         response.raise_for_status()
-        players = []
-        seen = set()
         for row in response.json():
             tag = str(row.get("player_tag") or "").replace("#", "").strip().upper()
-            if not tag or tag in seen:
+            if tag and tag not in seen:
+                seen.add(tag)
+                players.append({"tag": tag, "name": row.get("player_name")})
+
+        # Registration is not required for Global Club tracking. Add the latest
+        # complete roster of TITANI/TAMARRI/TORNADI/TALENTI to the fast poller.
+        clubs = sorted(set(community.CLUB_ALIASES.values()))
+        for club_name in clubs:
+            date_response = requests.get(
+                f"{SUPABASE_URL}/rest/v1/club_roster_daily",
+                headers=_tracking_headers(),
+                params={
+                    "select": "snapshot_date",
+                    "club_name": f"eq.{club_name}",
+                    "order": "snapshot_date.desc",
+                    "limit": "1",
+                },
+                timeout=15,
+            )
+            date_response.raise_for_status()
+            date_rows = date_response.json() or []
+            if not date_rows:
                 continue
-            seen.add(tag)
-            players.append({"tag": tag, "name": row.get("player_name")})
+            roster_response = requests.get(
+                f"{SUPABASE_URL}/rest/v1/club_roster_daily",
+                headers=_tracking_headers(),
+                params={
+                    "select": "player_tag,player_name",
+                    "club_name": f"eq.{club_name}",
+                    "snapshot_date": f"eq.{date_rows[0]['snapshot_date']}",
+                    "limit": "100",
+                },
+                timeout=15,
+            )
+            roster_response.raise_for_status()
+            for row in roster_response.json() or []:
+                tag = str(row.get("player_tag") or "").replace("#", "").strip().upper()
+                if tag and tag not in seen:
+                    seen.add(tag)
+                    players.append({"tag": tag, "name": row.get("player_name")})
         return players
     except Exception as exc:
         print("ERRORE LETTURA GIOCATORI BATTLE MONITOR:", repr(exc), flush=True)
@@ -2809,14 +2846,14 @@ def automatic_trophy_monitor():
 
 
 def automatic_battle_monitor():
-    """Poll registered battlelogs frequently enough to stay inside their finite window."""
+    """Poll registered users and all four current club rosters inside the finite battlelog window."""
     import time
 
     time.sleep(30)
     while True:
         try:
             players = get_registered_players_for_battle_monitor()
-            print("BATTLE MONITOR:", len(players), "giocatori registrati", flush=True)
+            print("BATTLE MONITOR:", len(players), "giocatori registrati + roster 4 club", flush=True)
             for player in players:
                 save_observed_trophy_battles(player)
         except Exception as exc:
