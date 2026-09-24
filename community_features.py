@@ -89,6 +89,16 @@ FAQ_TEXT = (
 
 HELP_TEXT = """COMANDI SENS GPT - SOCI
 
+ESECUZIONE RAPIDA
+Tocca un comando per aprire Sens GPT ed eseguirlo in privato.
+[[CMD:cmd_stats|Stats]]
+[[CMD:cmd_skin|Skin]]
+[[CMD:cmd_classifica|Classifica]]
+[[CMD:cmd_progressione|Progressione]]
+[[CMD:cmd_progressione_oggi|Progressione oggi]]
+[[CMD:cmd_guida_progressione|Guida Progressione]]
+[[CMD:cmd_draft_ranked|Draft Ranked]]
+
 ACCOUNT E PROFILO
 - registrami #TAG — collega il tuo account Brawl Stars principale
 - aggiungi account #TAG — collega un account secondario/terziario
@@ -186,11 +196,11 @@ PERIODI
 - 30 — ultimi 30 giorni
 
 COMANDI PERSONALI
-- progressione
-- progressione oggi
-- progressione 7
-- progressione 15
-- progressione 30
+[[CMD:cmd_progressione|Progressione]]
+[[CMD:cmd_progressione_oggi|Progressione oggi]]
+[[CMD:cmd_progressione_7|Progressione 7]]
+[[CMD:cmd_progressione_15|Progressione 15]]
+[[CMD:cmd_progressione_30|Progressione 30]]
 Mostrano il totale del giocatore e la Progressione dei Brawler realmente giocati nel periodo.
 
 SINGOLO BRAWLER
@@ -202,10 +212,10 @@ SINGOLO BRAWLER
 Il dettaglio comprende partite, vittorie, sconfitte, pareggi, win rate, coppe positive, coppe perse, saldo trofei, bonus, Progressione, Coeff. Progressione, trofei iniziali e ultimo dato osservato, oltre al log delle battaglie.
 
 CLASSIFICHE
-- classifica progressione oggi
-- classifica progressione 7
-- classifica progressione 15
-- classifica progressione 30
+[[CMD:cmd_classifica_progressione_oggi|Classifica Progressione oggi]]
+[[CMD:cmd_classifica_progressione_7|Classifica Progressione 7]]
+[[CMD:cmd_classifica_progressione_15|Classifica Progressione 15]]
+[[CMD:cmd_classifica_progressione_30|Classifica Progressione 30]]
 Sono disponibili anche gli scope community, club, globale club e i singoli club ABUSIVI.
 
 Nelle classifiche:
@@ -1100,6 +1110,15 @@ class CommunityFeatures:
         for index, raw in enumerate(lines):
             value = str(raw or "").strip()
             if not value:
+                continue
+            command_link = re.fullmatch(r"\[\[CMD:([a-z0-9_]+)\|(.+?)\]\]", value, re.I)
+            if command_link:
+                payload, label = command_link.groups()
+                nodes.append({"tag": "p", "children": [{
+                    "tag": "a",
+                    "attrs": {"href": f"https://t.me/SensGPT_TitaniAbusiviBot?start={payload}"},
+                    "children": [f"▶️ {label}"],
+                }]})
                 continue
             ranking = re.match(r"^(\d+)\.\s*(.+)$", value)
             if ranking:

@@ -5224,6 +5224,31 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Registrati prima nel gruppo TITANI ABUSIVI collegando il tuo tag Brawl Stars."
             )
             return
+        payload = (context.args[0] if getattr(context, "args", None) else "").strip().casefold()
+        deep_commands = {
+            "cmd_progressione": "progressione",
+            "cmd_progressione_oggi": "progressione oggi",
+            "cmd_progressione_7": "progressione 7",
+            "cmd_progressione_15": "progressione 15",
+            "cmd_progressione_30": "progressione 30",
+            "cmd_guida_progressione": "guida progressione",
+            "cmd_classifica_progressione_oggi": "classifica progressione oggi",
+            "cmd_classifica_progressione_7": "classifica progressione 7",
+            "cmd_classifica_progressione_15": "classifica progressione 15",
+            "cmd_classifica_progressione_30": "classifica progressione 30",
+            "cmd_stats": "stats",
+            "cmd_skin": "skin",
+            "cmd_classifica": "classifica",
+            "cmd_comandi": "comandi",
+            "cmd_draft_ranked": "draft ranked",
+        }
+        if payload in deep_commands:
+            command = deep_commands[payload]
+            print("TELEGRAPH DEEP LINK ROUTE:", command, flush=True)
+            if await community.handle_command(message, context, command):
+                return
+            await message.reply_text("Comando non disponibile in questo momento.")
+            return
         await message.reply_text(
             "Ciao! Il tuo account è registrato e attivo. Puoi scrivermi normalmente qui in privato, "
             "senza menzionare @SensGPT_TitaniAbusiviBot."
