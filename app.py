@@ -3316,6 +3316,16 @@ class _PrivateCommandMessage:
         self._bot = bot
         self._private_chat_id = int(original.from_user.id)
 
+    @property
+    def chat_id(self):
+        # Commands issued in a group must keep the source group as their
+        # data/permission scope. Only reply_* methods are redirected to DM.
+        return self._original.chat_id
+
+    @property
+    def chat(self):
+        return self._original.chat
+
     def __getattr__(self, name):
         return getattr(self._original, name)
 
