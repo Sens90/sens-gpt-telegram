@@ -2379,6 +2379,37 @@ def _tracking_headers(prefer=None):
 def get_registered_player_tags():
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         return set()
+
+
+def get_registered_players_for_battle_monitor():
+    """Return the small active registered roster used by the fast battle poller."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return []
+    try:
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/community_members",
+            headers=_tracking_headers(),
+            params={
+                "select": "player_tag,player_name",
+                "player_tag": "not.is.null",
+                "is_active": "eq.true",
+                "limit": "5000",
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        players = []
+        seen = set()
+        for row in response.json():
+            tag = str(row.get("player_tag") or "").replace("#", "").strip().upper()
+            if not tag or tag in seen:
+                continue
+            seen.add(tag)
+            players.append({"tag": tag, "name": row.get("player_name")})
+        return players
+    except Exception as exc:
+        print("ERRORE LETTURA GIOCATORI BATTLE MONITOR:", repr(exc), flush=True)
+        return []
     try:
         response = requests.get(
             f"{SUPABASE_URL}/rest/v1/community_members",
@@ -2729,9 +2760,6 @@ def automatic_trophy_monitor():
                         save_player_tracking(player)
                         clean_tag = str(player.get("tag") or "").replace("#", "").upper()
                         save_coefficient_snapshot(player, is_registered=clean_tag in registered_tags)
-                        if clean_tag in registered_tags:
-                            save_observed_trophy_battles(player)
-
                         # Keep the registered member's club synchronized from the
                         # same official Supercell response used by the monitor.
                         # This lets club leaderboards stay instant and DB-only.
@@ -2776,6 +2804,24 @@ def automatic_trophy_monitor():
             )
 
         interval_minutes = max(5, int(os.environ.get("TRACKING_INTERVAL_MINUTES", "15")))
+        time.sleep(interval_minutes * 60)
+
+
+def automatic_battle_monitor():
+    """Poll registered battlelogs frequently enough to stay inside their finite window."""
+    import time
+
+    time.sleep(30)
+    while True:
+        try:
+            players = get_registered_players_for_battle_monitor()
+            print("BATTLE MONITOR:", len(players), "giocatori registrati", flush=True)
+            for player in players:
+                save_observed_trophy_battles(player)
+        except Exception as exc:
+            print("ERRORE BATTLE MONITOR:", repr(exc), flush=True)
+
+        interval_minutes = max(1, int(os.environ.get("BATTLE_TRACKING_INTERVAL_MINUTES", "3")))
         time.sleep(interval_minutes * 60)
 
 
@@ -5689,6 +5735,10 @@ if __name__ == "__main__":
     threading.Thread(target=_startup_supercell_proxy_audit, daemon=True).start()
     threading.Thread(
         target=automatic_trophy_monitor,
+        daemon=True
+    ).start()
+    threading.Thread(
+        target=automatic_battle_monitor,
         daemon=True
     ).start()
 

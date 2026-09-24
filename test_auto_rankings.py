@@ -194,5 +194,25 @@ class CompleteRosterRetryTests(unittest.TestCase):
         sleep.assert_called_once_with(1)
 
 
+class RegisteredBattleMonitorTests(unittest.TestCase):
+    def test_registered_roster_is_normalized_and_deduplicated(self):
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = [
+            {"player_tag": "#abc", "player_name": "Uno"},
+            {"player_tag": "ABC", "player_name": "Duplicato"},
+            {"player_tag": " def ", "player_name": "Due"},
+            {"player_tag": None, "player_name": "Senza tag"},
+        ]
+        with patch.object(app.requests, "get", return_value=response) as request:
+            players = app.get_registered_players_for_battle_monitor()
+
+        self.assertEqual(players, [
+            {"tag": "ABC", "name": "Uno"},
+            {"tag": "DEF", "name": "Due"},
+        ])
+        self.assertEqual(request.call_args.kwargs["params"]["is_active"], "eq.true")
+
+
 if __name__ == "__main__":
     unittest.main()

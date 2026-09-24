@@ -19,6 +19,13 @@ class StartupDiagnosticsTests(unittest.TestCase):
     def test_required_startup_workers_remain_enabled(self):
         self.assertIn("target=_startup_supercell_proxy_audit", self.source)
         self.assertIn("target=automatic_trophy_monitor", self.source)
+        self.assertIn("target=automatic_battle_monitor", self.source)
+
+    def test_battle_monitor_has_dedicated_short_interval(self):
+        self.assertIn('BATTLE_TRACKING_INTERVAL_MINUTES", "3"', self.source)
+        trophy_monitor = self.source.split("def automatic_trophy_monitor():", 1)[1]
+        trophy_monitor = trophy_monitor.split("def automatic_battle_monitor():", 1)[0]
+        self.assertNotIn("save_observed_trophy_battles", trophy_monitor)
 
 
 if __name__ == "__main__":
