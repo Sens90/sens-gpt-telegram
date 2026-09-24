@@ -214,5 +214,23 @@ class RegisteredBattleMonitorTests(unittest.TestCase):
         self.assertEqual(request.call_args.kwargs["params"]["is_active"], "eq.true")
 
 
+class DeterministicCommandNormalizationTests(unittest.TestCase):
+    def test_stats_variants_normalize_to_same_command(self):
+        normalize = app.normalize_deterministic_command
+        self.assertEqual(normalize("Stats", "SensGPT_TitaniAbusiviBot"), "Stats")
+        self.assertEqual(normalize("@ stats", "SensGPT_TitaniAbusiviBot"), "stats")
+        self.assertEqual(
+            normalize("@SensGPT_TitaniAbusiviBot Stats", "SensGPT_TitaniAbusiviBot"),
+            "Stats",
+        )
+
+    def test_other_user_mentions_are_preserved(self):
+        command = app.normalize_deterministic_command(
+            "registra utente @GiorgioBs111111 #2LVRCLV8LV",
+            "SensGPT_TitaniAbusiviBot",
+        )
+        self.assertIn("@GiorgioBs111111", command)
+
+
 if __name__ == "__main__":
     unittest.main()

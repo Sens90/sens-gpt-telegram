@@ -3215,6 +3215,31 @@ def secondary_live_map_stats(event):
     return "Ho consultato le fonti secondarie: nessuna tabella utilizzabile per questa mappa. Le altre mappe restano disponibili."
 
 
+def normalize_deterministic_command(raw_text, bot_username=None):
+    """Normalize Telegram command text before deterministic routing."""
+    command = str(raw_text or "").translate(dict.fromkeys([
+        0x200B, 0x200C, 0x200D, 0x200E, 0x200F, 0x202A, 0x202B,
+        0x202C, 0x202D, 0x202E, 0x2060, 0xFEFF,
+    ]))
+    if bot_username:
+        command = re.sub(
+            r"@" + re.escape(str(bot_username).lstrip("@")) + r"\b",
+            " ",
+            command,
+            flags=re.IGNORECASE,
+        )
+    # A standalone mention marker ("@ stats") is still deterministic command
+    # traffic and must never fall through to Gemini.
+    command = re.sub(r"^\s*@+\s+", "", command)
+    command = re.sub(
+        r"\s+(?:rispondi|rspondi|rispomdi|rispndi|rispodi)\s+(?:a\s+voce|voce|(?:a\s+)?testo|testo\s*(?:\+|e)?\s*voce|voce\s*(?:\+|e)\s*testo)\s*$",
+        "",
+        command,
+        flags=re.I,
+    )
+    return re.sub(r"\s+", " ", command).strip()
+
+
 async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.text:
@@ -3261,24 +3286,13 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Absolute deterministic firewall for registration. Run this on the raw
     # Telegram text, before activity tracking, premium handlers or any Gemini
     # path. Remove bot/user mentions and invisible Unicode formatting first.
-    _raw_command = (message.text or "").translate(dict.fromkeys([0x200B,0x200C,0x200D,0x200E,0x200F,0x202A,0x202B,0x202C,0x202D,0x202E,0x2060,0xFEFF]))
     # Remove only the bot's own mention here. Stripping every @username
     # breaks admin commands whose target is another Telegram user.
     _bot_username_for_command = getattr(context.bot, "username", None)
-    if _bot_username_for_command:
-        _raw_command = re.sub(
-            r"@" + re.escape(_bot_username_for_command) + r"\b",
-            " ",
-            _raw_command,
-            flags=re.IGNORECASE,
-        )
-    _raw_command = re.sub(
-        r"\\s+(?:rispondi|rspondi|rispomdi|rispndi|rispodi)\\s+(?:a\\s+voce|voce|(?:a\\s+)?testo|testo\\s*(?:\\+|e)?\\s*voce|voce\\s*(?:\\+|e)\\s*testo)\\s*$",
-        "",
-        _raw_command,
-        flags=re.I,
+    _raw_command = normalize_deterministic_command(
+        message.text,
+        _bot_username_for_command,
     )
-    _raw_command = re.sub(r"\s+", " ", _raw_command).strip()
     # A malformed bot mention can swallow the first command token
     # (e.g. @SensGPT_TitaniAbusiviBotregistrami). Treat every text containing
     # an explicit registration attempt as registration traffic and NEVER let it
