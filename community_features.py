@@ -3462,6 +3462,20 @@ class CommunityFeatures:
         # Deterministic community commands must be handled before Skin/AI-like parsing.
         q0 = re.sub(r"\\s+", " ", question.strip())
         q0l = q0.casefold()
+        if q0l == "report":
+            LOG.info("MANUAL REPORT FAST ROUTE chat=%s", message.chat_id)
+            try:
+                report_text = await asyncio.wait_for(
+                    asyncio.to_thread(self.periodic_report_text, message.chat_id, "community", 7),
+                    timeout=60,
+                )
+            except asyncio.TimeoutError:
+                LOG.error("MANUAL REPORT FAST ROUTE TIMEOUT chat=%s", message.chat_id)
+                await message.reply_text("Il report sta impiegando troppo tempo. Riprova tra poco.")
+                return True
+            await message.reply_text(report_text)
+            LOG.info("MANUAL REPORT FAST ROUTE DELIVERED user=%s", message.from_user.id)
+            return True
         if q0l in ("come funziona il coefficiente abusivo", "guida coefficiente abusivo", "coefficiente abusivo guida"):
             guide = coefficient_guide_lines()
             report_url = await asyncio.to_thread(self._publish_telegraph, guide[0], guide)
