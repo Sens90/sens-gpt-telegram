@@ -1,4 +1,5 @@
 import json
+import base64
 import io
 import asyncio
 import html
@@ -5242,6 +5243,21 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "cmd_comandi": "comandi",
             "cmd_draft_ranked": "draft ranked",
         }
+        if payload.startswith("run_"):
+            encoded = payload[4:]
+            try:
+                padding = "=" * (-len(encoded) % 4)
+                command = base64.urlsafe_b64decode(encoded + padding).decode("utf-8").strip()
+            except Exception:
+                command = ""
+            # Telegraph only emits these links from the maintained HELP_TEXT.
+            # Placeholder syntaxes remain non-clickable because they need user input.
+            if command and not any(token in command for token in ("#", "[", "]", "NOME_", "RARITÀ", " + ", " / ")):
+                print("TELEGRAPH GENERIC DEEP LINK ROUTE:", command, flush=True)
+                if await community.handle_command(message, context, command):
+                    return
+            await message.reply_text("Questo comando richiede un parametro. Scrivilo direttamente in chat.")
+            return
         if payload in deep_commands:
             command = deep_commands[payload]
             print("TELEGRAPH DEEP LINK ROUTE:", command, flush=True)
