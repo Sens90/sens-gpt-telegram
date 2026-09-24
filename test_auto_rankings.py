@@ -89,7 +89,7 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
                 self.context, datetime(2026, 9, 23, 23, 59, tzinfo=app.ROME)
             )
 
-        self.assertEqual(sender.await_count, 7)
+        self.assertEqual(sender.await_count, 6)
         progression_calls = [
             call.args for call in app.community.coefficient_ranking_text.call_args_list
         ]
@@ -157,7 +157,7 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app._AUTO_RANKING_PENDING[(-100123, "2026-09-23-2359")]["next_index"], 1)
             await app._send_auto_ranking_slot(self.context, slot, frozen_only=True)
 
-        self.assertEqual(sender.await_count, 6)
+        self.assertEqual(sender.await_count, 7)
         trophies.assert_called_once()
         self.assertEqual(progression.call_count, 2)
         progression.assert_any_call(-100123, "community", 0)
