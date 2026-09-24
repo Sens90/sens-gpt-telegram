@@ -1306,6 +1306,18 @@ class CommunityFeatures:
         first_value = next((str(item or "").strip() for item in lines if str(item or "").strip()), "")
         is_ranking_report = first_value.upper().startswith("CLASSIFICA")
         is_command_guide = first_value.upper().startswith("COMANDI SENS GPT")
+        # A detailed ranking has continuation/stat lines between numbered players.
+        # One-line rankings stay compact; multi-line player blocks get visual
+        # separation before every player across every Telegraph ranking.
+        nonempty_values = [str(item or "").strip() for item in lines if str(item or "").strip()]
+        ranking_positions = [i for i, item in enumerate(nonempty_values) if re.match(r"^\\d+\\.\\s+", item)]
+        is_detailed_ranking = bool(
+            is_ranking_report
+            and any(
+                b - a > 1
+                for a, b in zip(ranking_positions, ranking_positions[1:])
+            )
+        )
         section_headings = {
             "PROFILO": "👤 PROFILO",
             "RANKED": "🏅 RANKED",
@@ -1378,7 +1390,9 @@ class CommunityFeatures:
                 children = [{"tag": "strong", "children": [rendered]}]
                 # Telegraph spacing rule shared by every report:
                 # compact one-line ranking rows stay adjacent; detailed multi-line
-                # player blocks are separated by the block renderer, not here.
+                # player blocks are visually separated so names/stats never merge.
+                if is_detailed_ranking and position > 1:
+                    nodes.append({"tag": "p", "children": ["\u00a0"]})
                 nodes.append({"tag": "p", "children": children})
                 continue
             command_sections = {
