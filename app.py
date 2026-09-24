@@ -5634,7 +5634,7 @@ async def _send_auto_ranking_slot(context, slot, frozen_only=False):
 
 
 async def automatic_periodic_report_job(context):
-    """Publish registered + complete-roster Trophy/Progressione reports for 7/15/30 days."""
+    """Publish one unified Telegraph dashboard instead of multiple ranking/report messages."""
     data = context.job.data or {}
     days = int(data.get("days") or 7)
     now = datetime.now(ROME)
@@ -5643,34 +5643,23 @@ async def automatic_periodic_report_job(context):
             community._get, "community_settings", {"select": "chat_id"}
         )
     except Exception as exc:
-        print("REPORT PERIODICO SETTINGS ERROR:", days, repr(exc), flush=True)
+        print("DASHBOARD PERIODICO SETTINGS ERROR:", days, repr(exc), flush=True)
         return
     for row in settings_rows or []:
         chat_id = int(row["chat_id"])
-        for scope, label in (("community", "REGISTRATI"), ("global_clubs", "GLOBALE CLUB")):
-            try:
-                text_report = await asyncio.to_thread(
-                    community.periodic_report_text, chat_id, scope, days
-                )
-                await context.bot.send_message(chat_id=chat_id, text=text_report)
-                print("REPORT PERIODICO AUTO: chat=%s scope=%s days=%s local=%s" % (
-                    chat_id, label, days, now.strftime("%Y-%m-%d %H:%M:%S")
-                ), flush=True)
-            except Exception as exc:
-                print("REPORT PERIODICO AUTO SEND ERROR:", chat_id, label, days, repr(exc), flush=True)
         try:
-            progression_global = await asyncio.to_thread(
-                community.coefficient_ranking_text, chat_id, "global_clubs", days
+            payload = await asyncio.wait_for(
+                asyncio.to_thread(community.rankings_dashboard_text, chat_id),
+                timeout=180,
             )
-            await community._send_ranking_message(context, chat_id, progression_global)
-            print("REPORT PERIODICO AUTO: chat=%s scope=PROGRESSIONE GLOBALE CLUB days=%s local=%s" % (
+            delivered = await community._send_ranking_message(context, chat_id, payload)
+            if not delivered:
+                raise RuntimeError("Telegram dashboard delivery failed")
+            print("DASHBOARD PERIODICO AUTO: chat=%s days=%s local=%s" % (
                 chat_id, days, now.strftime("%Y-%m-%d %H:%M:%S")
             ), flush=True)
         except Exception as exc:
-            print(
-                "REPORT PERIODICO AUTO SEND ERROR:",
-                chat_id, "PROGRESSIONE GLOBALE CLUB", days, repr(exc), flush=True
-            )
+            print("DASHBOARD PERIODICO AUTO SEND ERROR:", chat_id, days, repr(exc), flush=True)
 
 
 async def log_automatic_ranking_schedule(context):
