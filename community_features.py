@@ -315,6 +315,30 @@ Sens GPT può inoltre rispondere a richieste su meta, mappe, composizioni, Ladde
 Scrivi comandi in qualsiasi momento per riaprire questa guida."""
 
 
+MEMORY_ANNOUNCEMENT_TEXT = """🧠 NOVITÀ SENS GPT — MEMORIA PERSONALE
+
+Sens GPT sta facendo un altro passo avanti: può costruire nel tempo una memoria personale e separata per ogni membro della community.
+
+💬 CONVERSAZIONI DEL GRUPPO
+Sens GPT può apprendere anche dalle normali conversazioni nel gruppo, senza interromperle e senza rispondere automaticamente. Quello che un membro racconta può contribuire a creare nel tempo un rapporto più coerente e personale con lui.
+
+Per ottenere una risposta nel gruppo bisogna comunque:
+• menzionare @SensGPT_TitaniAbusiviBot
+• oppure rispondere direttamente a un suo messaggio.
+
+🧠 CONTINUITÀ NEL TEMPO
+Quando viene coinvolto, Sens GPT può utilizzare il contesto costruito nel tempo per evitare di comportarsi ogni volta come se fosse la prima conversazione.
+
+👤 MEMORIA SEPARATA PER UTENTE
+Ogni memoria è personale: Sens GPT distingue i membri attraverso il loro account Telegram e mantiene separato il contesto di ciascuno.
+
+⚙️ COMANDI DETERMINISTICI SEPARATI
+Stats, classifiche, Progressione, Coefficiente Abusivo, Draft, Skin e gli altri comandi deterministici restano separati dalla memoria conversazionale.
+
+In questo modo Sens GPT può conoscere progressivamente le persone della community, ricordare il contesto delle conversazioni e sviluppare un rapporto differente con ciascun membro, continuando a rimanere silenzioso quando non viene chiamato.
+
+🔥 Un altro passo per trasformare Sens GPT da semplice bot a AI della community TITANI ABUSIVI."""
+
 PROGRESSION_GUIDE_TEXT = """🔥 GUIDA PROGRESSIONE — TITANI ABUSIVI
 
 🏆 LA TUA PROGRESSIONE, BRAWLER PER BRAWLER
@@ -3619,6 +3643,21 @@ class CommunityFeatures:
         q = re.sub(r"^[!/]+", "", q).strip()
         q = q.strip("\"\'“”‘’ ").strip()
         ql = q.lower()
+
+        if ql in ("novita memoria", "novità memoria", "comunicazione memoria", "telegraph memoria"):
+            # Internal publishing trigger: keep it out of the normal manual
+            # command/private-delivery family. It exists only to create the
+            # official Telegraph page through the runtime token.
+            announcement_lines = MEMORY_ANNOUNCEMENT_TEXT.splitlines()
+            announcement_url = self._publish_telegraph("Novità Sens GPT — Memoria personale", announcement_lines)
+            if announcement_url:
+                await self._send_ranking_message(context, _ranking_reply_chat_id, self._telegraph_reply(
+                    ["🧠 NOVITÀ SENS GPT — MEMORIA PERSONALE", "Apri la comunicazione completa."],
+                    announcement_url, announcement_lines
+                ))
+            else:
+                await message.reply_text(MEMORY_ANNOUNCEMENT_TEXT)
+            return True
 
         if ql in ("guida progressione", "progressione guida"):
             guide_lines = PROGRESSION_GUIDE_TEXT.splitlines()
