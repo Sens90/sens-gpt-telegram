@@ -3015,6 +3015,61 @@ class CommunityFeatures:
             lines.append("\nTop crescita:")
             for row in valid_growth[:5]:
                 lines.append(f"- {row['name']}: {'+' if row['delta'] > 0 else ''}{row['delta']}")
+
+        # Weekly Progressione top uses the same 7-day RPC and scoring model as
+        # the dedicated Progressione ranking, so the report cannot drift from it.
+        try:
+            progression_members = self._get("community_members", {
+                "select": "player_tag,player_name,display_name",
+                "is_active": "eq.true",
+                "player_tag": "not.is.null",
+                "limit": "1000",
+            }) or []
+            progression_by_tag = {
+                str(m.get("player_tag") or "").strip().lstrip("#").upper(): m
+                for m in progression_members if m.get("player_tag")
+            }
+            progression_rows = []
+            if progression_by_tag:
+                response = requests.post(
+                    f"{self.supabase_url}/rest/v1/rpc/coefficient_progression_rows_v2",
+                    headers=self._headers(),
+                    json={"p_player_tags": list(progression_by_tag), "p_days": 7},
+                    timeout=20,
+                )
+                response.raise_for_status()
+                progression_rows = response.json() or []
+            for row in progression_rows:
+                member = progression_by_tag.get(str(row.get("player_tag") or "").upper(), {})
+                row["_name"] = row.get("player_name") or member.get("player_name") or member.get("display_name") or row.get("player_tag")
+            progression_rows = [
+                row for row in progression_rows
+                if row.get("progression_value") is not None and int(row.get("battle_count") or 0) > 0
+            ]
+            progression_rows.sort(
+                key=lambda row: (
+                    int(row.get("progression_value") or 0),
+                    (float(row.get("progression_value") or 0) / int(row.get("positive_trophies") or 0))
+                    if int(row.get("positive_trophies") or 0) > 0 else 0,
+                ),
+                reverse=True,
+            )
+            if progression_rows:
+                lines.append("\n🔥 Top Progressione (7 giorni):")
+                for row in progression_rows[:5]:
+                    value = int(row.get("progression_value") or 0)
+                    cups = int(row.get("positive_trophies") or 0)
+                    bonus = value - cups
+                    coeff = (float(value) / cups) if cups > 0 else 0.0
+                    lines.append(
+                        f"- {row['_name']}: +{self.number_formatter(value)} "
+                        f"(Coppe +{self.number_formatter(cups)} · Bonus +{self.number_formatter(bonus)} · "
+                        f"Coeff. {coeff:.6f})"
+                    )
+        except Exception as exc:
+            LOG.error("WEEKLY REPORT PROGRESSION ERROR: %r", exc)
+            lines.append("\n🔥 Top Progressione (7 giorni): dati momentaneamente non disponibili")
+
         if inactive:
             lines.append("\nDa controllare:")
             for member, inactive_days, risk in inactive[:8]:
