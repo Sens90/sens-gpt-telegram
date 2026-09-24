@@ -241,7 +241,7 @@ Chiude la Draft corrente e azzera la sessione.
 Mostra i counter verificati disponibili per il Brawler indicato.
 
 🧠 MEMORIA CONVERSAZIONALE
-Sens GPT mantiene un contesto personale separato per ogni utente nelle conversazioni Gemini che gli vengono rivolte. Serve a rendere il rapporto più coerente nel tempo e non modifica Stats, classifiche, Progressione o altri comandi deterministici. Nei gruppi la memoria entra in gioco solo quando il bot viene menzionato o quando si risponde a un suo messaggio.
+Sens GPT mantiene un contesto personale separato per ogni utente per rendere il rapporto più coerente nel tempo. Nei gruppi può apprendere silenziosamente anche dalle normali conversazioni dei membri senza intervenire: risponde soltanto quando viene menzionato o quando si risponde a un suo messaggio. La memoria conversazionale non modifica Stats, classifiche, Progressione o altri comandi deterministici.
 
 🤝 COMMUNITY
 [[CMDNAME:club]]
