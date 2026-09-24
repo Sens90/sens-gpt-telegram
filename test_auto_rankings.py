@@ -89,7 +89,11 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
                 self.context, datetime(2026, 9, 23, 23, 59, tzinfo=app.ROME)
             )
 
-        self.assertEqual(sender.await_count, 5)
+        self.assertEqual(sender.await_count, 7)
+        progression_calls = [
+            call.args for call in app.community.coefficient_ranking_text.call_args_list
+        ]
+        self.assertIn((-100123, "community_club", 0), progression_calls)
         self.assertEqual(database_patch.call_args.kwargs["json"]["last_auto_ranking_slot"], "2026-09-23-2359")
         self.assertFalse(app._AUTO_RANKING_PENDING)
 
@@ -137,7 +141,7 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
         response = Mock()
         response.raise_for_status.return_value = None
         response.json.return_value = [{"chat_id": -100123}]
-        sender = AsyncMock(side_effect=[True, False, True, True, True, True])
+        sender = AsyncMock(side_effect=[True, False, True, True, True, True, True])
         with (
             patch.object(app.community, "_get", return_value=self.settings),
             patch.object(app.community, "ranking_text", return_value="TROFEI") as trophies,
@@ -154,7 +158,11 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
             await app._send_auto_ranking_slot(self.context, slot, frozen_only=True)
 
         self.assertEqual(sender.await_count, 6)
-        for builder in (trophies, progression, club, global_ranking, global_club):
+        trophies.assert_called_once()
+        self.assertEqual(progression.call_count, 2)
+        progression.assert_any_call(-100123, "community", 0)
+        progression.assert_any_call(-100123, "community_club", 0)
+        for builder in (club, global_ranking, global_club):
             builder.assert_called_once()
         database_patch.assert_called_once()
         self.assertFalse(app._AUTO_RANKING_PENDING)
@@ -175,6 +183,25 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
             await app.automatic_today_ranking_catchup_job(self.context)
 
         retry.assert_awaited_once_with(self.context, slot, frozen_only=True)
+
+
+class AutomaticPeriodicReportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_periodic_reports_add_only_global_progression_ranking(self):
+        context = SimpleNamespace(bot=SimpleNamespace(send_message=AsyncMock()))
+        with (
+            patch.object(app.community, "_get", return_value=[{"chat_id": -100123}]),
+            patch.object(app.community, "periodic_report_text", return_value="REPORT") as periodic_report,
+            patch.object(app.community, "coefficient_ranking_text", return_value="PROGRESSIONE GLOBALE") as progression,
+            patch.object(app.community, "_send_ranking_message", new=AsyncMock(return_value=True)) as ranking_send,
+        ):
+            await app.automatic_periodic_report_job(SimpleNamespace(job=SimpleNamespace(data={"days": 7}), bot=context.bot))
+
+        self.assertEqual(periodic_report.call_count, 2)
+        periodic_report.assert_any_call(-100123, "community", 7)
+        periodic_report.assert_any_call(-100123, "global_clubs", 7)
+        progression.assert_called_once_with(-100123, "global_clubs", 7)
+        self.assertEqual(ranking_send.await_count, 1)
+        self.assertEqual(ranking_send.await_args.args[1:], (-100123, "PROGRESSIONE GLOBALE"))
 
 
 class CompleteRosterRetryTests(unittest.TestCase):
