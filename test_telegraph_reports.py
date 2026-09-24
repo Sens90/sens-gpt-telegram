@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from community_features import CommunityFeatures
+from coefficient_guide import coefficient_guide_lines
 
 
 class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
@@ -12,6 +13,25 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = CommunityFeatures.__new__(CommunityFeatures)
         obj.number_formatter = lambda value: f"{int(value):,}".replace(",", ".")
         return obj
+
+    async def test_coefficient_guide_routes_directly_to_telegraph(self):
+        obj = self.make_features()
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/guida-coefficiente")
+        obj._send_ranking_message = AsyncMock(return_value=True)
+        message = SimpleNamespace(chat_id=123, chat=SimpleNamespace(type="group"))
+        context = SimpleNamespace(user_data={})
+        self.assertTrue(await obj.handle_command(message, context, "guida coefficiente abusivo"))
+        obj._publish_telegraph.assert_called_once()
+        payload = obj._send_ranking_message.await_args.args[2]
+        self.assertEqual(payload["report_url"], "https://telegra.ph/guida-coefficiente")
+        self.assertIn("IL PRIMO E UNICO SISTEMA AL MONDO", payload["fallback"])
+
+    def test_coefficient_guide_matches_current_model_and_cause_limits(self):
+        guide = "\n".join(coefficient_guide_lines())
+        for term in ("2.000", "3.000", "Bonus osservato +X", "Team Value", "Pareggio", "Sopravvivenza in singolo"):
+            self.assertIn(term, guide)
+        self.assertIn("×1,2370", guide)
+        self.assertIn("×1,5500", guide)
 
     @patch.dict(os.environ, {"TELEGRAPH_ACCESS_TOKEN": "test-token"})
     @patch("community_features.requests.post")

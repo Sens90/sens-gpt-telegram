@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 from trophy_coefficient import calculate_trophy_coefficient
+from coefficient_guide import coefficient_guide_lines
 
 ROME = ZoneInfo("Europe/Rome")
 LOG = logging.getLogger(__name__)
@@ -2711,6 +2712,14 @@ class CommunityFeatures:
         # Deterministic community commands must be handled before Skin/AI-like parsing.
         q0 = re.sub(r"\\s+", " ", question.strip())
         q0l = q0.casefold()
+        if q0l in ("come funziona il coefficiente abusivo", "guida coefficiente abusivo", "coefficiente abusivo guida"):
+            guide = coefficient_guide_lines()
+            report_url = await asyncio.to_thread(self._publish_telegraph, guide[0], guide)
+            summary = [guide[0], "", "🏆 Ogni coppa vale almeno ×1; il calcolo è Brawler per Brawler.",
+                       "📈 Progressione: battaglie osservate e punti per partita."]
+            payload = self._telegraph_reply(summary, report_url, guide) if report_url else "\n".join(guide)
+            await self._send_ranking_message(context, message.chat_id, payload)
+            return True
         if q0l in ("elenco registrati", "registrati", "membri registrati", "account registrati"):
             await message.reply_text(self.registered_members_text(message.chat_id))
             return True
