@@ -5174,13 +5174,32 @@ _AUTO_RANKING_IN_FLIGHT = set()
 _AUTO_RANKING_PENDING = {}
 
 
+def _persist_auto_ranking_pending(chat_id, previous_slot, pending):
+    """Checkpoint frozen reports before delivery and after every successful send."""
+    response = requests.patch(
+        SUPABASE_URL + "/rest/v1/community_settings",
+        headers={**_supabase_headers(), "Prefer": "return=representation"},
+        params={
+            "chat_id": f"eq.{chat_id}", "select": "chat_id",
+            "last_auto_ranking_slot": (
+                f"eq.{previous_slot}" if previous_slot is not None else "is.null"
+            ),
+        },
+        json={"auto_ranking_pending": pending},
+        timeout=10,
+    )
+    response.raise_for_status()
+    if not response.json():
+        raise RuntimeError("ranking payload checkpoint did not match current database state")
+
+
 async def _send_auto_ranking_slot(context, slot, frozen_only=False):
     """Send one automatic ranking slot at most once per chat, persisted in Supabase."""
     key = slot.strftime("%Y-%m-%d-%H%M")
     try:
         settings_rows = await asyncio.to_thread(
             community._get, "community_settings",
-            {"select": "chat_id,last_auto_ranking_slot"}
+            {"select": "chat_id,last_auto_ranking_slot,auto_ranking_pending"}
         )
     except Exception as exc:
         print("CLASSIFICA OGGI AUTO SETTINGS ERROR:", repr(exc), flush=True)
@@ -5199,6 +5218,14 @@ async def _send_auto_ranking_slot(context, slot, frozen_only=False):
             _AUTO_RANKING_IN_FLIGHT.add(flight_key)
             previous_slot = row.get("last_auto_ranking_slot")
             pending = _AUTO_RANKING_PENDING.get(flight_key)
+            persisted = row.get("auto_ranking_pending")
+            if pending is None and isinstance(persisted, dict) and persisted.get("slot") == key:
+                if isinstance(persisted.get("payloads"), list):
+                    pending = persisted
+                    _AUTO_RANKING_PENDING[flight_key] = pending
+                    print("CLASSIFICA OGGI AUTO RESTORED: chat=%s slot=%s next=%s" % (
+                        chat_id, key, pending.get("next_index", 0)
+                    ), flush=True)
             if pending is None:
                 if frozen_only:
                     print("CLASSIFICA OGGI AUTO FROZEN PAYLOAD MISSING:", chat_id, key, flush=True)
@@ -5218,7 +5245,8 @@ async def _send_auto_ranking_slot(context, slot, frozen_only=False):
                         ("globale", await asyncio.to_thread(community.global_ranking_text, chat_id, 0)),
                         ("club globale", await asyncio.to_thread(community.global_club_ranking_text, chat_id, False)),
                     ])
-                pending = {"payloads": payloads, "next_index": 0}
+                pending = {"slot": key, "payloads": payloads, "next_index": 0}
+                await asyncio.to_thread(_persist_auto_ranking_pending, chat_id, previous_slot, pending)
                 _AUTO_RANKING_PENDING[flight_key] = pending
                 print("CLASSIFICA OGGI AUTO PAYLOAD FROZEN:", chat_id, key, "reports=", len(payloads), flush=True)
             else:
@@ -5242,6 +5270,7 @@ async def _send_auto_ranking_slot(context, slot, frozen_only=False):
                 if not delivered:
                     raise RuntimeError(f"Telegram delivery failed: {label}")
                 pending["next_index"] = index + 1
+                await asyncio.to_thread(_persist_auto_ranking_pending, chat_id, previous_slot, pending)
 
             # Persist completion only after every Telegram delivery succeeded.
             complete_params = {"chat_id": f"eq.{chat_id}", "select": "chat_id"}
@@ -5253,7 +5282,7 @@ async def _send_auto_ranking_slot(context, slot, frozen_only=False):
                 SUPABASE_URL + "/rest/v1/community_settings",
                 headers={**_supabase_headers(), "Prefer": "return=representation"},
                 params=complete_params,
-                json={"last_auto_ranking_slot": key},
+                json={"last_auto_ranking_slot": key, "auto_ranking_pending": None},
                 timeout=10,
             )
             complete_response.raise_for_status()
@@ -5336,7 +5365,21 @@ async def automatic_today_ranking_catchup_job(context):
     if latest.date() != now.date():
         key = latest.strftime("%Y-%m-%d-%H%M")
         if not any(slot_key == key for _chat_id, slot_key in _AUTO_RANKING_PENDING):
-            return
+            try:
+                rows = await asyncio.to_thread(
+                    community._get, "community_settings",
+                    {"select": "chat_id,last_auto_ranking_slot,auto_ranking_pending"},
+                )
+            except Exception as exc:
+                print("CLASSIFICA OGGI AUTO CATCHUP CHECK ERROR:", repr(exc), flush=True)
+                return
+            if not any(
+                isinstance(row.get("auto_ranking_pending"), dict)
+                and row["auto_ranking_pending"].get("slot") == key
+                and row.get("last_auto_ranking_slot") != key
+                for row in rows or []
+            ):
+                return
         print("CLASSIFICA OGGI AUTO CATCHUP FROZEN: slot=%s local=%s" % (
             latest.strftime("%Y-%m-%d %H:%M"), now.strftime("%Y-%m-%d %H:%M:%S")
         ), flush=True)
