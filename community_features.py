@@ -25,7 +25,8 @@ _SKIN_BRIDGE_FAILURE_LIMIT = 3
 _SKIN_BRIDGE_BACKOFF_SECONDS = 6 * 60 * 60
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_FORMAT_REVISION = 2
+_DASHBOARD_FORMAT_REVISION = 3
+_DASHBOARD_SOURCE_MARKER = "Liste: solo valori positivi verificati · storico dei roster completi."
 _PROGRESSION_DETAIL_CACHE = {}
 _PROGRESSION_DETAIL_LOCK = threading.Lock()
 _PROGRESSION_DETAIL_FLIGHTS = {}
@@ -2954,6 +2955,41 @@ class CommunityFeatures:
             print("ERRORE LETTURA ROSTER GLOBALE:", repr(exc), flush=True)
             return []
 
+    def _roster_trophy_histories(self, tags, start, end):
+        """Build snapshot histories for complete club rosters, including nonregistrants."""
+        if not tags:
+            return {}
+        start_date = (start.astimezone(ROME).date() - timedelta(days=2)).isoformat()
+        end_date = (end.astimezone(ROME).date() + timedelta(days=1)).isoformat()
+        try:
+            rows = self._get("club_roster_daily", {
+                "select": "player_tag,first_trophies,last_trophies,first_seen_at,last_seen_at",
+                "and": f"(snapshot_date.gte.{start_date},snapshot_date.lt.{end_date})",
+                "limit": "10000",
+            }) or []
+        except Exception as exc:
+            LOG.warning("GLOBAL ROSTER HISTORY FAILED: %s", type(exc).__name__)
+            return {}
+        wanted = set(tags)
+        result = {}
+        for row in rows:
+            tag = str(row.get("player_tag") or "").strip().lstrip("#").upper()
+            if tag not in wanted:
+                continue
+            for moment, trophies in (("first_seen_at", "first_trophies"),
+                                      ("last_seen_at", "last_trophies")):
+                try:
+                    instant = datetime.fromisoformat(str(row[moment]).replace("Z", "+00:00"))
+                    value = int(row[trophies])
+                    if instant.tzinfo is None:
+                        continue
+                except (KeyError, TypeError, ValueError):
+                    continue
+                result.setdefault(tag, []).append({"recorded_at": instant.isoformat(), "trophies": value})
+        for snapshots in result.values():
+            snapshots.sort(key=lambda item: item["recorded_at"])
+        return result
+
     @staticmethod
     def _previous_month_bounds(now=None):
         local = (now or datetime.now(timezone.utc)).astimezone(ROME)
@@ -3509,6 +3545,7 @@ class CommunityFeatures:
             return "I report periodici sono disponibili per 7, 15 o 30 giorni."
 
         scope_key = str(scope or "community").strip().casefold()
+        global_scope = scope_key == "global_clubs" or scope_key.startswith("global_single:")
         allowed_clubs = {name.casefold(): name for name in self.CLUB_ALIASES.values()}
         members = []
         scope_label = "UTENTI REGISTRATI"
@@ -3528,7 +3565,6 @@ class CommunityFeatures:
             scope_label = "CLUB — REGISTRATI"
             scope_note = "utenti registrati appartenenti ai 4 club ABUSIVI"
         else:
-            global_scope = scope_key == "global_clubs" or scope_key.startswith("global_single:")
             club_key = scope_key.split(":", 1)[1] if scope_key.startswith("global_single:") else scope_key
             club_name = self.CLUB_ALIASES.get(club_key) or self.CLUB_ALIASES.get(club_key.replace(" abusivi", ""))
             if global_scope:
@@ -3570,6 +3606,14 @@ class CommunityFeatures:
                 by_tag[tag] = m
         tags = list(by_tag)
 
+        period_end = window[1] if window else datetime.now(timezone.utc)
+        period_start = window[0] if window else (
+            period_end.astimezone(ROME).replace(hour=0, minute=0, second=0, microsecond=0)
+            if days == 0 else period_end - timedelta(days=days)
+        )
+        roster_histories = (self._roster_trophy_histories(tags, period_start, period_end)
+                            if global_scope else {})
+
         # A complete club roster can exceed 100 accounts. Fetch independent
         # histories concurrently, then process them in the original tag order.
         # Keep small reports sequential to avoid thread overhead and preserve
@@ -3594,8 +3638,20 @@ class CommunityFeatures:
                            self.history_fetcher(tag, days=(self._window_history_days(window[0]) if window else max(days + 2, 10))))
                 if history_by_tag is not None and history is None:
                     continue
+                roster_history = roster_histories.get(tag, [])
+                # Do not fabricate a full period from the first snapshot after its start.
+                roster_has_baseline = any(
+                    datetime.fromisoformat(row["recorded_at"]) <= period_start
+                    for row in roster_history
+                )
                 if window:
                     baseline, current = self._window_trophy_values(history, *window)
+                    if (baseline is None or current is None) and roster_has_baseline:
+                        roster_baseline, roster_current = self._window_trophy_values(roster_history, *window)
+                        if roster_baseline is not None and roster_current is not None:
+                            baseline, current = roster_baseline, roster_current
+                    if current is None:
+                        _, current = self._window_trophy_values(roster_history, *window)
                     if current is None:
                         continue
                     current_trophies_by_tag[tag] = current
@@ -3612,6 +3668,9 @@ class CommunityFeatures:
                     if isinstance(last, dict):
                         current = last.get("trophies")
                 if current is None:
+                    if roster_history:
+                        current = roster_history[-1]["trophies"]
+                if current is None:
                     state = self._get("player_tracking_state", {
                         "select": "trophies", "player_tag": f"eq.{tag}", "limit": "1",
                     })
@@ -3621,6 +3680,12 @@ class CommunityFeatures:
                 current_trophies_by_tag[tag] = int(current)
                 changes = self.change_calculator(history, int(current))
                 delta = changes.get("today" if days == 0 else {7: "7d", 15: "15d", 30: "30d"}[days])
+                if delta is None and (roster_has_baseline or days == 0):
+                    roster_baseline, roster_current = self._window_trophy_values(
+                        roster_history, period_start, period_end + timedelta(microseconds=1)
+                    )
+                    if roster_baseline is not None and roster_current is not None:
+                        delta = roster_current - roster_baseline
                 if delta is None:
                     continue
                 trophy_rows.append({
@@ -3761,7 +3826,7 @@ class CommunityFeatures:
         if days is None:
             title = "Classifiche — TITANI ABUSIVI"
             now = datetime.now(ROME)
-            lines = [title.upper(), f"Aggiornato: {now:%d/%m/%Y %H:%M}", "", "Liste: solo valori positivi verificati.",
+            lines = [title.upper(), f"Aggiornato: {now:%d/%m/%Y %H:%M}", "", _DASHBOARD_SOURCE_MARKER,
                      "Tre classifiche cliccabili per periodo; i Resoconti sono nel messaggio Telegram."]
             for period in (0, 7, 15, 30):
                 period_payload = self.rankings_dashboard_text(chat_id, period)
@@ -3841,7 +3906,7 @@ class CommunityFeatures:
                         continue
                     if not all(period in values for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")):
                         continue
-                    if "Liste: solo valori positivi verificati." not in values:
+                    if _DASHBOARD_SOURCE_MARKER not in values:
                         continue
                     updated = next((value for value in values if value.startswith("Aggiornato: ")), "")
                     try:
