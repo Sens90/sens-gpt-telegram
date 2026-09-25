@@ -2372,19 +2372,18 @@ def format_trophy_change(value):
 def get_tracked_player_tags():
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         return []
-
-    try:
-        headers = {
-            "apikey": SUPABASE_SERVICE_ROLE_KEY,
-            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"
-        }
-        tags = []
-        sources = (
-            ("community_members", {"select": "player_tag", "player_tag": "not.is.null", "is_active": "eq.true", "limit": "5000"}),
-            ("trophy_history", {"select": "player_tag", "order": "recorded_at.desc", "limit": "5000"}),
-            ("club_roster_daily", {"select": "player_tag", "order": "snapshot_date.desc", "limit": "5000"}),
-        )
-        for table, params in sources:
+    headers = {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"
+    }
+    tags = []
+    sources = (
+        ("community_members", {"select": "player_tag", "player_tag": "not.is.null", "is_active": "eq.true", "limit": "5000"}),
+        ("trophy_history", {"select": "player_tag", "order": "recorded_at.desc", "limit": "5000"}),
+        ("club_roster_daily", {"select": "player_tag", "order": "snapshot_date.desc", "limit": "5000"}),
+    )
+    for table, params in sources:
+        try:
             response = requests.get(
                 f"{SUPABASE_URL}/rest/v1/{table}", headers=headers,
                 params=params, timeout=20
@@ -2394,12 +2393,9 @@ def get_tracked_player_tags():
                 tag = str(row.get("player_tag", "")).strip().upper()
                 if tag and tag not in tags:
                     tags.append(tag)
-
-        return tags
-
-    except Exception as e:
-        print("ERRORE LETTURA TAG MONITORATI:", repr(e), flush=True)
-        return []
+        except Exception as exc:
+            print("ERRORE LETTURA TAG MONITORATI:", table, type(exc).__name__, flush=True)
+    return tags
 
 
 def _tracking_headers(prefer=None):
@@ -2434,10 +2430,9 @@ def get_registered_players_for_battle_monitor():
     """Return every player that must be battle-tracked: registered users plus all four current club rosters."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         return []
+    players = []
+    seen = set()
     try:
-        players = []
-        seen = set()
-
         response = requests.get(
             f"{SUPABASE_URL}/rest/v1/community_members",
             headers=_tracking_headers(),
@@ -2455,11 +2450,14 @@ def get_registered_players_for_battle_monitor():
             if tag and tag not in seen:
                 seen.add(tag)
                 players.append({"tag": tag, "name": row.get("player_name")})
+    except Exception as exc:
+        print("BATTLE MONITOR REGISTERED ROSTER READ ERROR:", type(exc).__name__, flush=True)
 
-        # Registration is not required for Global Club tracking. Add the latest
-        # complete roster of TITANI/TAMARRI/TORNADI/TALENTI to the fast poller.
-        clubs = sorted(set(community.CLUB_ALIASES.values()))
-        for club_name in clubs:
+    # Registration is not required for Global Club tracking. One club's failed
+    # read must not stop the other three rosters or already loaded members.
+    clubs = sorted(set(community.CLUB_ALIASES.values()))
+    for club_name in clubs:
+        try:
             date_response = requests.get(
                 f"{SUPABASE_URL}/rest/v1/club_roster_daily",
                 headers=_tracking_headers(),
@@ -2492,10 +2490,9 @@ def get_registered_players_for_battle_monitor():
                 if tag and tag not in seen:
                     seen.add(tag)
                     players.append({"tag": tag, "name": row.get("player_name")})
-        return players
-    except Exception as exc:
-        print("ERRORE LETTURA GIOCATORI BATTLE MONITOR:", repr(exc), flush=True)
-        return []
+        except Exception as exc:
+            print("BATTLE MONITOR CLUB ROSTER READ ERROR:", club_name, type(exc).__name__, flush=True)
+    return players
 
 
 def save_player_tracking(player):
