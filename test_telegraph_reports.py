@@ -80,6 +80,33 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.number_formatter = lambda value: f"{int(value):,}".replace(",", ".")
         return obj
 
+    def test_dashboard_is_one_page_with_lazy_links_for_all_existing_scopes(self):
+        from community_features import _DASHBOARD_CACHE
+        _DASHBOARD_CACHE.clear()
+        obj = self.make_features()
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/classifiche")
+        obj.ranking_text = Mock(side_effect=AssertionError("eager ranking"))
+        obj.coefficient_ranking_text = Mock(side_effect=AssertionError("eager progression"))
+        obj.periodic_report_text = Mock(side_effect=AssertionError("eager report"))
+        payload = obj.rankings_dashboard_text(-1001)
+        self.assertEqual(payload["report_url"], "https://telegra.ph/classifiche")
+        self.assertIs(payload, obj.rankings_dashboard_text(-1002))
+        obj._publish_telegraph.assert_called_once()
+        lines = obj._publish_telegraph.call_args.args[1]
+        links = [line for line in lines if line.startswith("[[DASH:")]
+        self.assertEqual(len(links), 85)
+        self.assertIn("[[DASH:dash_p_2_0|Apri]]", links)
+        self.assertIn("[[DASH:dash_r_10_30|Apri]]", links)
+        self.assertNotIn("[[DASH:dash_r_0_0|Apri]]", links)
+        self.assertEqual(obj.dashboard_command("dash_p_2_0"), "classifica progressione globale club oggi")
+        self.assertEqual(obj.dashboard_command("dash_r_10_30"), "report club globale talenti 30")
+        self.assertEqual(obj.dashboard_command("dash_t_1_15"), "classifica club 15")
+        self.assertIsNone(obj.dashboard_command("dash_r_1_0"))
+        self.assertIsNone(obj.dashboard_command("dash_p_11_7"))
+        nodes = obj._telegraph_nodes(["CLASSIFICHE & REPORT", "[[DASH:dash_r_10_30|Apri]]"])
+        self.assertEqual(nodes[-1]["children"][0]["attrs"]["href"],
+                         "https://t.me/SensGPT_TitaniAbusiviBot?start=dash_r_10_30")
+
     @patch("community_features.requests.post")
     def test_periodic_report_summary_and_scope(self, post):
         obj = self.make_features()
