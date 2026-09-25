@@ -128,6 +128,30 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("Coeff.", summary)
                 self.assertIn("CLASSIFICA PROGRESSIONE", "\n".join(obj._publish_telegraph.call_args.args[1]))
 
+    def test_dashboard_reuses_published_rankings_and_caches_index(self):
+        from community_features import _DASHBOARD_CACHE
+        _DASHBOARD_CACHE.clear()
+        obj = self.make_features()
+        obj.ranking_text = Mock(return_value="CLASSIFICA\n1. Player")
+        obj.club_trophy_ranking_text = Mock(return_value="CLASSIFICA CLUB\n1. Club")
+        obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progressione"})
+        obj.periodic_report_text = Mock(return_value="REPORT\n📊 REPORT COMPLETO: https://telegra.ph/report")
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/index")
+
+        first = obj.rankings_dashboard_text(123)
+        second = obj.rankings_dashboard_text(123)
+        self.assertEqual(first, second)
+        self.assertEqual(obj.coefficient_ranking_text.call_count, 44)
+        self.assertEqual(obj.periodic_report_text.call_count, 33)
+        # Eight trophy pages plus one index; Progressione links are reused.
+        self.assertEqual(obj._publish_telegraph.call_count, 9)
+        index_lines = obj._publish_telegraph.call_args.args[1]
+        self.assertIn("[[LINK:https://telegra.ph/progressione|📖 Apri]]", index_lines)
+        self.assertIn("[[LINK:https://telegra.ph/report|📖 Apri]]", index_lines)
+        link_nodes = obj._telegraph_nodes(index_lines)
+        self.assertTrue(any(node.get("children", [{}])[0].get("attrs", {}).get("href") == "https://telegra.ph/report"
+                            for node in link_nodes if isinstance(node.get("children", [{}])[0], dict)))
+
     async def test_coefficient_guide_routes_directly_to_telegraph(self):
         obj = self.make_features()
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/guida-coefficiente")
