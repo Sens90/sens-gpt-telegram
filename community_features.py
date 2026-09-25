@@ -152,7 +152,7 @@ Sinonimo di Classifica: apre lo stesso indice generale.
 
 📅 ACCESSI RAPIDI PER PERIODO
 [[CMDNAME:classifiche oggi]]
-Apre solo le classifiche Trofei e le 11 Progressioni di oggi. I Report periodici iniziano da 7 giorni.
+Apre le classifiche Trofei, le 11 Progressioni e gli 11 Report di oggi.
 
 [[CMDNAME:classifiche 7]]
 Apre il Telegraph di 7 giorni: classifiche Trofei Community e Club, le 11 Progressioni e gli 11 Report dei rispettivi ambiti.
@@ -163,7 +163,7 @@ Apre lo stesso indice completo riferito agli ultimi 15 giorni.
 [[CMDNAME:classifiche 30]]
 Apre lo stesso indice completo riferito agli ultimi 30 giorni.
 
-Sono accettate anche le forme Classifica 7, Classifica 15 e Classifica 30.
+Sono accettate anche le forme Classifica 7, Classifica 15 e Classifica 30. Gli invii automatici pubblicano un indice con link Telegraph diretti alle 06:00, 12:00, 18:00 e 23:59 per oggi, ogni lunedì alle 06:00 per la settimana conclusa, il 1° e il 16 del mese alle 06:00 per le due metà di mese concluse e il 1° alle 06:00 per il mese solare precedente.
 
 ⚡ COMANDI DIRETTI DI OGGI
 [[CMDNAME:classifica oggi]]
@@ -297,7 +297,7 @@ Mostra gli eventi community aperti.
 Conferma la partecipazione all'evento identificato dall'ID.
 
 📑 REPORT PERIODICI — TROFEI + PROGRESSIONE
-I report 7/15/30 uniscono Classifica Trofei, Classifica Progressione e resoconto. Telegram mostra la Top 5; il Telegraph collegato contiene le classifiche complete.
+I report Oggi/7/15/30 uniscono Classifica Trofei, Classifica Progressione e resoconto. Telegram mostra solo Classifica Trofei e Resoconto; il Telegraph contiene tutti i dettagli.
 
 [[CMDNAME:report 7]]
 Report 7 giorni degli utenti registrati.
@@ -329,7 +329,7 @@ Report dei registrati di TITANI ABUSIVI. Gli stessi comandi sono disponibili sos
 Report del roster completo TITANI, registrati + non registrati. Gli stessi comandi sono disponibili per tamarri, tornadi e talenti.
 
 [[CMDNAME:report oggi]]
-Il report giornaliero operativo resta separato: le classifiche giornaliere continuano a essere pubblicate come Classifiche.
+Mostra il resoconto operativo giornaliero. Per il report di classifiche e Progressione della community usa Report Community oggi; per gli altri ambiti usa Report Club oggi, Report Globale Club oggi o Report Titani/Tamarri/Tornadi/Talenti oggi.
 
 [[CMDNAME:reclutamento]]
 Avvia la procedura di candidatura/reclutamento.
@@ -1553,6 +1553,13 @@ class CommunityFeatures:
                 }]})
                 continue
             dashboard_link = re.fullmatch(r"\[\[DASH:(dash_[prt]_(?:[0-9]|10)_(?:0|7|15|30))\|Apri\]\]", value)
+            direct_link = re.fullmatch(r"\[\[URL:(https://telegra\.ph/[A-Za-z0-9_/-]+)\|Apri\]\]", value)
+            if direct_link:
+                nodes.append({"tag": "p", "children": [{
+                    "tag": "a", "attrs": {"href": direct_link.group(1)},
+                    "children": ["📖 Apri il Telegraph"],
+                }]})
+                continue
             if dashboard_link:
                 nodes.append({"tag": "p", "children": [{
                     "tag": "a", "attrs": {"href": f"https://t.me/SensGPT_TitaniAbusiviBot?start={dashboard_link.group(1)}"},
@@ -1723,25 +1730,47 @@ class CommunityFeatures:
         except (TypeError, ValueError):
             return None
 
-    def ranking(self, chat_id, days=7):
+    @staticmethod
+    def _window_trophy_values(history, start, end):
+        """Use snapshots at the boundaries; never include a later calendar period."""
+        snapshots = []
+        for row in history or []:
+            try:
+                instant = datetime.fromisoformat(str(row["recorded_at"]).replace("Z", "+00:00"))
+                snapshots.append((instant, int(row["trophies"])))
+            except (KeyError, ValueError, TypeError):
+                continue
+        snapshots.sort()
+        before = [value for instant, value in snapshots if instant <= start]
+        in_window = [(instant, value) for instant, value in snapshots if start <= instant < end]
+        baseline = before[-1] if before else (in_window[0][1] if in_window else None)
+        ending = next((value for instant, value in reversed(snapshots) if instant < end), None)
+        return baseline, ending
+
+    @staticmethod
+    def _window_history_days(start):
+        return max(10, (datetime.now(timezone.utc) - start.astimezone(timezone.utc)).days + 3)
+
+    def ranking(self, chat_id, days=7, window=None):
         rows = []
         for member in self.members(chat_id):
             tag = member.get("player_tag")
             if not tag:
                 continue
-            current = self._member_current_trophies(member)
+            if window:
+                history = self.history_fetcher(tag, days=self._window_history_days(window[0]))
+                baseline, current = self._window_trophy_values(history, *window)
+                delta = current - baseline if current is not None and baseline is not None else None
+            else:
+                current = self._member_current_trophies(member)
+                if current is None:
+                    continue
+                history = self.history_fetcher(tag, days=max(days + 2, 10))
+                changes = self.change_calculator(history, current)
+                key = {0: "today", 7: "7d", 15: "15d", 30: "30d", 90: "90d"}.get(days, "7d")
+                delta = changes.get(key)
             if current is None:
                 continue
-            history = self.history_fetcher(tag, days=max(days + 2, 10))
-            changes = self.change_calculator(history, current)
-            key = {
-                0: "today",
-                7: "7d",
-                15: "15d",
-                30: "30d",
-                90: "90d",
-            }.get(days, "7d")
-            delta = changes.get(key)
             rows.append(
                 {
                     "name": member.get("player_name") or member.get("display_name") or tag,
@@ -2512,7 +2541,7 @@ class CommunityFeatures:
             return self._telegraph_reply(summary, report_url, lines)
         return "\n".join(lines)
 
-    def coefficient_ranking_text(self, chat_id, scope="community", days=None):
+    def coefficient_ranking_text(self, chat_id, scope="community", days=None, window=None):
         scope = str(scope or "community").strip().casefold()
         club_name = None
         registered_only = False
@@ -2596,9 +2625,11 @@ class CommunityFeatures:
         member_by_tag = unique
         try:
             response = requests.post(
-                f"{self.supabase_url}/rest/v1/rpc/coefficient_progression_rows_v2",
+                f"{self.supabase_url}/rest/v1/rpc/{'coefficient_progression_rows_range' if window else 'coefficient_progression_rows_v2'}",
                 headers=self._headers(),
-                json={"p_player_tags": list(member_by_tag), "p_days": days},
+                json=({"p_player_tags": list(member_by_tag), "p_start": window[0].isoformat(),
+                       "p_end": window[1].isoformat()} if window else
+                      {"p_player_tags": list(member_by_tag), "p_days": days}),
                 timeout=20,
             )
             response.raise_for_status()
@@ -2722,8 +2753,8 @@ class CommunityFeatures:
             )
         return "\n".join(lines)
 
-    def ranking_text(self, chat_id, days=7):
-        rows = self.ranking(chat_id, days)
+    def ranking_text(self, chat_id, days=7, window=None):
+        rows = self.ranking(chat_id, days, window=window) if window else self.ranking(chat_id, days)
         if not rows:
             return (
                 "Non ho ancora abbastanza giocatori registrati/storico trofei. "
@@ -2873,7 +2904,7 @@ class CommunityFeatures:
             lines.append(f"{index}. {row['name']} - {self.number_formatter(row['current'])} ({sign}{row['delta']})")
         return "\n".join(lines)
 
-    def club_trophy_ranking_text(self, chat_id, days=0):
+    def club_trophy_ranking_text(self, chat_id, days=0, window=None):
         """Rank the four community clubs by summed trophy movement from stored snapshots."""
         clubs = list(self.CLUB_TAGS.keys())
         totals = {club: {"delta": 0, "players": 0} for club in clubs}
@@ -2881,13 +2912,18 @@ class CommunityFeatures:
             club = str(member.get("club_name") or "").strip().upper()
             if club not in totals or not member.get("player_tag"):
                 continue
-            current = self._member_current_trophies(member)
-            if current is None:
-                continue
-            history = self.history_fetcher(member["player_tag"], days=max(days + 2, 10))
-            changes = self.change_calculator(history, current)
-            key = "today" if days == 0 else {7: "7d", 15: "15d", 30: "30d", 90: "90d"}.get(days, "7d")
-            delta = changes.get(key)
+            if window:
+                history = self.history_fetcher(member["player_tag"], days=self._window_history_days(window[0]))
+                baseline, endpoint = self._window_trophy_values(history, *window)
+                delta = endpoint - baseline if endpoint is not None and baseline is not None else None
+            else:
+                current = self._member_current_trophies(member)
+                if current is None:
+                    continue
+                history = self.history_fetcher(member["player_tag"], days=max(days + 2, 10))
+                changes = self.change_calculator(history, current)
+                key = "today" if days == 0 else {7: "7d", 15: "15d", 30: "30d", 90: "90d"}.get(days, "7d")
+                delta = changes.get(key)
             if delta is None:
                 continue
             totals[club]["delta"] += int(delta)
@@ -3298,10 +3334,10 @@ class CommunityFeatures:
                 lines.append(f"- {name}: {inactive_days} giorni{' - RISCHIO KICK' if risk else ''}")
         return "\n".join(lines)
 
-    def periodic_report_text(self, chat_id, scope="community", days=7):
+    def periodic_report_text(self, chat_id, scope="community", days=7, window=None):
         """Combined Trophy + Progressione report. Telegram gets Top 5; Telegraph keeps the full lists."""
         days = int(days)
-        if days not in (7, 15, 30):
+        if days not in (0, 7, 15, 30):
             return "I report periodici sono disponibili per 7, 15 o 30 giorni."
 
         scope_key = str(scope or "community").strip().casefold()
@@ -3370,7 +3406,19 @@ class CommunityFeatures:
         current_trophies_by_tag = {}
         for tag, m in by_tag.items():
             try:
-                history = self.history_fetcher(tag, days=max(days + 2, 10))
+                history = self.history_fetcher(tag, days=(self._window_history_days(window[0]) if window else max(days + 2, 10)))
+                if window:
+                    baseline, current = self._window_trophy_values(history, *window)
+                    if current is None:
+                        continue
+                    current_trophies_by_tag[tag] = current
+                    if baseline is None:
+                        continue
+                    trophy_rows.append({
+                        "name": m.get("player_name") or m.get("display_name") or tag,
+                        "tag": tag, "delta": current - baseline, "current": current,
+                    })
+                    continue
                 current = None
                 if history:
                     last = history[-1] if isinstance(history, list) else None
@@ -3385,7 +3433,7 @@ class CommunityFeatures:
                     continue
                 current_trophies_by_tag[tag] = int(current)
                 changes = self.change_calculator(history, int(current))
-                delta = changes.get({7: "7d", 15: "15d", 30: "30d"}[days])
+                delta = changes.get("today" if days == 0 else {7: "7d", 15: "15d", 30: "30d"}[days])
                 if delta is None:
                     continue
                 trophy_rows.append({
@@ -3400,8 +3448,11 @@ class CommunityFeatures:
         if tags:
             try:
                 response = requests.post(
-                    f"{self.supabase_url}/rest/v1/rpc/coefficient_progression_rows_v2",
-                    headers=self._headers(), json={"p_player_tags": tags, "p_days": days}, timeout=30,
+                    f"{self.supabase_url}/rest/v1/rpc/{'coefficient_progression_rows_range' if window else 'coefficient_progression_rows_v2'}",
+                    headers=self._headers(),
+                    json=({"p_player_tags": tags, "p_start": window[0].isoformat(),
+                           "p_end": window[1].isoformat()} if window else
+                          {"p_player_tags": tags, "p_days": days}), timeout=30,
                 )
                 response.raise_for_status()
                 progression_rows = response.json() or []
@@ -3417,7 +3468,7 @@ class CommunityFeatures:
         progression_rows = [r for r in progression_rows if int(r.get("battle_count") or 0) > 0]
         progression_rows.sort(key=lambda r: (r["_value"], r["_coeff"]), reverse=True)
 
-        title = f"🔥 REPORT {scope_label} — {days} GIORNI"
+        title = f"🔥 REPORT {scope_label} — {'OGGI' if days == 0 else f'{days} GIORNI'}"
         full = [title, f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}", "", f"👥 Ambito: {scope_note}", ""]
         full.append("🏆 CLASSIFICA TROFEI")
         if trophy_rows:
@@ -3487,7 +3538,51 @@ class CommunityFeatures:
                 _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 900, payload)
             return payload
 
-    def _build_rankings_dashboard_text(self, days=None):
+    def scheduled_dashboard_snapshot(self, chat_id, days, window):
+        """Freeze every report page before publishing a dashboard with direct Telegraph links."""
+        if days not in (0, 7, 15, 30) or not window or window[0] >= window[1]:
+            raise ValueError("Invalid scheduled dashboard period")
+        families = ("community", "community_club", "global_clubs", "titani", "tamarri",
+                    "tornadi", "talenti", "global_single:titani", "global_single:tamarri",
+                    "global_single:tornadi", "global_single:talenti")
+        label = "OGGI" if days == 0 else f"{days} GIORNI"
+        title = f"Classifiche & Report — {label}"
+        lines = self._build_rankings_dashboard_text(days, publish=False, include_today_reports=True)
+        links = {}
+        for index, builder in enumerate((self.ranking_text, self.club_trophy_ranking_text)):
+            ranking = builder(chat_id, days, window=window)
+            if isinstance(ranking, dict):
+                ranking = ranking.get("fallback") or ranking.get("text") or ""
+            url = self._publish_telegraph(f"Classifica {'Community' if index == 0 else 'Club'} — {label}", ranking.splitlines())
+            if not url:
+                raise RuntimeError("Trophy Telegraph page is unavailable")
+            links[f"dash_t_{index}_{days}"] = url
+        for index, scope in enumerate(families):
+            progression = self.coefficient_ranking_text(chat_id, scope, days, window=window)
+            url = progression.get("report_url") if isinstance(progression, dict) else None
+            if not url and isinstance(progression, str):
+                url = self._publish_telegraph(f"Progressione {scope} — {label}", progression.splitlines())
+            if not url:
+                raise RuntimeError(f"Progression Telegraph page is unavailable: {scope}")
+            links[f"dash_p_{index}_{days}"] = url
+            report = self.periodic_report_text(chat_id, scope, days, window=window)
+            found = re.search(r"https://telegra\.ph/[A-Za-z0-9_/-]+", report)
+            if not found:
+                raise RuntimeError(f"Report Telegraph page is unavailable: {scope}")
+            links[f"dash_r_{index}_{days}"] = found.group(0)
+        for i, line in enumerate(lines):
+            match = re.fullmatch(r"\[\[DASH:(dash_[prt]_(?:[0-9]|10)_(?:0|7|15|30))\|Apri\]\]", line)
+            if match:
+                lines[i] = f"[[URL:{links[match.group(1)]}|Apri]]"
+        if any("[[DASH:" in line for line in lines):
+            raise RuntimeError("Scheduled dashboard has an unresolved link")
+        lines[1] = f"Periodo: {window[0].astimezone(ROME):%d/%m/%Y %H:%M} – {window[1].astimezone(ROME):%d/%m/%Y %H:%M}"
+        url = self._publish_telegraph(title, lines)
+        if not url:
+            raise RuntimeError("Scheduled dashboard Telegraph page is unavailable")
+        return self._telegraph_reply([f"📊 {title.upper()}", lines[1], "", "🏆 Classifiche · 🔥 Progressioni · 📋 Report"], url, lines)
+
+    def _build_rankings_dashboard_text(self, days=None, publish=True, include_today_reports=True):
         now = datetime.now(ROME)
         all_periods = [(0, "OGGI"), (7, "7 GIORNI"), (15, "15 GIORNI"), (30, "30 GIORNI")]
         periods = all_periods if days is None else [period for period in all_periods if period[0] == days]
@@ -3528,13 +3623,15 @@ class CommunityFeatures:
                     f"[[DASH:dash_p_{index}_{days}|Apri]]",
                     "",
                 ])
-            if days:
+            if days or include_today_reports:
                 for index, (name, scope, description) in enumerate(families):
                     lines.extend([
                         f"📊 {name.replace('Progressione', 'Report', 1)} — {label}",
                         description + " Trofei, Progressione e resoconto per lo stesso ambito.",
                         f"[[DASH:dash_r_{index}_{days}|Apri]]", "",
                     ])
+        if not publish:
+            return lines
         dashboard_url = self._publish_telegraph(title, lines)
         if not dashboard_url:
             return "Dashboard Classifiche & Report temporaneamente non disponibile."
@@ -3559,12 +3656,12 @@ class CommunityFeatures:
             if index:
                 return f"classifica club {'oggi' if period == 0 else period}"
             return "classifica oggi" if period == 0 else f"classifica della community {period}"
-        if index >= len(scopes) or (kind == "r" and period == 0):
+        if index >= len(scopes):
             return None
         scope = scopes[index]
         if kind == "p":
             return f"classifica progressione{(' ' + scope) if scope else ''} {'oggi' if period == 0 else period}"
-        return f"report{(' ' + scope) if scope else ''} {period}"
+        return f"report{(' ' + scope) if scope else ' community'} {'oggi' if period == 0 else period}"
 
     async def _send_ranking_message(self, context, chat_id, text):
         """Deliver ranking replies with bounded retries on transient Telegram timeouts."""
@@ -4991,17 +5088,17 @@ class CommunityFeatures:
             return True
 
         report_match = re.fullmatch(
-            r"report(?:\\s+(community|club|globale\\s+club|titani|tamarri|tornadi|talenti|club\\s+globale\\s+(?:titani|tamarri|tornadi|talenti)))?\\s*(oggi|giornaliero|7|15|30|mensile)?",
+            r"report(?:\s+(community|club|globale\s+club|titani|tamarri|tornadi|talenti|club\s+globale\s+(?:titani|tamarri|tornadi|talenti)))?\s*(oggi|giornaliero|7|15|30|mensile)?",
             q, re.I,
         )
         if report_match:
             raw_scope = (report_match.group(1) or "community").casefold()
             requested = (report_match.group(2) or "7").casefold()
-            if requested in ("oggi", "giornaliero"):
+            if requested in ("oggi", "giornaliero") and report_match.group(1) is None:
                 report_text = await asyncio.to_thread(self.operational_report_text, message.chat_id, "daily")
                 await message.reply_text(report_text)
                 return True
-            days = 30 if requested == "mensile" else int(requested)
+            days = 0 if requested in ("oggi", "giornaliero") else (30 if requested == "mensile" else int(requested))
             if raw_scope == "community":
                 scope = "community"
             elif raw_scope == "club":

@@ -26,9 +26,8 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
     async def test_failed_telegram_delivery_does_not_complete_slot(self):
         with (
             patch.object(app.community, "_get", return_value=self.settings),
-            patch.object(app.community, "ranking_text", return_value="CLASSIFICA TROFEI"),
-            patch.object(app.community, "coefficient_ranking_text", return_value={"text": "PROGRESSIONE"}),
-            patch.object(app.community, "_send_ranking_message", new=AsyncMock(side_effect=[True, False])),
+            patch.object(app.community, "scheduled_dashboard_snapshot", return_value={"text": "DASHBOARD", "report_url": "https://telegra.ph/dashboard"}),
+            patch.object(app.community, "_send_ranking_message", new=AsyncMock(return_value=False)),
             patch.object(app.requests, "patch") as database_patch,
         ):
             await app._send_auto_ranking_slot(
@@ -36,10 +35,10 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
             )
 
         database_patch.assert_not_called()
-        self.assertEqual(self.checkpoint.call_count, 2)
+        self.assertEqual(self.checkpoint.call_count, 1)
         self.assertFalse(app._AUTO_RANKING_IN_FLIGHT)
 
-    async def test_slot_completes_only_after_both_reports_are_delivered(self):
+    async def test_slot_completes_only_after_dashboard_is_delivered(self):
         events = []
 
         async def deliver(*_args):
@@ -56,8 +55,7 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(app.community, "_get", return_value=self.settings),
-            patch.object(app.community, "ranking_text", return_value="CLASSIFICA TROFEI"),
-            patch.object(app.community, "coefficient_ranking_text", return_value={"text": "PROGRESSIONE"}),
+            patch.object(app.community, "scheduled_dashboard_snapshot", return_value={"text": "DASHBOARD", "report_url": "https://telegra.ph/dashboard"}),
             patch.object(app.community, "_send_ranking_message", new=AsyncMock(side_effect=deliver)) as sender,
             patch.object(app.requests, "patch", side_effect=complete) as database_patch,
         ):
@@ -65,23 +63,19 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
                 self.context, datetime(2026, 9, 23, 18, 0, tzinfo=app.ROME)
             )
 
-        self.assertEqual(sender.await_count, 2)
-        self.assertEqual(events, ["telegram", "telegram", "database"])
+        self.assertEqual(sender.await_count, 1)
+        self.assertEqual(events, ["telegram", "database"])
         self.assertEqual(database_patch.call_args.kwargs["json"]["last_auto_ranking_slot"], "2026-09-23-1800")
         self.assertIsNone(database_patch.call_args.kwargs["json"]["auto_ranking_pending"])
-        self.assertEqual(self.checkpoint.call_count, 3)
+        self.assertEqual(self.checkpoint.call_count, 2)
 
-    async def test_2359_slot_keeps_all_end_of_day_reports(self):
+    async def test_2359_slot_freezes_single_dashboard(self):
         response = Mock()
         response.raise_for_status.return_value = None
         response.json.return_value = [{"chat_id": -100123}]
         with (
             patch.object(app.community, "_get", return_value=self.settings),
-            patch.object(app.community, "ranking_text", return_value="TROFEI"),
-            patch.object(app.community, "coefficient_ranking_text", return_value="PROGRESSIONE") as progression,
-            patch.object(app.community, "club_trophy_ranking_text", return_value="CLUB"),
-            patch.object(app.community, "global_ranking_text", return_value="GLOBALE"),
-            patch.object(app.community, "global_club_ranking_text", return_value="CLUB GLOBALE"),
+            patch.object(app.community, "scheduled_dashboard_snapshot", return_value={"text": "DASHBOARD", "report_url": "https://telegra.ph/dashboard"}) as snapshot,
             patch.object(app.community, "_send_ranking_message", new=AsyncMock(return_value=True)) as sender,
             patch.object(app.requests, "patch", return_value=response) as database_patch,
         ):
@@ -89,11 +83,8 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
                 self.context, datetime(2026, 9, 23, 23, 59, tzinfo=app.ROME)
             )
 
-        self.assertEqual(sender.await_count, 6)
-        progression_calls = [
-            call.args for call in progression.call_args_list
-        ]
-        self.assertIn((-100123, "community_club", 0), progression_calls)
+        self.assertEqual(sender.await_count, 1)
+        snapshot.assert_called_once_with(-100123, 0, (datetime(2026, 9, 23, 0, 0, tzinfo=app.ROME), datetime(2026, 9, 23, 23, 59, tzinfo=app.ROME)))
         self.assertEqual(database_patch.call_args.kwargs["json"]["last_auto_ranking_slot"], "2026-09-23-2359")
         self.assertFalse(app._AUTO_RANKING_PENDING)
 
@@ -141,29 +132,20 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
         response = Mock()
         response.raise_for_status.return_value = None
         response.json.return_value = [{"chat_id": -100123}]
-        sender = AsyncMock(side_effect=[True, False, True, True, True, True, True])
+        sender = AsyncMock(side_effect=[False, True])
         with (
             patch.object(app.community, "_get", return_value=self.settings),
-            patch.object(app.community, "ranking_text", return_value="TROFEI") as trophies,
-            patch.object(app.community, "coefficient_ranking_text", return_value="PROGRESSIONE") as progression,
-            patch.object(app.community, "club_trophy_ranking_text", return_value="CLUB") as club,
-            patch.object(app.community, "global_ranking_text", return_value="GLOBALE") as global_ranking,
-            patch.object(app.community, "global_club_ranking_text", return_value="CLUB GLOBALE") as global_club,
+            patch.object(app.community, "scheduled_dashboard_snapshot", return_value={"text": "DASHBOARD", "report_url": "https://telegra.ph/dashboard"}) as snapshot,
             patch.object(app.community, "_send_ranking_message", new=sender),
             patch.object(app.requests, "patch", return_value=response) as database_patch,
         ):
             slot = datetime(2026, 9, 23, 23, 59, tzinfo=app.ROME)
             await app._send_auto_ranking_slot(self.context, slot)
-            self.assertEqual(app._AUTO_RANKING_PENDING[(-100123, "2026-09-23-2359")]["next_index"], 1)
+            self.assertEqual(app._AUTO_RANKING_PENDING[(-100123, "2026-09-23-2359")]["next_index"], 0)
             await app._send_auto_ranking_slot(self.context, slot, frozen_only=True)
 
-        self.assertEqual(sender.await_count, 7)
-        trophies.assert_called_once()
-        self.assertEqual(progression.call_count, 2)
-        progression.assert_any_call(-100123, "community", 0)
-        progression.assert_any_call(-100123, "community_club", 0)
-        for builder in (club, global_ranking, global_club):
-            builder.assert_called_once()
+        self.assertEqual(sender.await_count, 2)
+        snapshot.assert_called_once()
         database_patch.assert_called_once()
         self.assertFalse(app._AUTO_RANKING_PENDING)
 
@@ -186,22 +168,61 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AutomaticPeriodicReportTests(unittest.IsolatedAsyncioTestCase):
-    async def test_periodic_reports_add_only_global_progression_ranking(self):
+    def setUp(self):
+        app._AUTO_PERIODIC_IN_FLIGHT.clear()
+
+    def test_calendar_windows(self):
+        rome = app.ROME
+        weekly = app._scheduled_period_window(datetime(2026, 9, 28, 6, tzinfo=rome), 7)
+        self.assertEqual((weekly[0].day, weekly[1].day), (21, 28))
+        first = app._scheduled_period_window(datetime(2026, 10, 16, 6, tzinfo=rome), 15)
+        self.assertEqual((first[0].day, first[1].day), (1, 16))
+        second = app._scheduled_period_window(datetime(2026, 11, 1, 6, tzinfo=rome), 15)
+        self.assertEqual((second[0].month, second[0].day, second[1].month), (10, 16, 11))
+        monthly = app._scheduled_period_window(datetime(2026, 3, 1, 6, tzinfo=rome), 30)
+        self.assertEqual((monthly[0].month, monthly[0].day, monthly[1].day), (2, 1, 1))
+
+    async def test_periodic_dashboard_is_frozen_before_delivery(self):
         context = SimpleNamespace(bot=SimpleNamespace(send_message=AsyncMock()))
+        fake_datetime = Mock()
+        fake_datetime.now.return_value = datetime(2026, 9, 28, 6, tzinfo=app.ROME)
+        dashboard = {"text": "DASHBOARD", "report_url": "https://telegra.ph/dashboard"}
         with (
-            patch.object(app.community, "_get", return_value=[{"chat_id": -100123}]),
-            patch.object(app.community, "periodic_report_text", return_value="REPORT") as periodic_report,
-            patch.object(app.community, "coefficient_ranking_text", return_value="PROGRESSIONE GLOBALE") as progression,
+            patch.object(app, "datetime", fake_datetime),
+            patch.object(app.community, "_get", side_effect=[[{"chat_id": -100123}], []]),
+            patch.object(app.community, "scheduled_dashboard_snapshot", return_value=dashboard) as snapshot,
+            patch.object(app.community, "_post") as checkpoint,
+            patch.object(app.community, "_patch") as complete,
             patch.object(app.community, "_send_ranking_message", new=AsyncMock(return_value=True)) as ranking_send,
         ):
             await app.automatic_periodic_report_job(SimpleNamespace(job=SimpleNamespace(data={"days": 7}), bot=context.bot))
-
-        self.assertEqual(periodic_report.call_count, 2)
-        periodic_report.assert_any_call(-100123, "community", 7)
-        periodic_report.assert_any_call(-100123, "global_clubs", 7)
-        progression.assert_called_once_with(-100123, "global_clubs", 7)
+        snapshot.assert_called_once()
+        self.assertEqual(snapshot.call_args.args[1], 7)
+        self.assertEqual(checkpoint.call_args.args[1]["payload"], dashboard)
         self.assertEqual(ranking_send.await_count, 1)
-        self.assertEqual(ranking_send.await_args.args[1:], (-100123, "PROGRESSIONE GLOBALE"))
+        self.assertEqual(ranking_send.await_args.args[1:], (-100123, dashboard))
+        complete.assert_called_once()
+        self.assertFalse(app._AUTO_PERIODIC_IN_FLIGHT)
+
+    async def test_periodic_retry_uses_saved_page_without_regeneration(self):
+        fake_datetime = Mock()
+        fake_datetime.now.return_value = datetime(2026, 9, 28, 6, 10, tzinfo=app.ROME)
+        dashboard = {"text": "FROZEN", "report_url": "https://telegra.ph/frozen"}
+        with (
+            patch.object(app, "datetime", fake_datetime),
+            patch.object(app.community, "_get", side_effect=[[{"chat_id": -100123}],
+                                                           [{"payload": dashboard, "sent_at": None}]]),
+            patch.object(app.community, "scheduled_dashboard_snapshot") as rebuild,
+            patch.object(app.community, "_post") as checkpoint,
+            patch.object(app.community, "_patch") as complete,
+            patch.object(app.community, "_send_ranking_message", new=AsyncMock(return_value=True)) as send,
+        ):
+            await app.automatic_periodic_report_catchup_job(SimpleNamespace(bot=SimpleNamespace()))
+        rebuild.assert_not_called()
+        checkpoint.assert_not_called()
+        send.assert_awaited_once()
+        self.assertEqual(send.await_args.args[2], dashboard)
+        complete.assert_called_once()
 
 
 class CompleteRosterRetryTests(unittest.TestCase):
