@@ -1063,65 +1063,63 @@ class CommunityFeatures:
             print("ERRORE INVIO SKIN IMAGE:", repr(exc), flush=True)
             return "Non riesco a recuperare l'immagine della skin in questo momento."
 
-    def _cached_skin_account_text(self, player_tag, detailed=False):
-        """Show dated category counts when the exact Skin Collection is offline."""
-        tag = str(player_tag or "").strip().lstrip("#").upper()
-        if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
-            return None
-        rows = self._get("skin_account_history", {
-            "select": "snapshot_date,category,owned_count,total_count",
-            "player_tag": f"eq.{tag}",
-            "order": "snapshot_date.desc", "limit": "100",
-        }) or []
-        if not rows:
-            return None
-        latest = str(rows[0].get("snapshot_date") or "")
-        current = {str(row.get("category")): row for row in rows
-                   if str(row.get("snapshot_date") or "") == latest}
-        total = current.get("Totale")
-        if not total:
-            return None
-        owned = int(total.get("owned_count") or 0)
-        lines = ["SKIN ACCOUNT — ULTIMA RILEVAZIONE", f"Data possedute: {latest}",
-                 f"Skin possedute alla rilevazione: {owned}",
-                 "La fonte Skin Collection è temporaneamente non disponibile: i posseduti potrebbero essere cambiati."]
-        if detailed:
-            lines.append("L'elenco delle singole skin sarà disponibile quando la fonte tornerà attiva.")
-        else:
-            catalog, offset = [], 0
-            while True:
-                page = self._get("skins_catalog", {
-                    "select": "external_id,brawler_id,rarity,source_payload,price_coins,acquisition_type,acquisition_note",
-                    "verification_status": "eq.structured_verified",
-                    "external_id": "not.in.(29001472,29001473,29001831,29001832,29001833,29001834,29001835,29001836)",
-                    "order": "external_id.asc", "limit": "1000", "offset": str(offset),
-                }) or []
-                catalog.extend(page)
-                if len(page) < 1000:
-                    break
-                offset += 1000
-            if catalog:
-                lines.extend(["", f"CATALOGO ATTUALE: {len(catalog)} varianti",
-                              f"PER CATEGORIA — POSSEDUTE AL {latest} / CATALOGO ATTUALE"])
-                groups = {}
-                for row in catalog:
-                    groups.setdefault(self._skin_category_label(row), []).append(row)
-                for name, group in sorted(groups.items()):
-                    if name in ("Argento", "Oro"):
-                        brawlers = {row["brawler_id"] for row in group if row.get("brawler_id") is not None}
-                        lines.append(f"{name}: {len(brawlers)} Brawler ({len(group)} varianti)")
-                    else:
-                        saved = current.get(name)
-                        if saved:
-                            lines.append(f"{name}: {int(saved.get('owned_count') or 0)}/{len(group)} skin")
-                        else:
-                            lines.append(f"{name}: {len(group)} skin nel catalogo (possesso non rilevato)")
+    def _current_skin_catalog_text(self):
+        """Current verified catalog only; account ownership belongs to Stats."""
+        catalog, offset = [], 0
+        while True:
+            page = self._get("skins_catalog", {
+                "select": "external_id,brawler_id,rarity,source_payload,price_coins,acquisition_type,acquisition_note",
+                "verification_status": "eq.structured_verified",
+                "external_id": "not.in.(29001472,29001473,29001831,29001832,29001833,29001834,29001835,29001836)",
+                "order": "external_id.asc", "limit": "1000", "offset": str(offset),
+            }) or []
+            catalog.extend(page)
+            if len(page) < 1000:
+                break
+            offset += 1000
+        if not catalog:
+            return "Il catalogo skin non è disponibile in questo momento."
+        groups = {}
+        for row in catalog:
+            groups.setdefault(self._skin_category_label(row), []).append(row)
+        lines = ["SKIN — CATALOGO ATTUALE", f"Totale: {len(catalog)} varianti verificate", "", "PER RARITÀ E CATEGORIA"]
+        order = {"Rare": 10, "Super rare": 20, "Epiche": 30, "Mitiche": 40, "Leggendarie": 50,
+                 "Skin Overdrive": 60, "Skin Overdrive Pass Pro": 65, "Pass Pro": 70,
+                 "Brawl Pass": 80, "Collezione": 90, "Senza rarità": 100, "Argento": 1000, "Oro": 1001}
+        for name, group in sorted(groups.items(), key=lambda item: (order.get(item[0], 500), item[0])):
+            if name in ("Argento", "Oro"):
+                brawlers = {row["brawler_id"] for row in group if row.get("brawler_id") is not None}
+                lines.append(f"{name}: {len(brawlers)} Brawler ({len(group)} varianti)")
+            else:
+                lines.append(f"{name}: {len(group)} skin")
+        lines.extend(["", "I numeri indicano le skin del catalogo, non quelle possedute dall'account."])
         return "\n".join(lines)
+
+    def _cached_skin_account_text(self, player_tag, detailed=False):
+        """When ownership is offline, show only the current verified catalog."""
+        return self._current_skin_catalog_text()
+
+    async def send_skin_telegraph(self, context, chat_id, answer):
+        """Read Skin output on Telegraph; keep Telegram limited to the access button."""
+        if not isinstance(answer, str) or "\n" not in answer:
+            await self._send_ranking_message(context, chat_id, answer)
+            return
+        title = answer.splitlines()[0]
+        url = await asyncio.to_thread(self._publish_telegraph, title, answer.splitlines())
+        if url:
+            await self._send_ranking_message(context, chat_id, self._telegraph_reply(
+                [title, "Apri la pagina per leggere i dati Skin."], url,
+                ["La pagina Skin non è disponibile in questo momento."],
+            ))
+        else:
+            await self._send_ranking_message(context, chat_id, "La pagina Telegraph Skin non è disponibile in questo momento. Riprova più tardi.")
 
     def skin_account_text(self, registered_user, brawler_name=None, rarity=None, category=None, mode="summary"):
         if not registered_user or not registered_user.get("player_tag"):
             return "Devi prima registrare il tuo tag Brawl Stars."
         try:
+            if not brawler_name and not rarity and not category and mode == "summary":
+                return self._current_skin_catalog_text()
             catalog, offset = [], 0
             while True:
                 page = self._get("skins_catalog", {
@@ -3816,7 +3814,7 @@ class CommunityFeatures:
                 scoped_brawler = skin_brawler_count_q.group(1).strip()
             if scoped_brawler:
                 context.user_data["skin_account_context"] = {"brawler": scoped_brawler, "category": scoped_category}
-            await message.reply_text(answer)
+            await self.send_skin_telegraph(context, int(message.from_user.id), answer)
             return True
 
         q = (question or "").strip()
