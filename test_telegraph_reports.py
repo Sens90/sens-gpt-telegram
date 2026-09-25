@@ -198,6 +198,30 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         post.assert_called_once()
         get.assert_called_once()
 
+    @patch.dict(os.environ, {"TELEGRAPH_ACCESS_TOKEN": "fake-token"})
+    @patch("community_features.requests.get")
+    @patch("community_features.requests.post")
+    def test_reused_global_dashboard_keeps_original_expiration(self, post, get):
+        from community_features import _DASHBOARD_CACHE, ROME
+        from datetime import timedelta
+        _DASHBOARD_CACHE.clear()
+        obj = self.make_features()
+        obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse published dashboard"))
+        post.return_value.json.return_value = {"ok": True, "result": {"pages": [
+            {"title": "Classifiche — TITANI ABUSIVI", "url": "https://telegra.ph/dashboard"}
+        ]}}
+        updated = (datetime.now(ROME) - timedelta(minutes=4)).strftime("Aggiornato: %d/%m/%Y %H:%M")
+        nodes = [{"tag": "p", "children": [updated]},
+                 {"tag": "p", "children": ["Liste: valori positivi verificati · copertura roster e periodi non misurabili indicati."]}]
+        nodes += [{"tag": "h3", "children": [period]} for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")]
+        nodes += [{"tag": "a", "attrs": {"href": f"https://telegra.ph/ranking-{i}"}, "children": ["Apri"]} for i in range(12)]
+        get.return_value.json.return_value = {"ok": True, "result": {"content": nodes}}
+        with patch("community_features.time.monotonic", return_value=1000):
+            obj.rankings_dashboard_text(-123)
+        remaining = _DASHBOARD_CACHE[(-123, "shared")][0] - 1000
+        self.assertGreater(remaining, 0)
+        self.assertLess(remaining, 60)
+
     def test_period_dashboard_reuses_persisted_summary_and_exact_scope(self):
         from community_features import _DASHBOARD_CACHE
         _DASHBOARD_CACHE.clear()
@@ -213,6 +237,24 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(obj._get.call_args.args[0], "scheduled_dashboard_delivery")
         self.assertEqual(obj._get.call_args.args[1]["slot"], "eq.manual:rolling:7")
         self.assertEqual(obj._get.call_args.args[1]["chat_id"], "eq.-123")
+
+    def test_reused_period_cache_expires_at_original_deadline(self):
+        from community_features import _DASHBOARD_CACHE
+        from datetime import timedelta
+        _DASHBOARD_CACHE.clear()
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        obj._get = Mock(return_value=[{"payload": {
+            "report_url": "https://telegra.ph/periodo",
+            "cached_at": (datetime.now(timezone.utc) - timedelta(seconds=119)).isoformat(),
+            "cache_revision": 5,
+        }}])
+        obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse saved period"))
+        with patch("community_features.time.monotonic", return_value=1000):
+            obj.rankings_dashboard_text(-123, 0)
+        remaining = _DASHBOARD_CACHE[(-123, "period:0")][0] - 1000
+        self.assertGreater(remaining, 0)
+        self.assertLess(remaining, 2)
 
     def test_stale_period_cache_is_rebuilt_and_revision_checked(self):
         from community_features import _DASHBOARD_CACHE
