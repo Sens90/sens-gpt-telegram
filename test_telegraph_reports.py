@@ -87,7 +87,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/classifiche")
         obj.club_trophy_ranking_text = Mock(side_effect=AssertionError("registered-only ranking must not be used"))
         obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progressione"})
-        report_full = ["REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI", "1. Utente +10", "", "🔥 CLASSIFICA PROGRESSIONE"]
+        report_full = ["REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI", "1. Utente +10", "", "🔥 CLASSIFICA PROGRESSIONE", "📊 RESOCONTO", "🏆 Coppe totali reali: 100"]
         obj.periodic_report_text = Mock(return_value=("📊 REPORT COMPLETO: https://telegra.ph/report", report_full, {"TITANI ABUSIVI": {"delta": 10, "players": 2}}))
         payload = obj.rankings_dashboard_text(-1001)
         self.assertEqual(payload["report_url"], "https://telegra.ph/classifiche")
@@ -95,9 +95,9 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(obj._publish_telegraph.call_count, 13)
         lines = obj._publish_telegraph.call_args.args[1]
         links = [line for line in lines if line.startswith("[[URL:")]
-        self.assertEqual(len(links), 16)
+        self.assertEqual(len(links), 12)
         self.assertIn("[[URL:https://telegra.ph/progressione|Apri]]", links)
-        self.assertIn("[[URL:https://telegra.ph/report|Apri]]", links)
+        self.assertNotIn("[[URL:https://telegra.ph/report|Apri]]", links)
         self.assertFalse(any("[[DASH:" in line for line in lines))
         self.assertEqual(obj.dashboard_command("dash_p_2_0"), "classifica progressione globale club oggi")
         self.assertEqual(obj.dashboard_command("dash_r_10_30"), "report club globale talenti 30")
@@ -109,11 +109,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                          "https://t.me/SensGPT_TitaniAbusiviBot?start=dash_r_10_30")
         direct_nodes = obj._telegraph_nodes(lines)
         self.assertEqual(sum(node.get("tag") == "h3" and node.get("children") == ["OGGI"] for node in direct_nodes), 1)
-        self.assertEqual(sum(node.get("tag") == "h4" for node in direct_nodes), 16)
+        self.assertEqual(sum(node.get("tag") == "h4" for node in direct_nodes), 12)
         self.assertEqual(sum(node.get("tag") == "a" and node.get("attrs", {}).get("href", "").startswith("https://telegra.ph/")
-                             for item in direct_nodes for node in item.get("children", []) if isinstance(node, dict)), 16)
+                             for item in direct_nodes for node in item.get("children", []) if isinstance(node, dict)), 12)
         self.assertEqual(obj.periodic_report_text.call_count, 4)
-        self.assertTrue(all(call.args[1] == "global_clubs" and call.kwargs.get("return_full") for call in obj.periodic_report_text.call_args_list))
+        self.assertTrue(all(call.args[1] == "global_clubs" and call.kwargs.get("return_full") and call.kwargs.get("publish") is False for call in obj.periodic_report_text.call_args_list))
         self.assertTrue(all(call.args[1] == "global_clubs" for call in obj.coefficient_ranking_text.call_args_list))
 
     async def test_period_hubs_and_today_shortcuts_stay_private(self):
@@ -138,8 +138,9 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(obj.rankings_dashboard_text.call_args.args, (-1001,))
             self.assertEqual(obj._send_ranking_message.await_args.args[1], 456)
         self.assertTrue(await obj.handle_command(message, context, "Classifica oggi"))
-        obj.ranking_text.assert_called_with(-1001, 0)
-        self.assertEqual(obj.rankings_dashboard_text.call_count, 8)
+        self.assertEqual(obj.rankings_dashboard_text.call_args.args, (-1001, 0))
+        obj.ranking_text.assert_not_called()
+        self.assertEqual(obj.rankings_dashboard_text.call_count, 9)
         self.assertTrue(await obj.handle_command(message, context, "Progressione oggi"))
         obj.progression_detail_text.assert_called_once_with("2GU9UV2RG", 0)
         self.assertEqual(obj._send_ranking_message.await_args.args[1], 456)
@@ -151,9 +152,9 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/periodo")
         obj.club_trophy_ranking_text = Mock(side_effect=AssertionError("registered-only ranking must not be used"))
         obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progressione"})
-        report_full = ["REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI", "1. Utente +10", "", "🔥 CLASSIFICA PROGRESSIONE"]
+        report_full = ["REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI", "1. Utente +10", "", "🔥 CLASSIFICA PROGRESSIONE", "📊 RESOCONTO", "🏆 Coppe totali reali: 100"]
         obj.periodic_report_text = Mock(return_value=("📊 REPORT COMPLETO: https://telegra.ph/report", report_full, {"TITANI ABUSIVI": {"delta": 10, "players": 2}}))
-        for days, count in ((0, 4), (7, 4), (15, 4), (30, 4)):
+        for days, count in ((0, 3), (7, 3), (15, 3), (30, 3)):
             obj.rankings_dashboard_text(-1001, days)
             lines = obj._publish_telegraph.call_args.args[1]
             links = [line for line in lines if line.startswith("[[URL:")]
@@ -193,11 +194,13 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             patch.object(obj, "_publish_telegraph", side_effect=publish),
             patch.object(obj, "club_trophy_ranking_text", side_effect=AssertionError("registered-only ranking must not be used")),
             patch.object(obj, "coefficient_ranking_text", return_value={"report_url": "https://telegra.ph/progression"}),
-            patch.object(obj, "periodic_report_text", return_value=("📊 REPORT COMPLETO: https://telegra.ph/report", ["REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI", "1. player +10", "", "🔥 CLASSIFICA PROGRESSIONE"], {"TITANI ABUSIVI": {"delta": 10, "players": 2}})),
+            patch.object(obj, "periodic_report_text", return_value=("REPORT", ["REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI", "1. player +10", "", "🔥 CLASSIFICA PROGRESSIONE", "📊 RESOCONTO", "🏆 Coppe totali reali: 100"], {"TITANI ABUSIVI": {"delta": 10, "players": 2}})),
         ):
             result = obj.scheduled_dashboard_snapshot(-1001, 15, (start, end))
         self.assertEqual(result["report_url"], "https://telegra.ph/page-3")
-        self.assertEqual(sum("[[URL:" in row for row in captured[-1]), 4)
+        self.assertEqual(sum("[[URL:" in row for row in captured[-1]), 3)
+        self.assertIn("📋 RESOCONTO", result["text"])
+        self.assertIn("🏆 Coppe totali reali: 100", result["text"])
         self.assertFalse(any("[[DASH:" in row for row in captured[-1]))
         nodes = obj._telegraph_nodes(["[[URL:https://telegra.ph/report|Apri]]"])
         self.assertEqual(nodes[0]["children"][0]["attrs"]["href"], "https://telegra.ph/report")
@@ -205,8 +208,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
     def test_scheduled_today_index_focuses_on_global_roster(self):
         obj = self.make_features()
         lines = obj._build_rankings_dashboard_text(0, publish=False, include_today_reports=True)
-        self.assertEqual(sum(row.startswith("[[DASH:") for row in lines), 4)
-        self.assertIn("[[DASH:dash_r_2_0|Apri]]", lines)
+        self.assertEqual(sum(row.startswith("[[DASH:") for row in lines), 3)
+        self.assertNotIn("[[DASH:dash_r_2_0|Apri]]", lines)
         self.assertEqual(obj.dashboard_command("dash_r_0_0"), "report community oggi")
 
     async def test_report_today_from_dashboard_uses_requested_scope(self):
@@ -267,10 +270,13 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("Coeff.", summary)
                 self.assertIn("CLASSIFICA PROGRESSIONE", "\n".join(obj._publish_telegraph.call_args.args[1]))
 
-        summary, full, club_totals = obj.periodic_report_text(123, "global_clubs", 7, return_full=True)
-        self.assertIn("📊 REPORT COMPLETO", summary)
+        published_before = obj._publish_telegraph.call_count
+        summary, full, club_totals = obj.periodic_report_text(123, "global_clubs", 7, return_full=True, publish=False)
+        self.assertEqual(obj._publish_telegraph.call_count, published_before)
+        self.assertNotIn("📊 REPORT COMPLETO", summary)
         self.assertIn("1. Unregistered", "\n".join(full))
         self.assertIn("🔥 CLASSIFICA PROGRESSIONE", full)
+        self.assertIn("📊 RESOCONTO", full)
         self.assertEqual(club_totals["TITANI ABUSIVI"]["players"], 1)
 
         # The same three scopes use the exact calendar boundaries and retain
