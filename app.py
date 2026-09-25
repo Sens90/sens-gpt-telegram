@@ -3331,6 +3331,19 @@ def _is_manual_deterministic_command(command):
     )
 
 
+def _is_public_group_command(command):
+    """Community membership and inactivity notices must remain visible to the group."""
+    value = str(command or "").strip()
+    return bool(
+        re.match(r"^(?:registrami|tegistrami)\b", value, re.I)
+        or re.fullmatch(
+            r"(?:elenco utenti|elenco registrati|registrati|membri registrati|account registrati|"
+            r"elenco inattivi|elenco utenti inattivi|inattivi|inattivita|inattività)",
+            value, re.I,
+        )
+    )
+
+
 class _PrivateCommandMessage:
     """Keep the source group as command scope while delivering replies to the requester in private."""
     def __init__(self, original, bot):
@@ -3462,8 +3475,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message.text,
         _bot_username_for_command,
     )
-    # Manual commands preserve the group data scope and answer privately,
-    # including voice and Telegraph publishing commands.
+    # Manual commands preserve the group data scope. Membership and inactivity
+    # commands stay visible in that group; other commands answer privately.
     _voice_reader_command = bool(re.fullmatch(
         r"(?:leggi|leggilo|leggi questo|leggi a voce)", _raw_command.strip(), re.I
     ))
@@ -3520,7 +3533,9 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("GROUP FREE CHAT SILENT MEMORY: stored without reply", flush=True)
         return
 
-    if _deterministic_group_command or _voice_group_exception:
+    if (_deterministic_group_command or _voice_group_exception) and not (
+        _is_group_chat and _is_public_group_command(_raw_command)
+    ):
         message = await _private_group_command(message, context, _raw_command)
         if message is None:
             return

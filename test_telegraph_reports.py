@@ -687,15 +687,19 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
 
     @patch.dict(os.environ, {"TELEGRAM_TOKEN": "000000:test-token", "GEMINI_API_KEY": "test-key"})
     def test_all_common_manual_command_families_are_private(self):
-        from app import _is_manual_deterministic_command
+        from app import _is_manual_deterministic_command, _is_public_group_command
         for command in (
             "Report", "Classifiche", "Classifica oggi", "Progressione oggi",
             "Guida coefficiente abusivo", "Coefficiente abusivo", "Stats",
             "Skin", "Draft ranked", "registrami #2GU9UV2RG",
-            "elenco registrati", "comandi", "quante skin ho",
+            "elenco registrati", "elenco utenti", "elenco inattivi", "comandi", "quante skin ho",
         ):
             with self.subTest(command=command):
                 self.assertTrue(_is_manual_deterministic_command(command))
+                self.assertEqual(
+                    _is_public_group_command(command),
+                    command in {"registrami #2GU9UV2RG", "elenco registrati", "elenco utenti", "elenco inattivi"},
+                )
         self.assertFalse(_is_manual_deterministic_command("Ciao, come va?"))
 
     def test_telegraph_battle_numbers_do_not_receive_ranking_medals(self):

@@ -97,7 +97,7 @@ HELP_TEXT = """COMANDI SENS GPT — GUIDA COMPLETA
 Questa pagina raccoglie i comandi disponibili e spiega cosa fa ciascuno. Dove trovi ▶️ puoi toccare il comando per aprire Sens GPT ed eseguirlo in privato.
 
 👤 ACCOUNT E PROFILO
-[[CMDNAME:registrami #TAG]]
+registrami #TAG — scrivi nel gruppo
 Collega il tuo account Brawl Stars principale al tuo utente Telegram. Esempio: registrami #2LVRCLV8LV
 
 [[CMDNAME:aggiungi account #TAG]]
@@ -281,11 +281,11 @@ Sens GPT mantiene un contesto personale separato per ogni utente per rendere il 
 [[CMDNAME:club]]
 Mostra il riepilogo della community e dei club configurati.
 
-[[CMDNAME:elenco registrati]]
-Mostra gli account della community collegati al bot.
+elenco utenti — scrivi nel gruppo
+Mostra nel gruppo gli account della community collegati al bot. Funziona anche elenco registrati.
 
-[[CMDNAME:inattivi]]
-Mostra la situazione di inattività disponibile al bot.
+elenco inattivi — scrivi nel gruppo
+Mostra nel gruppo la situazione di inattività disponibile al bot. Anche l'avviso automatico per la soglia kick resta nel gruppo.
 
 [[CMDNAME:assenza N]]
 Registra una segnalazione di assenza per il numero di giorni indicato.
@@ -3773,7 +3773,7 @@ class CommunityFeatures:
             await self._send_ranking_message(context, int(message.from_user.id), payload)
             return True
 
-        if q0l in ("elenco registrati", "registrati", "membri registrati", "account registrati"):
+        if q0l in ("elenco utenti", "elenco registrati", "registrati", "membri registrati", "account registrati"):
             await message.reply_text(self.registered_members_text(message.chat_id))
             return True
         if re.fullmatch(r"(?:registrami|tegistrami)\\s*#?[A-Z0-9]{3,15}", q0, re.I):
@@ -5029,11 +5029,11 @@ class CommunityFeatures:
             await message.reply_text(self.club_summary_text(message.chat_id))
             return True
 
-        if ql in ("elenco registrati", "registrati", "membri registrati", "account registrati"):
+        if ql in ("elenco utenti", "elenco registrati", "registrati", "membri registrati", "account registrati"):
             await message.reply_text(self.registered_members_text(message.chat_id))
             return True
 
-        if ql in ("inattivi", "inattivita", "inattività"):
+        if ql in ("elenco inattivi", "elenco utenti inattivi", "inattivi", "inattivita", "inattività"):
             await message.reply_text(self.inactivity_text(message.chat_id))
             return True
 
