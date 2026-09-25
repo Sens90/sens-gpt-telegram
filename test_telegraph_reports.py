@@ -132,7 +132,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/guida-coefficiente")
         obj._send_ranking_message = AsyncMock(return_value=True)
-        message = SimpleNamespace(chat_id=123, chat=SimpleNamespace(type="group"))
+        message = SimpleNamespace(chat_id=123, chat=SimpleNamespace(type="group"), from_user=SimpleNamespace(id=456))
         context = SimpleNamespace(user_data={})
         self.assertTrue(await obj.handle_command(message, context, "guida coefficiente abusivo"))
         obj._publish_telegraph.assert_called_once()
@@ -275,7 +275,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await obj.handle_command(message, context, "Progressione club"))
         obj.coefficient_ranking_text.assert_called_once_with(123, "community_club", None)
         obj._send_ranking_message.assert_awaited_once_with(
-            context, 123, "CLASSIFICA PROGRESSIONE CLUB"
+            context, 456, "CLASSIFICA PROGRESSIONE CLUB"
         )
 
     def test_progressione_oggi_builds_report_payload(self):
@@ -440,6 +440,78 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("🥈", str(nodes[2]))
         self.assertIn("🥉", str(nodes[3]))
         self.assertNotIn("h3", str(nodes[4:]))
+
+    def test_report_progression_players_are_separated_without_spreading_trophy_rows(self):
+        nodes = self.make_features()._telegraph_nodes([
+            "🔥 REPORT UTENTI REGISTRATI — 7 GIORNI", "🏆 CLASSIFICA TROFEI",
+            "1. Anna — +15", "2. Luca — +10", "",
+            "🔥 CLASSIFICA PROGRESSIONE", "1. Anna", "🎮 Partite: 3",
+            "🏆 Coppe: +15", "", "2. Luca", "🎮 Partite: 2",
+            "🏆 Coppe: +10", "", "📊 RESOCONTO", "👥 Giocatori: 2",
+        ])
+        rendered = [str(node.get("children")) for node in nodes]
+        trophy_second = next(i for i, value in enumerate(rendered) if "2. Luca — +10" in value)
+        progression_second = next(i for i, value in enumerate(rendered) if "2. Luca'" in value)
+        self.assertNotEqual(rendered[trophy_second - 1], "['\\xa0']")
+        self.assertEqual(rendered[progression_second - 1], "['\\xa0']")
+        self.assertTrue(any(node.get("tag") == "h3" and "CLASSIFICA PROGRESSIONE" in str(node) for node in nodes))
+
+    def test_skin_account_uses_dated_snapshot_during_bridge_backoff(self):
+        from community_features import SkinBridgeBackoff
+        obj = self.make_features()
+        obj._get = Mock(side_effect=lambda table, params: ([
+            {"snapshot_date": "2026-09-22", "category": "Totale", "owned_count": 50, "total_count": 100},
+            {"snapshot_date": "2026-09-22", "category": "Rare", "owned_count": 10, "total_count": 20},
+        ] if table == "skin_account_history" else [{"external_id": 1}]))
+        obj._official_owned_skin_ids = Mock(side_effect=SkinBridgeBackoff("offline"))
+        result = obj.skin_account_text({"player_tag": "2GU9UV2RG"})
+        self.assertIn("2026-09-22", result)
+        self.assertIn("50/100", result)
+        self.assertIn("Rare: 10/20", result)
+        self.assertIn("potrebbero essere cambiati", result)
+
+    @patch.dict(os.environ, {"TELEGRAM_TOKEN": "000000:test-token", "GEMINI_API_KEY": "test-key"})
+    def test_explicit_stats_send_uses_private_destination_for_group(self):
+        from app import _manual_command_reply_chat_id
+        member = SimpleNamespace(id=437136453)
+        group = SimpleNamespace(chat_id=-1001083451734, chat=SimpleNamespace(type="supergroup"), from_user=member)
+        private = SimpleNamespace(chat_id=437136453, chat=SimpleNamespace(type="private"), from_user=member)
+        self.assertEqual(_manual_command_reply_chat_id(group), 437136453)
+        self.assertEqual(_manual_command_reply_chat_id(private), 437136453)
+
+    def test_stats_telegraph_categories_have_space_between_sections(self):
+        nodes = self.make_features()._telegraph_nodes([
+            "STATS PLAYER", "PROFILO", "Trofei: 100", "RANKED", "Ranked attuale: Oro I",
+            "COLLEZIONE", "Skin: 50",
+        ])
+        for i, node in enumerate(nodes):
+            if node.get("tag") == "h3" and i:
+                self.assertEqual(nodes[i - 1], {"tag": "p", "children": ["\u00a0"]})
+
+    @patch.dict(os.environ, {"TELEGRAM_TOKEN": "000000:test-token", "GEMINI_API_KEY": "test-key"})
+    async def test_group_command_is_deleted_and_reply_goes_private_with_group_scope(self):
+        from app import _private_group_command
+        bot = SimpleNamespace(send_chat_action=AsyncMock(), delete_message=AsyncMock(), send_message=AsyncMock())
+        message = SimpleNamespace(chat_id=-100123, message_id=42,
+                                  chat=SimpleNamespace(type="supergroup"), from_user=SimpleNamespace(id=456))
+        routed = await _private_group_command(message, SimpleNamespace(bot=bot), "leggi")
+        self.assertEqual(routed.chat_id, -100123)
+        bot.delete_message.assert_awaited_once_with(chat_id=-100123, message_id=42)
+        await routed.reply_text("Risposta")
+        bot.send_message.assert_awaited_once_with(chat_id=456, text="Risposta")
+
+    @patch.dict(os.environ, {"TELEGRAM_TOKEN": "000000:test-token", "GEMINI_API_KEY": "test-key"})
+    def test_all_common_manual_command_families_are_private(self):
+        from app import _is_manual_deterministic_command
+        for command in (
+            "Report", "Classifiche", "Classifica oggi", "Progressione oggi",
+            "Guida coefficiente abusivo", "Coefficiente abusivo", "Stats",
+            "Skin", "Draft ranked", "registrami #2GU9UV2RG",
+            "elenco registrati", "comandi", "quante skin ho",
+        ):
+            with self.subTest(command=command):
+                self.assertTrue(_is_manual_deterministic_command(command))
+        self.assertFalse(_is_manual_deterministic_command("Ciao, come va?"))
 
     def test_telegraph_battle_numbers_do_not_receive_ranking_medals(self):
         nodes = self.make_features()._telegraph_nodes([

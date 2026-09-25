@@ -1063,6 +1063,38 @@ class CommunityFeatures:
             print("ERRORE INVIO SKIN IMAGE:", repr(exc), flush=True)
             return "Non riesco a recuperare l'immagine della skin in questo momento."
 
+    def _cached_skin_account_text(self, player_tag, detailed=False):
+        """Show dated category counts when the exact Skin Collection is offline."""
+        tag = str(player_tag or "").strip().lstrip("#").upper()
+        if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
+            return None
+        rows = self._get("skin_account_history", {
+            "select": "snapshot_date,category,owned_count,total_count",
+            "player_tag": f"eq.{tag}",
+            "order": "snapshot_date.desc", "limit": "100",
+        }) or []
+        if not rows:
+            return None
+        latest = str(rows[0].get("snapshot_date") or "")
+        current = {str(row.get("category")): row for row in rows
+                   if str(row.get("snapshot_date") or "") == latest}
+        total = current.get("Totale")
+        if not total:
+            return None
+        owned = int(total.get("owned_count") or 0)
+        available = int(total.get("total_count") or 0)
+        lines = ["SKIN ACCOUNT — ULTIMA RILEVAZIONE", f"Data: {latest}",
+                 f"Possedute: {owned}/{available}",
+                 "La fonte Skin Collection è temporaneamente non disponibile: questi dati potrebbero essere cambiati."]
+        if detailed:
+            lines.append("L'elenco delle singole skin sarà disponibile quando la fonte tornerà attiva.")
+        else:
+            lines.extend(["", "PER CATEGORIA"])
+            for name, row in sorted(current.items()):
+                if name != "Totale":
+                    lines.append(f"{name}: {int(row.get('owned_count') or 0)}/{int(row.get('total_count') or 0)}")
+        return "\n".join(lines)
+
     def skin_account_text(self, registered_user, brawler_name=None, rarity=None, category=None, mode="summary"):
         if not registered_user or not registered_user.get("player_tag"):
             return "Devi prima registrare il tuo tag Brawl Stars."
@@ -1189,6 +1221,17 @@ class CommunityFeatures:
             return "\n".join(lines)
         except Exception as exc:
             print("ERRORE SKIN ACCOUNT:", repr(exc), flush=True)
+            if isinstance(exc, (SkinBridgeBackoff, requests.RequestException)):
+                try:
+                    cached = self._cached_skin_account_text(
+                        registered_user["player_tag"],
+                        detailed=bool(brawler_name or rarity or category or mode != "summary"),
+                    )
+                    if cached:
+                        return cached
+                except Exception as cache_exc:
+                    LOG.warning("SKIN SNAPSHOT FALLBACK ERROR: %s", type(cache_exc).__name__)
+                return "La fonte Skin Collection è temporaneamente non disponibile e non ho una rilevazione salvata per il tuo account. Riprova più tardi."
             return "Non riesco a leggere la tua Skin Collection in questo momento."
 
     def is_registered_private_user(self, telegram_user_id):
@@ -1339,7 +1382,7 @@ class CommunityFeatures:
         # One-line rankings stay compact; multi-line player blocks get visual
         # separation before every player across every Telegraph ranking.
         nonempty_values = [str(item or "").strip() for item in lines if str(item or "").strip()]
-        ranking_positions = [i for i, item in enumerate(nonempty_values) if re.match(r"^\\d+\\.\\s+", item)]
+        ranking_positions = [i for i, item in enumerate(nonempty_values) if re.match(r"^\d+\.\s+", item)]
         is_detailed_ranking = bool(
             is_ranking_report
             and any(
@@ -1347,6 +1390,10 @@ class CommunityFeatures:
                 for a, b in zip(ranking_positions, ranking_positions[1:])
             )
         )
+        # A combined Report begins with REPORT, but its Progressione section
+        # has multi-line player blocks that need their own visual separation.
+        in_report_progression = False
+        progression_position = 0
         section_headings = {
             "PROFILO": "👤 PROFILO",
             "RANKED": "🏅 RANKED",
@@ -1385,6 +1432,16 @@ class CommunityFeatures:
             value = str(raw or "").strip()
             if not value:
                 continue
+            if first_value.upper().startswith("🔥 REPORT"):
+                if "CLASSIFICA PROGRESSIONE" in value.upper():
+                    in_report_progression = True
+                    progression_position = 0
+                    nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h3", "children": [value]}])
+                    continue
+                elif "RESOCONTO" in value.upper():
+                    in_report_progression = False
+                    nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h3", "children": [value]}])
+                    continue
             command_name = re.fullmatch(r"\[\[CMDNAME:(.+?)\]\]", value)
             if command_name:
                 command_text = command_name.group(1)
@@ -1420,7 +1477,9 @@ class CommunityFeatures:
                 # Telegraph spacing rule shared by every report:
                 # compact one-line ranking rows stay adjacent; detailed multi-line
                 # player blocks are visually separated so names/stats never merge.
-                if is_detailed_ranking and position > 1:
+                if in_report_progression:
+                    progression_position += 1
+                if (is_detailed_ranking and position > 1) or (in_report_progression and progression_position > 1):
                     nodes.append({"tag": "p", "children": ["\u00a0"]})
                 nodes.append({"tag": "p", "children": children})
                 continue
@@ -1435,6 +1494,8 @@ class CommunityFeatures:
                 continue
             heading = section_headings.get(value.rstrip(":").upper())
             if heading:
+                if nodes:
+                    nodes.append({"tag": "p", "children": ["\u00a0"]})
                 nodes.append({"tag": "h3", "children": [heading]})
                 continue
             if index == 0:
@@ -3459,8 +3520,7 @@ class CommunityFeatures:
             _ranking_member = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
             if _ranking_member and _ranking_member.get("chat_id") is not None:
                 _ranking_chat_id = int(_ranking_member["chat_id"])
-        _manual_ranking_request = bool(re.match(r"^(?:classific(?:a|he)|statistiche(?:\\s|$)|tutte\\s+le\\s+classifiche)", q0, re.I))
-        _ranking_reply_chat_id = int(message.from_user.id) if _manual_ranking_request and getattr(message.chat, "type", None) != "private" else int(message.chat_id)
+        _ranking_reply_chat_id = int(message.from_user.id) if getattr(message.chat, "type", None) != "private" else int(message.chat_id)
         if q0l == "report":
             LOG.info("MANUAL REPORT FAST ROUTE chat=%s", message.chat_id)
             try:
