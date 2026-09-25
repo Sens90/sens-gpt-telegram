@@ -456,29 +456,36 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rendered[progression_second - 1], "['\\xa0']")
         self.assertTrue(any(node.get("tag") == "h3" and "CLASSIFICA PROGRESSIONE" in str(node) for node in nodes))
 
-    def test_skin_account_uses_dated_snapshot_during_bridge_backoff(self):
+    def test_skin_catalog_uses_current_categories_without_snapshot_counts(self):
         from community_features import SkinBridgeBackoff
         obj = self.make_features()
         silver = [{"external_id": i + 1, "brawler_id": i % 106, "price_coins": 10000,
                    "acquisition_type": "coins"} for i in range(108)]
         mythic = [{"external_id": 200 + i, "rarity": "MYTHIC"} for i in range(3)]
         legendary = [{"external_id": 300 + i, "rarity": "LEGENDARY"} for i in range(2)]
-        obj._get = Mock(side_effect=lambda table, params: ([
-            {"snapshot_date": "2026-09-22", "category": "Totale", "owned_count": 50, "total_count": 100},
-            {"snapshot_date": "2026-09-22", "category": "Argento", "owned_count": 0, "total_count": 8},
-            {"snapshot_date": "2026-09-22", "category": "Mitiche", "owned_count": 1, "total_count": 99},
-            {"snapshot_date": "2026-09-22", "category": "Leggendarie", "owned_count": 2, "total_count": 99},
-        ] if table == "skin_account_history" else silver + mythic + legendary))
+        obj._get = Mock(return_value=silver + mythic + legendary)
         obj._official_owned_skin_ids = Mock(side_effect=SkinBridgeBackoff("offline"))
         result = obj.skin_account_text({"player_tag": "2GU9UV2RG"})
-        self.assertIn("2026-09-22", result)
-        self.assertIn("Skin possedute alla rilevazione: 50", result)
+        self.assertIn("SKIN — CATALOGO ATTUALE", result)
         self.assertIn("Argento: 106 Brawler (108 varianti)", result)
-        self.assertIn("Mitiche: 1/3 skin", result)
-        self.assertIn("Leggendarie: 2/2 skin", result)
-        self.assertIn("POSSEDUTE AL 2026-09-22 / CATALOGO ATTUALE", result)
-        self.assertNotIn("Argento: 0/8", result)
-        self.assertIn("potrebbero essere cambiati", result)
+        self.assertIn("Mitiche: 3 skin", result)
+        self.assertIn("Leggendarie: 2 skin", result)
+        self.assertNotIn("Possedute:", result)
+        obj._official_owned_skin_ids.assert_not_called()
+        fallback = obj._cached_skin_account_text("2GU9UV2RG")
+        self.assertEqual(fallback, result)
+        obj._get.assert_any_call("skins_catalog", unittest.mock.ANY)
+
+    async def test_skin_output_is_read_from_private_telegraph_button(self):
+        obj = self.make_features()
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/skin-catalogo")
+        obj._send_ranking_message = AsyncMock(return_value=True)
+        await obj.send_skin_telegraph(SimpleNamespace(), 456, "SKIN — CATALOGO ATTUALE\nMitiche: 85 skin")
+        payload = obj._send_ranking_message.await_args.args[2]
+        self.assertEqual(obj._send_ranking_message.await_args.args[1], 456)
+        self.assertEqual(payload["report_url"], "https://telegra.ph/skin-catalogo")
+        self.assertNotIn("Mitiche: 85", payload["text"])
+        self.assertIn("Mitiche: 85", "\n".join(obj._publish_telegraph.call_args.args[1]))
 
     @patch.dict(os.environ, {"TELEGRAM_TOKEN": "000000:test-token", "GEMINI_API_KEY": "test-key"})
     def test_explicit_stats_send_uses_private_destination_for_group(self):
