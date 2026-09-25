@@ -5711,9 +5711,11 @@ async def automatic_periodic_report_job(context):
     days = int(data.get("days") or 7)
     now = datetime.now(ROME)
     window = _scheduled_period_window(now, days)
-    if window is None:
+    frozen_only = bool(data.get("frozen_only"))
+    if window is None and not frozen_only:
         return
-    key = f"{now:%Y-%m-%d}-period-{days}"
+    slot_date = data.get("slot_date") or now.date().isoformat()
+    key = f"{slot_date}-period-{days}"
     try:
         settings_rows = await asyncio.to_thread(
             community._get, "community_settings", {"select": "chat_id"}
@@ -5736,6 +5738,8 @@ async def automatic_periodic_report_job(context):
                 continue
             payload = saved.get("payload")
             if not payload:
+                if frozen_only:
+                    continue  # Never reconstruct yesterday's half-month from today's data.
                 payload = await asyncio.to_thread(community.scheduled_dashboard_snapshot, chat_id, days, window)
                 await asyncio.to_thread(community._post, "scheduled_dashboard_delivery", {
                     "chat_id": chat_id, "slot": key, "payload": payload,
@@ -5755,6 +5759,15 @@ async def automatic_periodic_report_job(context):
 async def automatic_periodic_report_catchup_job(context):
     """Retry a failed calendar dashboard while its completed period is still current."""
     now = datetime.now(ROME)
+    # The last-day 23:59:59 half-month delivery can retry its frozen page
+    # before 06:00 on the 1st, leaving the monthly 06:00 slot separate.
+    if now.day == 1 and now.hour < 6:
+        previous = now.date() - timedelta(days=1)
+        retry_context = SimpleNamespace(job=SimpleNamespace(data={
+            "days": 15, "slot_date": previous.isoformat(), "frozen_only": True,
+        }), bot=context.bot)
+        await automatic_periodic_report_job(retry_context)
+        return
     if not (now.hour >= 6 and (now.hour < 12 or (now.hour == 12 and now.minute == 0))):
         return
     for days in (7, 15, 30):
@@ -5773,9 +5786,8 @@ def _scheduled_period_window(now, days):
     if days == 15:
         if midnight.day == 16:
             return midnight.replace(day=1), midnight
-        if midnight.day == 1:
-            previous = midnight - timedelta(days=1)
-            return previous.replace(day=16, hour=0, minute=0, second=0, microsecond=0), midnight
+        if (midnight + timedelta(days=1)).day == 1 and now.astimezone(ROME).hour == 23 and now.minute == 59:
+            return midnight.replace(day=16), now.astimezone(ROME)
         return None
     if days == 30 and midnight.day == 1:
         previous = midnight - timedelta(days=1)
@@ -5913,7 +5925,7 @@ def main():
             first=300,
             name="classifiche_periodiche_watchdog",
         )
-        # Complete calendar periods. All three jobs start at 06:00 Rome time.
+        # Complete calendar periods; the second half-month closes on the last day.
         application.job_queue.run_daily(
             automatic_periodic_report_job,
             time=dt_time(hour=6, minute=0, tzinfo=ROME),
@@ -5932,8 +5944,8 @@ def main():
         )
         application.job_queue.run_monthly(
             automatic_periodic_report_job,
-            when=dt_time(hour=6, minute=0, tzinfo=ROME),
-            day=1,
+            when=dt_time(hour=23, minute=59, second=59, tzinfo=ROME),
+            day=-1,
             data={"days": 15},
             name="report_15_giorni_seconda_meta",
             job_kwargs={"misfire_grace_time": 1800, "coalesce": True, "max_instances": 1},
