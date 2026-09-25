@@ -5759,7 +5759,7 @@ async def automatic_periodic_report_job(context):
 async def automatic_periodic_report_catchup_job(context):
     """Retry a failed calendar dashboard while its completed period is still current."""
     now = datetime.now(ROME)
-    # The last-day 23:59:59 half-month delivery can retry its frozen page
+    # The last-day 23:59 half-month delivery can retry its frozen page
     # before 06:00 on the 1st, leaving the monthly 06:00 slot separate.
     if now.day == 1 and now.hour < 6:
         previous = now.date() - timedelta(days=1)
@@ -5944,7 +5944,7 @@ def main():
         )
         application.job_queue.run_monthly(
             automatic_periodic_report_job,
-            when=dt_time(hour=23, minute=59, second=59, tzinfo=ROME),
+            when=dt_time(hour=23, minute=59, tzinfo=ROME),
             day=-1,
             data={"days": 15},
             name="report_15_giorni_seconda_meta",
