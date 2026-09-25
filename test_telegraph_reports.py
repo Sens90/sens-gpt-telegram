@@ -461,15 +461,22 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         silver = [{"external_id": i + 1, "brawler_id": i % 106, "price_coins": 10000,
                    "acquisition_type": "coins"} for i in range(108)]
+        mythic = [{"external_id": 200 + i, "rarity": "MYTHIC"} for i in range(3)]
+        legendary = [{"external_id": 300 + i, "rarity": "LEGENDARY"} for i in range(2)]
         obj._get = Mock(side_effect=lambda table, params: ([
             {"snapshot_date": "2026-09-22", "category": "Totale", "owned_count": 50, "total_count": 100},
             {"snapshot_date": "2026-09-22", "category": "Argento", "owned_count": 0, "total_count": 8},
-        ] if table == "skin_account_history" else silver))
+            {"snapshot_date": "2026-09-22", "category": "Mitiche", "owned_count": 1, "total_count": 99},
+            {"snapshot_date": "2026-09-22", "category": "Leggendarie", "owned_count": 2, "total_count": 99},
+        ] if table == "skin_account_history" else silver + mythic + legendary))
         obj._official_owned_skin_ids = Mock(side_effect=SkinBridgeBackoff("offline"))
         result = obj.skin_account_text({"player_tag": "2GU9UV2RG"})
         self.assertIn("2026-09-22", result)
         self.assertIn("Skin possedute alla rilevazione: 50", result)
         self.assertIn("Argento: 106 Brawler (108 varianti)", result)
+        self.assertIn("Mitiche: 1/3 skin", result)
+        self.assertIn("Leggendarie: 2/2 skin", result)
+        self.assertIn("POSSEDUTE AL 2026-09-22 / CATALOGO ATTUALE", result)
         self.assertNotIn("Argento: 0/8", result)
         self.assertIn("potrebbero essere cambiati", result)
 

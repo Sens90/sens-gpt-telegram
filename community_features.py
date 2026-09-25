@@ -1101,7 +1101,8 @@ class CommunityFeatures:
                     break
                 offset += 1000
             if catalog:
-                lines.extend(["", f"CATALOGO ATTUALE: {len(catalog)} varianti", "PER CATEGORIA — CATALOGO ATTUALE"])
+                lines.extend(["", f"CATALOGO ATTUALE: {len(catalog)} varianti",
+                              f"PER CATEGORIA — POSSEDUTE AL {latest} / CATALOGO ATTUALE"])
                 groups = {}
                 for row in catalog:
                     groups.setdefault(self._skin_category_label(row), []).append(row)
@@ -1110,7 +1111,11 @@ class CommunityFeatures:
                         brawlers = {row["brawler_id"] for row in group if row.get("brawler_id") is not None}
                         lines.append(f"{name}: {len(brawlers)} Brawler ({len(group)} varianti)")
                     else:
-                        lines.append(f"{name}: {len(group)} skin")
+                        saved = current.get(name)
+                        if saved:
+                            lines.append(f"{name}: {int(saved.get('owned_count') or 0)}/{len(group)} skin")
+                        else:
+                            lines.append(f"{name}: {len(group)} skin nel catalogo (possesso non rilevato)")
         return "\n".join(lines)
 
     def skin_account_text(self, registered_user, brawler_name=None, rarity=None, category=None, mode="summary"):
