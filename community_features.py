@@ -94,11 +94,11 @@ FAQ_TEXT = (
 
 HELP_TEXT = """COMANDI SENS GPT — GUIDA COMPLETA
 
-Questa pagina raccoglie i comandi disponibili e spiega cosa fa ciascuno. Dove trovi ▶️ puoi toccare il comando per aprire Sens GPT ed eseguirlo in privato.
+Questa pagina raccoglie i comandi disponibili. Tocca un nome per aprire la guida Telegraph della sua categoria; per eseguire un comando personale scrivilo al bot.
 
 👤 ACCOUNT E PROFILO
-registrami #TAG — scrivi nel gruppo
-Collega il tuo account Brawl Stars principale al tuo utente Telegram. Esempio: registrami #2LVRCLV8LV
+[[CMDNAME:registrami #TAG]]
+Scrivi nel gruppo. Collega il tuo account Brawl Stars principale al tuo utente Telegram. Esempio: registrami #2LVRCLV8LV
 
 [[CMDNAME:aggiungi account #TAG]]
 Collega un account Brawl Stars secondario o successivo al tuo profilo.
@@ -281,10 +281,10 @@ Sens GPT mantiene un contesto personale separato per ogni utente per rendere il 
 [[CMDNAME:club]]
 Mostra il riepilogo della community e dei club configurati.
 
-elenco utenti — scrivi nel gruppo
+[[CMDNAME:elenco utenti]]
 Mostra nel gruppo gli account della community collegati al bot. Funziona anche elenco registrati.
 
-elenco inattivi — scrivi nel gruppo
+[[CMDNAME:elenco inattivi]]
 Mostra nel gruppo la situazione di inattività disponibile al bot. Anche l'avviso automatico per la soglia kick resta nel gruppo.
 
 [[CMDNAME:assenza N]]
@@ -1454,7 +1454,7 @@ class CommunityFeatures:
         first_value = next((str(item or "").strip() for item in lines if str(item or "").strip()), "")
         is_ranking_report = first_value.upper().startswith("CLASSIFICA")
         is_skin_account = first_value.upper().startswith("SKIN POSSEDUTE — ACCOUNT")
-        is_command_guide = first_value.upper().startswith("COMANDI SENS GPT")
+        is_command_guide = first_value.upper().startswith(("COMANDI SENS GPT", "GUIDA COMANDI"))
         is_dashboard = first_value.upper().startswith("CLASSIFICHE")
         # A detailed ranking has continuation/stat lines between numbered players.
         # One-line rankings stay compact; multi-line player blocks get visual
@@ -1516,6 +1516,9 @@ class CommunityFeatures:
             if is_dashboard and re.match(r"^(?:🏆|🔥|📊) (?:Classifica|Progressione|Report)\b", value, re.I):
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h4", "children": [value]}])
                 continue
+            if first_value.upper().startswith("PROGRESSIONE") and value.startswith("🦸 "):
+                nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h4", "children": [value]}])
+                continue
             if is_skin_account and value == "📊 PER RARITÀ":
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h3", "children": [value]}])
                 continue
@@ -1559,6 +1562,16 @@ class CommunityFeatures:
                     "children": [f"▶️ {label}"],
                 }]})
                 continue
+            guide_link = value[len("[[GUIDE:"):-2].split("|", 1) if value.startswith("[[GUIDE:") and value.endswith("]]") else None
+            if guide_link and len(guide_link) == 2 and re.fullmatch(r"https://telegra\.ph/[A-Za-z0-9_/-]+", guide_link[0]):
+                nodes.append({"tag": "p", "children": [{
+                    "tag": "a", "attrs": {"href": guide_link[0]},
+                    "children": [f"📖 {guide_link[1]}"],
+                }]})
+                continue
+            if is_command_guide and value.startswith("⌨️ "):
+                nodes.append({"tag": "p", "children": [{"tag": "strong", "children": [value]}]})
+                continue
             dashboard_link = re.fullmatch(r"\[\[DASH:(dash_[prt]_(?:[0-9]|10)_(?:0|7|15|30))\|Apri\]\]", value)
             direct_link = re.fullmatch(r"\[\[URL:(https://telegra\.ph/[A-Za-z0-9_/-]+)\|Apri\]\]", value)
             if direct_link:
@@ -1589,7 +1602,8 @@ class CommunityFeatures:
                 nodes.append({"tag": "p", "children": children})
                 continue
             command_sections = {
-                "👤 ACCOUNT E PROFILO", "🎨 SKIN ACCOUNT", "🏆 CLASSIFICHE COMMUNITY",
+                "👤 ACCOUNT E PROFILO", "🎨 SKIN ACCOUNT", "🏆 CLASSIFICHE & REPORT",
+                "📑 REPORT PERIODICI — TROFEI + PROGRESSIONE", "🏆 CLASSIFICHE COMMUNITY",
                 "📅 ACCESSI RAPIDI PER PERIODO", "⚡ COMANDI DIRETTI DI OGGI",
                 "🛡️ CLASSIFICHE DEI 4 CLUB", "📊 GRAFICI",
                 "🎯 DRAFT RANKED — SOLO CHAT PRIVATA", "🤝 COMMUNITY",
@@ -2170,7 +2184,10 @@ class CommunityFeatures:
             f"Extra osservati vs delta base: +{self.number_formatter(extra_total)}", "",
             "DETTAGLIO BRAWLER"
         ]
-        for brawler, br in sorted(grouped.items(), key=lambda item: sum(weighted_delta(r) for r in item[1]), reverse=True):
+        ordered_brawlers = sorted(grouped.items(), key=lambda item: sum(weighted_delta(r) for r in item[1]), reverse=True)
+        brawler_sections = {}
+        for brawler, br in ordered_brawlers:
+            section_start = len(lines)
             raw = sum(int(r.get("trophy_change") or 0) for r in br)
             positive = sum(max(0, int(r.get("trophy_change") or 0)) for r in br)
             lost = sum(min(0, int(r.get("trophy_change") or 0)) for r in br)
@@ -2182,7 +2199,7 @@ class CommunityFeatures:
             starts = [int(r.get("brawler_trophies_before") or 0) for r in br]
             ends = [max(0, int(r.get("brawler_trophies_before") or 0)+int(r.get("trophy_change") or 0)) for r in br]
             first, last = dt_local(br[0]["battle_time"]), dt_local(br[-1]["battle_time"])
-            lines += ["", f"{brawler}", f"Orario: {first:%H:%M}–{last:%H:%M} | Partite: {len(br)}",
+            lines += ["", f"🦸 {brawler_name_it(brawler)}", f"Orario: {first:%H:%M}–{last:%H:%M} | Partite: {len(br)}",
                       f"Coppe osservate: {min(starts+ends):,}–{max(starts+ends):,}".replace(",", "."),
                       f"Vittorie: {wins} | Sconfitte: {losses}",
                       f"Coppe positive: +{self.number_formatter(positive)} | Coppe perse: {self.number_formatter(lost)} | Saldo: {'+' if raw > 0 else ''}{self.number_formatter(raw)}",
@@ -2196,13 +2213,16 @@ class CommunityFeatures:
                     sessions.append(current); current=[]
                 current.append(r)
             if current: sessions.append(current)
-            lines.append("Sessioni:")
+            lines.extend(["", "SESSIONI", f"Sessioni osservate: {len(sessions)}"])
             for ss in sessions:
                 sr=sum(int(x.get("trophy_change") or 0) for x in ss)
                 sw=int(Decimal(str(sum(weighted_delta(x) for x in ss))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
                 lines.append(f"• {dt_local(ss[0]['battle_time']):%H:%M}–{dt_local(ss[-1]['battle_time']):%H:%M}: {len(ss)} partite, {'+' if sr>0 else ''}{sr} coppe, {'+' if sw>0 else ''}{sw} punti")
+            brawler_sections[brawler] = lines[section_start:]
         lines += ["", "LOG BATTAGLIE"]
+        battle_sections = {}
         for index, row in enumerate(rows, 1):
+            battle_start = len(lines)
             t0 = max(0, int(row.get("brawler_trophies_before") or 0))
             delta = int(row.get("trophy_change") or 0)
             t1 = max(0, t0 + delta)
@@ -2229,11 +2249,9 @@ class CommunityFeatures:
                 lines.append(
                     f"Extra osservato: +{int(extra)} ({self._progression_bonus_it(row.get('bonus_type'))})"
                 )
-            if row.get("current_win_streak") is not None:
-                lines.append(f"Serie di vittorie osservata: {int(row['current_win_streak'])}")
             if isinstance(team, list) and team:
-                lines.append("Squadra:")
-                for member in team:
+                lines.append("Squadra: giocatori ordinati per trofei del Brawler")
+                for member in sorted(team, key=lambda item: int(item.get("brawler_trophies") or 0), reverse=True):
                     member_trophies = member.get("brawler_trophies")
                     crown = (
                         " 👑" if max_trophies is not None and member_trophies is not None
@@ -2250,7 +2268,24 @@ class CommunityFeatures:
                 lines.append("Squadra: Modalità Solo")
             else:
                 lines.append("Squadra: non disponibile nel battle log.")
+            if row.get("current_win_streak") is not None:
+                lines.append(f"Serie di vittorie osservata: {int(row['current_win_streak'])}")
+            battle_sections.setdefault(str(row.get("brawler_name") or "Brawler"), []).extend(lines[battle_start:])
         lines.insert(1, f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}")
+        full_lines = lines
+        overview = full_lines[:full_lines.index("DETTAGLIO BRAWLER") + 1]
+        for brawler, br in ordered_brawlers:
+            detail = [f"PROGRESSIONE {brawler_name_it(brawler)} — {name}", f"Periodo: {period}",
+                      "", "DETTAGLIO BRAWLER", *brawler_sections[brawler], "", "LOG BATTAGLIE",
+                      *battle_sections.get(brawler, [])]
+            detail_url = self._publish_telegraph(f"Progressione {brawler_name_it(brawler)} — {name} — {period}", detail)
+            if not detail_url:
+                overview = full_lines
+                break
+            points = int(Decimal(str(sum(weighted_delta(r) for r in br))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+            overview.extend(["", f"🦸 {brawler_name_it(brawler)}", f"Partite: {len(br)} · Progressione: +{self.number_formatter(points)}",
+                             f"[[URL:{detail_url}|Apri]]"])
+        lines = overview
         report_url = self._publish_telegraph(f"Progressione {name} — {period}", lines)
         if report_url:
             summary = [
@@ -2262,6 +2297,53 @@ class CommunityFeatures:
             ]
             return self._telegraph_reply(summary, report_url, lines)
         return "\n".join(lines)
+
+    def _publish_command_guide(self):
+        """Publish category reference pages and link every guide entry to Telegraph."""
+        source = HELP_TEXT.splitlines()
+        headings = {
+            "👤 ACCOUNT E PROFILO", "🎨 SKIN ACCOUNT", "🏆 CLASSIFICHE & REPORT",
+            "📅 ACCESSI RAPIDI PER PERIODO", "⚡ COMANDI DIRETTI DI OGGI",
+            "🛡️ CLASSIFICHE DEI 4 CLUB", "📊 GRAFICI",
+            "🎯 DRAFT RANKED — SOLO CHAT PRIVATA", "🤝 COMMUNITY",
+            "📑 REPORT PERIODICI — TROFEI + PROGRESSIONE",
+            "🎮 BRAWL STARS — RICHIESTE LIBERE",
+        }
+        groups = {}
+        group = None
+        for line in source:
+            if line in headings:
+                group = line
+                groups[group] = []
+            elif group is not None:
+                groups[group].append(line)
+        def command_label(line):
+            if line.startswith("[[CMDNAME:") and line.endswith("]]"):
+                return line[len("[[CMDNAME:"):-2]
+            if line.startswith("[[CMD:") and line.endswith("]]") and "|" in line:
+                return line.split("|", 1)[1][:-2]
+            return None
+        urls = {}
+        for heading, entries in groups.items():
+            details = [f"GUIDA COMANDI — {heading}", "Apri questa pagina per leggere sintassi e descrizioni. Per ottenere i dati personali scrivi il comando al bot.", ""]
+            for line in entries:
+                label = command_label(line)
+                details.append(f"⌨️ {label}" if label else line)
+            urls[heading] = self._publish_telegraph(f"Comandi — {heading}", details)
+            if not urls[heading]:
+                return None
+        rendered = []
+        group = None
+        for line in source:
+            if line in headings:
+                group = line
+            label = command_label(line)
+            if label and group:
+                rendered.append(f"[[GUIDE:{urls[group]}|{label}]]")
+            else:
+                rendered.append(line)
+        guide_url = self._publish_telegraph("Comandi Sens GPT — TITANI ABUSIVI", rendered)
+        return self._telegraph_reply(["COMANDI SENS GPT", "Apri la guida Telegraph: ogni voce porta alla sua categoria."], guide_url, rendered) if guide_url else None
 
     def _publish_telegraph(self, title, lines):
         token = os.getenv("TELEGRAPH_ACCESS_TOKEN", "").strip()
@@ -4072,15 +4154,11 @@ class CommunityFeatures:
             return True
 
         if ql in ("aiuto", "help", "comandi", "funzioni"):
-            command_lines = HELP_TEXT.splitlines()
-            command_url = self._publish_telegraph("Comandi Sens GPT — TITANI ABUSIVI", command_lines)
-            if command_url:
-                await self._send_ranking_message(context, _ranking_reply_chat_id, self._telegraph_reply(
-                    ["COMANDI SENS GPT", "Apri l'elenco completo dei comandi disponibili."],
-                    command_url, command_lines
-                ))
+            guide = await asyncio.to_thread(self._publish_command_guide)
+            if guide:
+                await self._send_ranking_message(context, _ranking_reply_chat_id, guide)
             else:
-                await message.reply_text(HELP_TEXT)
+                await message.reply_text("La guida Telegraph dei comandi non è disponibile in questo momento. Riprova tra poco.")
             return True
 
         if ql in ("regole", "faq", "regolamento"):
