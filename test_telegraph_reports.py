@@ -462,19 +462,27 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         progression.return_value = {"skins_owned": 477, "skin_rarity_counts": {
             "mythic": 28, "legendary": 10, "true silver": 0, "rare": 103,
         }}
-        obj._get = Mock()
+        catalog = ([{"external_id": str(i), "rarity": "MYTHIC"} for i in range(85)]
+                   + [{"external_id": str(100 + i), "rarity": "LEGENDARY"} for i in range(59)]
+                   + [{"external_id": str(200 + i), "rarity": "RARE"} for i in range(122)]
+                   + [{"external_id": "500", "name_en": "STAR SHELLY"},
+                      {"external_id": "501", "name_en": "WIZARD BARLEY"}])
+        obj._get = Mock(return_value=catalog)
         obj._official_owned_skin_ids = Mock()
         result = obj.skin_account_text({"player_tag": "2GU9UV2RG"})
         self.assertIn("SKIN POSSEDUTE — ACCOUNT", result)
-        self.assertIn("🎨 Totale possedute: 477", result)
-        self.assertIn("🔴 Mitiche\nPossedute: 28", result)
-        self.assertIn("🟡 Leggendarie\nPossedute: 10", result)
-        self.assertIn("🥈 Argento\nPossedute: 0", result)
-        self.assertNotIn("106 Brawler", result)
+        self.assertIn("🎨 Totale: 477/268", result)
+        self.assertIn("🔴 Mitiche\nPossedute / totali: 28/85", result)
+        self.assertIn("🟡 Leggendarie\nPossedute / totali: 10/59", result)
+        self.assertIn("🥈 Argento\nPossedute / totali: 0/n.d.", result)
+        self.assertIn("⚪ Senza rarità\nPossedute / totali: n.d./2", result)
+        self.assertIn("STAR SHELLY, WIZARD BARLEY", result)
+        self.assertNotIn("Fonte:", result)
+        self.assertNotIn("Altre skin senza rarità", result)
         obj._official_owned_skin_ids.assert_not_called()
         fallback = obj._cached_skin_account_text("2GU9UV2RG")
         self.assertEqual(fallback, result)
-        obj._get.assert_not_called()
+        obj._get.assert_any_call("skins_catalog", unittest.mock.ANY)
         self.assertEqual(progression.call_count, 2)
 
     @patch("player_tracking._brawlytix_progression", return_value={})
@@ -487,11 +495,12 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         nodes = obj._telegraph_nodes([
             "SKIN POSSEDUTE — ACCOUNT", "", "🎨 Totale possedute: 38", "",
-            "📊 PER RARITÀ", "", "🔴 Mitiche", "Possedute: 28", "",
-            "🟡 Leggendarie", "Possedute: 10",
+            "📊 PER RARITÀ", "", "🔴 Mitiche", "Possedute / totali: 28/85", "",
+            "🟡 Leggendarie", "Possedute / totali: 10/59", "",
+            "⚪ Senza rarità", "Possedute / totali: n.d./4",
         ])
         headings = [i for i, node in enumerate(nodes) if node.get("tag") == "h4"]
-        self.assertEqual(len(headings), 2)
+        self.assertEqual(len(headings), 3)
         self.assertTrue(all(nodes[i - 1] == {"tag": "p", "children": ["\u00a0"]} for i in headings))
 
     async def test_skin_output_is_read_from_private_telegraph_button(self):
