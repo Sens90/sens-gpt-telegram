@@ -144,21 +144,26 @@ Mostra lo storico della collezione Skin nel periodo scelto.
 Mostra l'immagine disponibile della Skin specificata.
 
 🏆 CLASSIFICHE & REPORT
-[[CMDNAME:Classifiche]]
+[[CMDNAME:Classifica]]
 Apre il Telegraph generale: OGGI, 7, 15 e 30 giorni. Ogni voce indica ambito e periodo; Apri esegue in privato solo la classifica o il Report scelto.
+
+[[CMDNAME:Classifiche]]
+Sinonimo di Classifica: apre lo stesso indice generale.
 
 📅 ACCESSI RAPIDI PER PERIODO
 [[CMDNAME:classifiche oggi]]
 Apre solo le classifiche Trofei e le 11 Progressioni di oggi. I Report periodici iniziano da 7 giorni.
 
-[[CMDNAME:classifica 7]]
+[[CMDNAME:classifiche 7]]
 Apre il Telegraph di 7 giorni: classifiche Trofei Community e Club, le 11 Progressioni e gli 11 Report dei rispettivi ambiti.
 
-[[CMDNAME:classifica 15]]
+[[CMDNAME:classifiche 15]]
 Apre lo stesso indice completo riferito agli ultimi 15 giorni.
 
-[[CMDNAME:classifica 30]]
+[[CMDNAME:classifiche 30]]
 Apre lo stesso indice completo riferito agli ultimi 30 giorni.
+
+Sono accettate anche le forme Classifica 7, Classifica 15 e Classifica 30.
 
 ⚡ COMANDI DIRETTI DI OGGI
 [[CMDNAME:classifica oggi]]
@@ -3644,7 +3649,7 @@ class CommunityFeatures:
             payload = self._telegraph_reply(summary, report_url, guide) if report_url else "\n".join(guide)
             await self._send_ranking_message(context, _ranking_reply_chat_id, payload)
             return True
-        if q0l in ("classifiche", "classifiche e report", "dashboard classifiche", "dashboard classifiche e report"):
+        if q0l in ("classifica", "classifiche", "classifiche e report", "dashboard classifiche", "dashboard classifiche e report"):
             try:
                 payload = await asyncio.wait_for(
                     asyncio.to_thread(self.rankings_dashboard_text, _ranking_chat_id),
@@ -4903,17 +4908,6 @@ class CommunityFeatures:
             club_name=next((v for k,v in self.CLUB_ALIASES.items() if k in ql),None)
             stat_key="classificata carriera" if "carriera" in ql else ("classificata stagione" if "stagione" in ql else "classificata")
             await _ranking_reply(self.stat_ranking_text(_ranking_chat_id, stat_key, club_name)); return True
-
-        if ql == "classifica":
-            await message.reply_text(
-                "CLASSIFICA COMMUNITY\n\n"
-                "Scegli il periodo:\n"
-                "- classifica oggi\n"
-                "- classifica 7\n"
-                "- classifica 15\n"
-                "- classifica 30"
-            )
-            return True
 
         match = re.fullmatch(
             r"classifica(?:\s+(?:della\s+community))?(?:\s+di)?\s+oggi",

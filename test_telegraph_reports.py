@@ -122,9 +122,15 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(await obj.handle_command(message, context, f"Classifica {days}"))
             self.assertEqual(obj.rankings_dashboard_text.call_args.args[1], days)
             self.assertEqual(obj._send_ranking_message.await_args.args[1], 456)
+            self.assertTrue(await obj.handle_command(message, context, f"Classifiche {days}"))
+            self.assertEqual(obj.rankings_dashboard_text.call_args.args[1], days)
+        for command in ("Classifica", "Classifiche"):
+            self.assertTrue(await obj.handle_command(message, context, command))
+            self.assertEqual(obj.rankings_dashboard_text.call_args.args, (-1001,))
+            self.assertEqual(obj._send_ranking_message.await_args.args[1], 456)
         self.assertTrue(await obj.handle_command(message, context, "Classifica oggi"))
         obj.ranking_text.assert_called_with(-1001, 0)
-        self.assertEqual(obj.rankings_dashboard_text.call_count, 3)
+        self.assertEqual(obj.rankings_dashboard_text.call_count, 8)
         self.assertTrue(await obj.handle_command(message, context, "Progressione oggi"))
         obj.progression_detail_text.assert_called_once_with("2GU9UV2RG", 0)
         self.assertEqual(obj._send_ranking_message.await_args.args[1], 456)
@@ -145,7 +151,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
 
     def test_command_guide_describes_current_period_hubs(self):
         from community_features import HELP_TEXT
-        for command in ("classifiche oggi", "classifica 7", "classifica 15", "classifica 30",
+        for command in ("Classifica", "Classifiche", "classifiche oggi", "classifiche 7", "classifiche 15", "classifiche 30",
                         "classifica oggi", "progressione oggi"):
             self.assertIn(f"[[CMDNAME:{command}]]", HELP_TEXT)
 
