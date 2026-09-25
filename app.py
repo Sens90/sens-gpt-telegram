@@ -5516,6 +5516,13 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "cmd_comandi": "comandi",
             "cmd_draft_ranked": "draft ranked",
         }
+        dashboard_command = community.dashboard_command(payload) if payload.startswith("dash_") else None
+        if dashboard_command:
+            print("TELEGRAPH DASHBOARD DEEP LINK ROUTE:", payload, flush=True)
+            if await community.handle_command(message, context, dashboard_command):
+                return
+            await message.reply_text("Questa voce del dashboard non è disponibile in questo momento.")
+            return
         if payload.startswith("run_"):
             encoded = payload[4:]
             try:
