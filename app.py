@@ -322,17 +322,18 @@ async def send_mode_aware_text(message, context, text, disable_web_page_preview=
         mode = await asyncio.to_thread(
             get_voice_mode, message.chat_id, message.from_user.id
         )
+    reply_chat_id = _manual_command_reply_chat_id(message) if isinstance(message, _PrivateCommandMessage) else message.chat_id
     if mode in ("text", "both"):
         await context.bot.send_message(
-            chat_id=message.chat_id,
+            chat_id=reply_chat_id,
             text=text,
             disable_web_page_preview=disable_web_page_preview,
         )
     if mode in ("voice", "both"):
-        ok = await send_voice_reply(context, message.chat_id, text)
+        ok = await send_voice_reply(context, reply_chat_id, text)
         if not ok and mode == "voice":
             await context.bot.send_message(
-                chat_id=message.chat_id,
+                chat_id=reply_chat_id,
                 text="La risposta vocale non è disponibile in questo momento. Riprova tra poco.",
             )
 
@@ -340,6 +341,9 @@ async def send_mode_aware_text(message, context, text, disable_web_page_preview=
 async def voice_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.from_user:
+        return
+    message = await _private_group_command(message, context, "/voce")
+    if message is None:
         return
     raw = " ".join(context.args or []).strip().casefold()
     aliases = {
@@ -3309,6 +3313,23 @@ def normalize_deterministic_command(raw_text, bot_username=None):
     return re.sub(r"\s+", " ", command).strip()
 
 
+def _is_manual_deterministic_command(command):
+    """Classify maintained manual command families before any AI path."""
+    value = str(command or "").strip()
+    return bool(
+        re.match(
+            r"^(?:classifica|classifiche|progressione|report|stats|statistiche|profilo|scheda|status|stato|"
+            r"registrami|tegistrami|registra|registrati|skin|ranked|draft|counter|grafico|club|"
+            r"elenco|inattivi|assenza|eventi|partecipo|reclutamento|regole|faq|sito|discord|"
+            r"comandi|aiuto|help|funzioni|coefficiente|guida|generazioni|"
+            r"aggiungi generazioni?|rimuovi generazioni?|tutte le classifiche)\b",
+            value, re.I,
+        )
+        or re.fullmatch(r"(?:quante skin (?:ho|possiedo)|quali (?:ho|mi mancano))", value, re.I)
+        or re.fullmatch(r"come funziona il coefficiente abusivo", value, re.I)
+    )
+
+
 class _PrivateCommandMessage:
     """Keep the source group as command scope while delivering replies to the requester in private."""
     def __init__(self, original, bot):
@@ -3350,6 +3371,13 @@ class _PrivateCommandMessage:
         return await self._bot.send_audio(chat_id=self._private_chat_id, audio=audio, *args, **kwargs)
 
 
+def _manual_command_reply_chat_id(message):
+    """Explicit bot sends bypass the private reply wrapper."""
+    if getattr(message.chat, "type", None) in {"group", "supergroup"}:
+        return int(message.from_user.id)
+    return int(message.chat_id)
+
+
 async def _ensure_private_command_delivery(message, context):
     """Return a group-scoped message whose interactive replies go to the requester privately."""
     if getattr(message.chat, "type", None) not in {"group", "supergroup"}:
@@ -3362,6 +3390,19 @@ async def _ensure_private_command_delivery(message, context):
             "Per usare i comandi senza intasare il gruppo, apri @SensGPT_TitaniAbusiviBot in privato e premi Avvia una volta."
         )
         return None
+
+
+async def _private_group_command(message, context, command):
+    """Keep the group for data access, delete its command, deliver replies privately."""
+    original = message
+    routed = await _ensure_private_command_delivery(original, context)
+    if getattr(original.chat, "type", None) in {"group", "supergroup"}:
+        try:
+            await context.bot.delete_message(chat_id=original.chat_id, message_id=original.message_id)
+            print("MANUAL COMMAND DELETED FROM GROUP:", repr(command), flush=True)
+        except Exception as exc:
+            print("MANUAL COMMAND DELETE ERROR:", type(exc).__name__, flush=True)
+    return routed
 
 
 async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3387,6 +3428,9 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _admin_cmd = re.sub(r"\\s+", " ", _admin_cmd).strip()
     _is_non_registrati = ("non registrati" in _raw_admin.casefold() or "nonregistrati" in _raw_admin.casefold() or "utenti non registrati" in _raw_admin.casefold())
     if _is_non_registrati:
+        message = await _private_group_command(message, context, _raw_admin)
+        if message is None:
+            return
         if getattr(message.chat, "type", None) not in {"group", "supergroup"}:
             await message.reply_text("Usa questo comando nel gruppo della community.")
             return
@@ -3417,16 +3461,17 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message.text,
         _bot_username_for_command,
     )
-    # Every manual command issued in a group is executed with the group as
-    # its data/permission scope, but all interactive output is delivered in
-    # private to the requester. Voice interaction commands are the exception:
-    # "leggi" and explicit "rispondi a voce" stay in the source chat.
+    # Manual commands preserve the group data scope and answer privately,
+    # including voice and Telegraph publishing commands.
+    _voice_reader_command = bool(re.fullmatch(
+        r"(?:leggi|leggilo|leggi questo|leggi a voce)", _raw_command.strip(), re.I
+    ))
     _voice_group_exception = bool(
-        re.fullmatch(r"(?:leggi|leggilo|leggi questo|leggi a voce)", _raw_command.strip(), re.I)
-        or re.search(r"(?:rispondi|rspondi|rispomdi|rispndi|rispodi)\s+(?:a\s+voce|voce)\s*$", (message.text or "").strip(), re.I)
+        _voice_reader_command or re.search(
+            r"(?:rispondi|rspondi|rispomdi|rispndi|rispodi)\s+(?:a\s+voce|voce)\s*$",
+            (message.text or "").strip(), re.I,
+        )
     )
-    # Technical Telegraph publisher: execute in the source group only.
-    # Do not route it to private, Gemini, or silent conversational memory.
     _telegraph_memory_group_trigger = bool(
         re.fullmatch(
             r"(?:telegraph\s+memoria|comunicazione\s+memoria|novit[aà]\s+memoria)",
@@ -3438,16 +3483,8 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # conversation (greetings, advice, questions handled by Gemini) stays in
     # the group together with the bot reply.
     _deterministic_group_command = bool(
-        community.is_deterministic_command(_raw_command)
-        if hasattr(community, "is_deterministic_command")
-        else re.match(
-            r"^(?:classifica|progressione|report|stats|statistiche|profilo|scheda|status|stato|"
-            r"registrami|registra|skin|ranked|draft|counter|grafico|club|elenco|inattivi|assenza|"
-            r"eventi|partecipo|reclutamento|regole|faq|sito|discord|comandi|aiuto|help|funzioni|"
-            r"coefficiente)\b",
-            _raw_command.strip(),
-            re.I,
-        )
+        _voice_reader_command or _telegraph_memory_group_trigger
+        or _is_manual_deterministic_command(_raw_command)
     )
     # In groups, free-form Gemini conversation is opt-in: reply only when
     # the bot is explicitly mentioned or when the user replies to a bot message.
@@ -3482,23 +3519,12 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("GROUP FREE CHAT SILENT MEMORY: stored without reply", flush=True)
         return
 
-    if not _voice_group_exception and not _telegraph_memory_group_trigger and _deterministic_group_command:
-        _source_group_message = message
-        _private_message = await _ensure_private_command_delivery(message, context)
-        if _private_message is None:
+    if _deterministic_group_command or _voice_group_exception:
+        message = await _private_group_command(message, context, _raw_command)
+        if message is None:
             return
-        message = _private_message
-        if getattr(_source_group_message.chat, "type", None) in {"group", "supergroup"}:
-            try:
-                await context.bot.delete_message(
-                    chat_id=_source_group_message.chat_id,
-                    message_id=_source_group_message.message_id,
-                )
-                print("MANUAL COMMAND DELETED FROM GROUP:", repr(_raw_command), flush=True)
-            except Exception as exc:
-                print("MANUAL COMMAND DELETE ERROR:", type(exc).__name__, flush=True)
     if _telegraph_memory_group_trigger:
-        print("TELEGRAPH MEMORY DIRECT GROUP ROUTE:", repr(_raw_command), flush=True)
+        print("TELEGRAPH MEMORY PRIVATE ROUTE:", repr(_raw_command), flush=True)
         await community.handle_command(message, context, _raw_command)
         return
 
@@ -3582,7 +3608,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Il messaggio selezionato non contiene testo da leggere."
             )
             return
-        ok = await send_voice_reply(context, message.chat_id, selected_text)
+        ok = await send_voice_reply(context, _manual_command_reply_chat_id(message), selected_text)
         if not ok:
             await message.reply_text(
                 "Non riesco a generare il vocale in questo momento. Riprova tra poco."
@@ -3748,11 +3774,11 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
                 await community._send_ranking_message(
                     context,
-                    message.chat_id,
+                    _manual_command_reply_chat_id(message),
                     community._telegraph_reply(stats_summary, report_url, text.splitlines()),
                 )
             else:
-                await send_mode_aware_text(message, context, text)
+                await message.reply_text(text)
             return
 
     # Explicit mode on the current request always wins. Otherwise, replying
@@ -3888,7 +3914,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Il messaggio selezionato non contiene testo da leggere."
             )
             return
-        ok = await send_voice_reply(context, message.chat_id, selected_text)
+        ok = await send_voice_reply(context, _manual_command_reply_chat_id(message), selected_text)
         if not ok:
             await message.reply_text(
                 "Non riesco a generare il vocale in questo momento. Riprova tra poco."
@@ -5460,6 +5486,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.from_user:
         return
+    message = await _private_group_command(message, context, "/start")
+    if message is None:
+        return
     if getattr(message.chat, "type", None) == "private":
         registered_user = community.get_registered_user(message.from_user.id)
         context.user_data["_registered_user"] = registered_user
@@ -5787,6 +5816,9 @@ async def automatic_today_ranking_catchup_job(context):
 async def generazioni_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.from_user:
+        return
+    message = await _private_group_command(message, context, "/generazioni")
+    if message is None:
         return
     await handle_premium_command(
         message, context, "generazioni", SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
