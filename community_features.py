@@ -2802,7 +2802,8 @@ class CommunityFeatures:
             member = member_by_tag.get(str(row.get("player_tag") or "").upper(), {})
             row["name"] = row.get("player_name") or member.get("player_name") or member.get("display_name") or row.get("player_tag")
             row["value"] = row.get("coefficient_value") if days is None else row.get("progression_value")
-        rows = [row for row in rows if row.get("value") is not None]
+        rows = [row for row in rows if row.get("value") is not None
+                and (days != 0 or int(row["value"]) > 0)]
         rows.sort(
             key=lambda row: (
                 int(row["value"]),
@@ -2916,7 +2917,11 @@ class CommunityFeatures:
 
     def ranking_text(self, chat_id, days=7, window=None):
         rows = self.ranking(chat_id, days, window=window) if window else self.ranking(chat_id, days)
+        if days == 0:
+            rows = [row for row in rows if row["delta"] is not None and row["delta"] > 0]
         if not rows:
+            if days == 0:
+                return "CLASSIFICA COMMUNITY - OGGI\n\nNessun giocatore con trofei guadagnati oggi."
             return (
                 "Non ho ancora abbastanza giocatori registrati/storico trofei. "
                 "Ogni membro può usare: registrami #TAG"
@@ -2997,10 +3002,11 @@ class CommunityFeatures:
                 except (TypeError, ValueError, KeyError):
                     delta = None
             players.append({"name": row.get("player_name") or row.get("player_tag"), "current": current, "delta": delta})
-        players.sort(key=lambda row: (row["delta"] is not None, row["delta"] if row["delta"] is not None else -10**9, row["current"]), reverse=True)
+        players = [row for row in players if row["delta"] is not None and row["delta"] > 0]
+        players.sort(key=lambda row: (row["delta"], row["current"]), reverse=True)
         lines = ["CLASSIFICA GLOBALE - OGGI", ""]
         if not players:
-            lines.append("Storico roster completo non ancora disponibile.")
+            lines.append("Nessun giocatore con trofei guadagnati oggi.")
             return "\n".join(lines)
         for index, row in enumerate(players[:200], 1):
             if row["delta"] is None:
@@ -3623,6 +3629,9 @@ class CommunityFeatures:
             except Exception:
                 continue
         trophy_rows.sort(key=lambda r: (r["delta"], r["current"]), reverse=True)
+        # Keep all rows for club totals; hide inactive/negative players only in today's lists.
+        visible_trophy_rows = ([r for r in trophy_rows if r["delta"] > 0]
+                               if days == 0 else trophy_rows)
 
         progression_rows = []
         if tags:
@@ -3647,19 +3656,21 @@ class CommunityFeatures:
             row["_coeff"] = (row["_value"] / row["_cups"]) if row["_cups"] > 0 else 0.0
         progression_rows = [r for r in progression_rows if int(r.get("battle_count") or 0) > 0]
         progression_rows.sort(key=lambda r: (r["_value"], r["_coeff"]), reverse=True)
+        visible_progression_rows = ([r for r in progression_rows if r["_value"] > 0]
+                                    if days == 0 else progression_rows)
 
         title = f"🔥 REPORT {scope_label} — {'OGGI' if days == 0 else f'{days} GIORNI'}"
         full = [title, f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}", "", f"👥 Ambito: {scope_note}", ""]
         full.append("🏆 CLASSIFICA TROFEI")
-        if trophy_rows:
-            for i, r in enumerate(trophy_rows, 1):
+        if visible_trophy_rows:
+            for i, r in enumerate(visible_trophy_rows, 1):
                 sign = "+" if r["delta"] > 0 else ""
                 full.append(f"{i}. {r['name']} — {sign}{self.number_formatter(r['delta'])}")
         else:
-            full.append("Storico trofei non ancora disponibile.")
+            full.append("Nessun giocatore con trofei guadagnati oggi." if days == 0 else "Storico trofei non ancora disponibile.")
         full.extend(["", "🔥 CLASSIFICA PROGRESSIONE"])
-        if progression_rows:
-            for i, r in enumerate(progression_rows, 1):
+        if visible_progression_rows:
+            for i, r in enumerate(visible_progression_rows, 1):
                 full.extend([
                     f"{i}. {r['_name']}",
                     f"🎮 Partite: {int(r.get('battle_count') or 0)}",
@@ -3670,7 +3681,7 @@ class CommunityFeatures:
                     "",
                 ])
         else:
-            full.append("Battaglie osservate non ancora disponibili.")
+            full.append("Nessun giocatore con Progressione positiva oggi." if days == 0 else "Battaglie osservate non ancora disponibili.")
 
         total_battles = sum(int(r.get("battle_count") or 0) for r in progression_rows)
         # Real current trophy total for the exact report scope (not period gains).
@@ -3689,11 +3700,11 @@ class CommunityFeatures:
 
         report_url = self._publish_telegraph(title, full) if publish else None
         summary = [title, "", "🏆 CLASSIFICA TROFEI"]
-        for i, r in enumerate(trophy_rows[:5], 1):
+        for i, r in enumerate(visible_trophy_rows[:5], 1):
             sign = "+" if r["delta"] > 0 else ""
             summary.append(f"{i}. {r['name']} — {sign}{self.number_formatter(r['delta'])}")
-        if not trophy_rows:
-            summary.append("Storico trofei non ancora disponibile.")
+        if not visible_trophy_rows:
+            summary.append("Nessun giocatore con trofei guadagnati oggi." if days == 0 else "Storico trofei non ancora disponibile.")
         summary.extend([
             "", "📋 RESOCONTO",
             f"👥 Giocatori monitorati: {len(tags)}",
