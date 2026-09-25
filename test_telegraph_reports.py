@@ -143,6 +143,36 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         post.assert_called_once()
         get.assert_called_once()
 
+    def test_period_dashboard_reuses_persisted_summary_and_exact_scope(self):
+        from community_features import _DASHBOARD_CACHE
+        _DASHBOARD_CACHE.clear()
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        payload = {"text": "📋 RESOCONTO\n🏆 Coppe totali reali: 100", "report_url": "https://telegra.ph/periodo-7",
+                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat()}
+        obj._get = Mock(return_value=[{"payload": payload}])
+        obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse the exact period"))
+        result = obj.rankings_dashboard_text(-123, 7)
+        self.assertEqual(result["text"], payload["text"])
+        self.assertEqual(result["report_url"], payload["report_url"])
+        self.assertEqual(obj._get.call_args.args[0], "scheduled_dashboard_delivery")
+        self.assertEqual(obj._get.call_args.args[1]["slot"], "eq.manual:rolling:7")
+        self.assertEqual(obj._get.call_args.args[1]["chat_id"], "eq.-123")
+
+    def test_period_dashboard_saves_telegram_summary_with_its_page(self):
+        from community_features import _DASHBOARD_CACHE
+        _DASHBOARD_CACHE.clear()
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        obj._get = Mock(return_value=[])
+        obj._post = Mock(return_value=[])
+        obj._direct_dashboard_snapshot = Mock(return_value={"text": "📋 RESOCONTO", "report_url": "https://telegra.ph/oggi", "fallback": "CLASSIFICHE — OGGI"})
+        obj.rankings_dashboard_text(-123, 0)
+        saved = obj._post.call_args.args[1]
+        self.assertEqual((saved["chat_id"], saved["slot"]), (-123, "manual:rolling:0"))
+        self.assertEqual(saved["payload"]["text"], "📋 RESOCONTO")
+        self.assertIn("cached_at", saved["payload"])
+
     async def test_period_hubs_and_today_shortcuts_stay_private(self):
         from community_features import _DASHBOARD_CACHE
         _DASHBOARD_CACHE.clear()
@@ -546,10 +576,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             "mode": "trioShowdown", "result": "victory", "placement": 1,
             "trophy_change": 13, "expected_base_delta": 11,
             "observed_extra": 2, "current_win_streak": None,
-            "bonus_type": "bonus_observed", "team_max_brawler_trophies": 1900,
+            "bonus_type": "bonus_observed", "team_max_brawler_trophies": 2000,
             "team_composition": [
                 {"name": "Giorgio", "brawler_name": "EL PRIMO", "brawler_trophies": 1800},
                 {"name": "Compagno", "brawler_name": "SURGE", "brawler_trophies": 1900},
+                {"name": "Capitano", "brawler_name": "NITA", "brawler_trophies": 2000},
             ],
             "raw_battle": {},
         }
@@ -579,18 +610,23 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Risultato: Vittoria", report)
         self.assertIn("Extra osservato: +2 (Bonus osservato)", report)
         self.assertIn("Compagno — ENERGETIK — 1900", report)
+        self.assertLess(report.index("Capitano — NITA — 2000"), report.index("Compagno — ENERGETIK — 1900"))
         self.assertLess(report.index("Compagno — ENERGETIK — 1900"), report.index("Giorgio — EL PRIMO — 1800"))
-        self.assertLess(report.index("Extra osservato: +2"), report.index("Squadra: Compagno"))
-        self.assertIn("Squadra: Compagno — ENERGETIK — 1900", report)
+        self.assertLess(report.index("Extra osservato: +2"), report.index("Squadra:\n🥇 Capitano"))
+        self.assertIn("Squadra:\n🥇 Capitano — NITA — 2000", report)
+        self.assertIn("\n🥈 Compagno — ENERGETIK — 1900", report)
+        self.assertIn("\n🥉 Giorgio — EL PRIMO — 1800", report)
         nodes = obj._telegraph_nodes(obj._publish_telegraph.call_args_list[0].args[1])
         self.assertFalse(any(node.get("tag") == "h3" and node.get("children") == ["👥 SQUADRA"] for node in nodes))
+        self.assertTrue(any(node.get("tag") == "p" and any(isinstance(child, dict) and child.get("children") == ["👥 Squadra:"] for child in node.get("children", [])) for node in nodes))
         self.assertIn("Squadra: Modalità Solo", report)
         self.assertIn("Punti Progressione: 0 (sconfitta non conteggiata)", report)
         self.assertIn("🦸 EL PRIMO", payload["fallback"])
         self.assertIn("🦸 NITA", payload["fallback"])
 
     def test_comandi_links_open_telegraph_reference_pages(self):
-        from community_features import HELP_TEXT
+        from community_features import HELP_TEXT, _DASHBOARD_CACHE
+        _DASHBOARD_CACHE.clear()
         obj = self.make_features()
         published = []
         def publish(title, lines):
@@ -608,6 +644,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any("t.me/" in str(node) for node in nodes))
         self.assertTrue(any(node.get("tag") == "h3" and node.get("children") == ["🏆 CLASSIFICHE & REPORT"] for node in nodes))
         self.assertTrue(any(node.get("tag") == "h3" and node.get("children") == ["📑 REPORT PERIODICI — TROFEI + PROGRESSIONE"] for node in nodes))
+        self.assertIs(obj._publish_command_guide(), payload)
+        self.assertEqual(len(published), 12)
 
     def test_progressione_brawler_recovers_and_localizes_raw_team(self):
         obj = self.make_features()
