@@ -3214,6 +3214,7 @@ class CommunityFeatures:
         tags = list(by_tag)
 
         trophy_rows = []
+        current_trophies_by_tag = {}
         for tag, m in by_tag.items():
             try:
                 history = self.history_fetcher(tag, days=max(days + 2, 10))
@@ -3229,6 +3230,7 @@ class CommunityFeatures:
                     current = state[0].get("trophies") if state else None
                 if current is None:
                     continue
+                current_trophies_by_tag[tag] = int(current)
                 changes = self.change_calculator(history, int(current))
                 delta = changes.get({7: "7d", 15: "15d", 30: "30d"}[days])
                 if delta is None:
@@ -3288,7 +3290,7 @@ class CommunityFeatures:
 
         total_battles = sum(int(r.get("battle_count") or 0) for r in progression_rows)
         # Real current trophy total for the exact report scope (not period gains).
-        total_real_trophies = sum(int(r.get("current") or 0) for r in trophy_rows)
+        total_real_trophies = sum(current_trophies_by_tag.values())
         total_cups = sum(r["_cups"] for r in progression_rows)
         total_progression = sum(r["_value"] for r in progression_rows)
         full.extend([
@@ -3302,30 +3304,20 @@ class CommunityFeatures:
         ])
 
         report_url = self._publish_telegraph(title, full)
-        summary = [title, "", f"👥 Ambito: {scope_note}", "", "🏆 CLASSIFICA TROFEI"]
+        summary = [title, "", "🏆 CLASSIFICA TROFEI"]
         for i, r in enumerate(trophy_rows[:5], 1):
             sign = "+" if r["delta"] > 0 else ""
             summary.append(f"{i}. {r['name']} — {sign}{self.number_formatter(r['delta'])}")
         if not trophy_rows:
             summary.append("Storico trofei non ancora disponibile.")
-        summary.extend(["", "🔥 CLASSIFICA PROGRESSIONE"])
-        for i, r in enumerate(progression_rows[:5], 1):
-            summary.append(
-                f"{i}. {r['_name']} — +{self.number_formatter(r['_value'])} "
-                f"(Coppe +{self.number_formatter(r['_cups'])} · Bonus +{self.number_formatter(r['_bonus'])} · "
-                f"Coeff. {r['_coeff']:.6f})".replace(".", ",")
-            )
-        if not progression_rows:
-            summary.append("Battaglie osservate non ancora disponibili.")
         summary.extend([
-            "", "📊 RESOCONTO",
+            "", "📋 RESOCONTO",
             f"👥 Giocatori monitorati: {len(tags)}",
             f"🏆 Coppe totali reali: {self.number_formatter(total_real_trophies)}",
             f"🎮 Battaglie analizzate: {total_battles}",
-            f"🔥 Progressione complessiva: +{self.number_formatter(total_progression)}",
         ])
         if report_url:
-            summary.extend(["", f"📖 Classifiche complete: {report_url}"])
+            summary.extend(["", f"📊 REPORT COMPLETO: {report_url}"])
         return "\n".join(summary)
 
     def rankings_dashboard_text(self, chat_id):
