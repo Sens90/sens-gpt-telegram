@@ -80,6 +80,29 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.number_formatter = lambda value: f"{int(value):,}".replace(",", ".")
         return obj
 
+    @patch("community_features.time.sleep")
+    @patch("community_features.requests.get")
+    def test_transient_supabase_read_retries_before_returning_rows(self, get, sleep):
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        response = Mock()
+        response.json.return_value = [{"player_tag": "AAA"}]
+        get.side_effect = [__import__("requests").ConnectionError("connection reset"), response]
+        self.assertEqual(obj._get("club_roster_daily"), [{"player_tag": "AAA"}])
+        self.assertEqual(get.call_count, 2)
+        sleep.assert_called_once()
+
+    def test_period_index_rejects_missing_progression_page(self):
+        obj = self.make_features()
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/trophies")
+        obj.periodic_report_text = Mock(return_value=("REPORT", [
+            "REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI",
+            "1. Utente +10", "🔥 CLASSIFICA PROGRESSIONE", "📊 RESOCONTO",
+        ], {"TITANI ABUSIVI": {"delta": 10, "players": 2}}))
+        obj.coefficient_ranking_text = Mock(return_value="Progressione non disponibile")
+        with self.assertRaisesRegex(RuntimeError, "progression page is unavailable"):
+            obj._direct_dashboard_snapshot(-1001, 15, None)
+
     @patch("community_features.requests.post")
     def test_daily_report_lists_only_positive_players_but_preserves_totals(self, post):
         obj = self.make_features()
@@ -242,6 +265,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("1 su 2 giocatori" in line for line in trophy))
         self.assertIn("🏆 Coppe totali reali: 260", full)
         self.assertEqual(totals[club]["delta"], 20)
+        obj.history_fetcher.assert_not_called()
 
     @patch("community_features.requests.post")
     def test_progression_ranking_excludes_zero_for_every_period(self, post):
