@@ -145,7 +145,7 @@ Mostra l'immagine disponibile della Skin specificata.
 
 🏆 CLASSIFICHE & REPORT
 [[CMDNAME:Classifica]]
-Apre il Telegraph generale: OGGI, 7, 15 e 30 giorni. Ogni voce indica ambito e periodo; Apri esegue in privato solo la classifica o il Report scelto.
+Apre il Telegraph generale: OGGI, 7, 15 e 30 giorni. Ogni Apri porta direttamente alla pagina Telegraph completa della voce scelta.
 
 [[CMDNAME:Classifiche]]
 Sinonimo di Classifica: apre lo stesso indice generale.
@@ -1455,6 +1455,7 @@ class CommunityFeatures:
         is_ranking_report = first_value.upper().startswith("CLASSIFICA")
         is_skin_account = first_value.upper().startswith("SKIN POSSEDUTE — ACCOUNT")
         is_command_guide = first_value.upper().startswith("COMANDI SENS GPT")
+        is_dashboard = first_value.upper().startswith("CLASSIFICHE & REPORT")
         # A detailed ranking has continuation/stat lines between numbered players.
         # One-line rankings stay compact; multi-line player blocks get visual
         # separation before every player across every Telegraph ranking.
@@ -1508,6 +1509,12 @@ class CommunityFeatures:
         for index, raw in enumerate(lines):
             value = str(raw or "").strip()
             if not value:
+                continue
+            if is_dashboard and value.startswith("══ ") and value.endswith(" ══"):
+                nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h3", "children": [value.strip("═ ")]}])
+                continue
+            if is_dashboard and re.match(r"^(?:🏆|🔥|📊) (?:Classifica|Progressione|Report)\b", value, re.I):
+                nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h4", "children": [value]}])
                 continue
             if is_skin_account and value == "📊 PER RARITÀ":
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h3", "children": [value]}])
@@ -1598,7 +1605,7 @@ class CommunityFeatures:
                 nodes.append({"tag": "h3", "children": [heading]})
                 continue
             if index == 0:
-                title_icon = "🎨" if is_skin_account else ("🏆" if value.upper().startswith("CLASSIFICA") else ("📈" if value.upper().startswith("PROGRESSIONE") else "👤"))
+                title_icon = "📊" if is_dashboard else ("🎨" if is_skin_account else ("🏆" if value.upper().startswith("CLASSIFICA") else ("📈" if value.upper().startswith("PROGRESSIONE") else "👤")))
                 nodes.append({"tag": "h3", "children": [f"{title_icon} {value}"]})
                 continue
             if ":" in value:
@@ -3525,23 +3532,45 @@ class CommunityFeatures:
         return "\n".join(summary)
 
     def rankings_dashboard_text(self, chat_id, days=None):
-        """Create the full or period-specific index; build details on private access."""
+        """Publish direct Telegraph links, reusing each period's cached snapshot."""
         if days is not None and days not in (0, 7, 15, 30):
             return "Periodo classifiche non disponibile. Usa oggi, 7, 15 o 30."
-        cache_key = "shared" if days is None else f"period:{days}"
+        cache_key = (int(chat_id), "shared" if days is None else f"period:{days}")
         with _DASHBOARD_CACHE_LOCK:
             cached = _DASHBOARD_CACHE.get(cache_key)
             if cached and cached[0] > time.monotonic():
                 return cached[1]
-            payload = self._build_rankings_dashboard_text(days)
-            if isinstance(payload, dict) and payload.get("report_url"):
+        if days is None:
+            title = "Classifiche & Report — TITANI ABUSIVI"
+            now = datetime.now(ROME)
+            lines = [title.upper(), f"Aggiornato: {now:%d/%m/%Y %H:%M}", "",
+                     "Tutte le classifiche, le Progressioni e i Report: Apri porta direttamente al Telegraph scelto."]
+            for period in (0, 7, 15, 30):
+                period_payload = self.rankings_dashboard_text(chat_id, period)
+                if not isinstance(period_payload, dict) or not period_payload.get("report_url"):
+                    return "Dashboard Classifiche & Report temporaneamente non disponibile."
+                period_lines = period_payload["fallback"].splitlines()
+                start = next((i for i, row in enumerate(period_lines) if row.startswith("══ ")), None)
+                if start is None:
+                    raise RuntimeError("Period dashboard has no period heading")
+                lines.extend(["", *period_lines[start:]])
+            url = self._publish_telegraph(title, lines)
+            payload = self._telegraph_reply(["📊 " + title.upper(), lines[1], "", "Tutti i link aprono direttamente Telegraph."], url, lines) if url else None
+        else:
+            payload = self._direct_dashboard_snapshot(chat_id, days, None)
+        if isinstance(payload, dict) and payload.get("report_url"):
+            with _DASHBOARD_CACHE_LOCK:
                 _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 900, payload)
-            return payload
+        return payload or "Dashboard Classifiche & Report temporaneamente non disponibile."
 
     def scheduled_dashboard_snapshot(self, chat_id, days, window):
         """Freeze every report page before publishing a dashboard with direct Telegraph links."""
         if days not in (0, 7, 15, 30) or not window or window[0] >= window[1]:
             raise ValueError("Invalid scheduled dashboard period")
+        return self._direct_dashboard_snapshot(chat_id, days, window)
+
+    def _direct_dashboard_snapshot(self, chat_id, days, window):
+        """Create direct detail links for one period; optional fixed scheduler window."""
         families = ("community", "community_club", "global_clubs", "titani", "tamarri",
                     "tornadi", "talenti", "global_single:titani", "global_single:tamarri",
                     "global_single:tornadi", "global_single:talenti")
@@ -3576,7 +3605,8 @@ class CommunityFeatures:
                 lines[i] = f"[[URL:{links[match.group(1)]}|Apri]]"
         if any("[[DASH:" in line for line in lines):
             raise RuntimeError("Scheduled dashboard has an unresolved link")
-        lines[1] = f"Periodo: {window[0].astimezone(ROME):%d/%m/%Y %H:%M} – {window[1].astimezone(ROME):%d/%m/%Y %H:%M}"
+        if window:
+            lines[1] = f"Periodo: {window[0].astimezone(ROME):%d/%m/%Y %H:%M} – {window[1].astimezone(ROME):%d/%m/%Y %H:%M}"
         url = self._publish_telegraph(title, lines)
         if not url:
             raise RuntimeError("Scheduled dashboard Telegraph page is unavailable")
@@ -3607,7 +3637,7 @@ class CommunityFeatures:
             "Dashboard unica della community. Ogni voce spiega esattamente chi viene conteggiato e apre la classifica o il report completo.",
         ]
         for days, label in periods:
-            lines.extend(["", f"══ {label} ═=", ""])
+            lines.extend(["", f"══ {label} ══", ""])
             lines.extend([
                 f"🏆 Classifica Community — {label}",
                 "Andamento trofei degli utenti registrati della community.",
@@ -3750,7 +3780,7 @@ class CommunityFeatures:
             try:
                 payload = await asyncio.wait_for(
                     asyncio.to_thread(self.rankings_dashboard_text, _ranking_chat_id),
-                    timeout=120,
+                    timeout=300,
                 )
             except asyncio.TimeoutError:
                 LOG.error("CLASSIFICHE DASHBOARD TIMEOUT chat=%s", _ranking_chat_id)
@@ -3764,7 +3794,7 @@ class CommunityFeatures:
             days = 0 if requested == "oggi" else int(requested)
             try:
                 payload = await asyncio.wait_for(
-                    asyncio.to_thread(self.rankings_dashboard_text, _ranking_chat_id, days), timeout=45,
+                    asyncio.to_thread(self.rankings_dashboard_text, _ranking_chat_id, days), timeout=120,
                 )
             except asyncio.TimeoutError:
                 LOG.error("CLASSIFICHE PERIOD HUB TIMEOUT chat=%s days=%s", _ranking_chat_id, days)
