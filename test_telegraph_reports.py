@@ -475,8 +475,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("🔴 Mitiche\nPossedute / totali: 28/85", result)
         self.assertIn("🟡 Leggendarie\nPossedute / totali: 10/59", result)
         self.assertIn("🥈 Argento\nPossedute / totali: 0/n.d.", result)
-        self.assertIn("⚪ Senza rarità\nPossedute / totali: n.d./2", result)
-        self.assertIn("STAR SHELLY, WIZARD BARLEY", result)
+        self.assertNotIn("⚪ Senza rarità", result)
+        self.assertNotIn("STAR SHELLY", result)
         self.assertNotIn("Fonte:", result)
         self.assertNotIn("Altre skin senza rarità", result)
         obj._official_owned_skin_ids.assert_not_called()
@@ -496,11 +496,10 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         nodes = obj._telegraph_nodes([
             "SKIN POSSEDUTE — ACCOUNT", "", "🎨 Totale possedute: 38", "",
             "📊 PER RARITÀ", "", "🔴 Mitiche", "Possedute / totali: 28/85", "",
-            "🟡 Leggendarie", "Possedute / totali: 10/59", "",
-            "⚪ Senza rarità", "Possedute / totali: n.d./4",
+            "🟡 Leggendarie", "Possedute / totali: 10/59",
         ])
         headings = [i for i, node in enumerate(nodes) if node.get("tag") == "h4"]
-        self.assertEqual(len(headings), 3)
+        self.assertEqual(len(headings), 2)
         self.assertTrue(all(nodes[i - 1] == {"tag": "p", "children": ["\u00a0"]} for i in headings))
 
     async def test_skin_output_is_read_from_private_telegraph_button(self):
