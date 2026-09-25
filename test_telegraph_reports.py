@@ -1,6 +1,6 @@
 import os
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -470,13 +470,14 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         payload = obj.progression_detail_text("2GU9UV2RG", 0)
         self.assertEqual(payload["report_url"], "https://telegra.ph/progressione-oggi")
         self.assertIn("Partite osservate valide: 1", payload["text"])
+        self.assertIn("Vittorie: 0 · Sconfitte: 0 · Win rate: n.d.", payload["text"])
         self.assertIn("Data:", payload["fallback"])
         self.assertIn("🦸 Nita", payload["fallback"])
         self.assertIn("[[URL:https://telegra.ph/progressione-oggi|Apri]]", payload["fallback"])
         detail = obj._publish_telegraph.call_args_list[0].args[1]
-        self.assertIn("SESSIONI", detail)
+        self.assertNotIn("SESSIONI", detail)
         self.assertIn("Sessioni osservate: 1", detail)
-        self.assertLess(next(i for i, line in enumerate(detail) if line.startswith("Fasce:")), detail.index("SESSIONI"))
+        self.assertEqual(detail.index("Sessioni osservate: 1"), next(i for i, line in enumerate(detail) if line.startswith("Fasce:")) + 1)
         self.assertIn("LOG BATTAGLIE", detail)
         self.assertIn("Brawler: Nita", detail)
         self.assertIn("Risultato: Risultato non disponibile", detail)
@@ -491,6 +492,27 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         ) for node in nodes))
         self.assertNotIn("[[URL:", str(nodes))
         self.assertEqual(obj._telegram_fallback_links(f"[[URL:{url}|Apri]]"), f"📖 Apri il Telegraph: {url}")
+
+    def test_interleaved_battles_are_numbered_per_brawler_and_separated(self):
+        obj = self.make_features()
+        start = datetime.now(timezone.utc).replace(hour=9, minute=0, second=0, microsecond=0)
+        rows = []
+        for index, brawler in enumerate(("Emz", "Emz", "Jessie", "Emz")):
+            rows.append({"player_name": "Topo Gigio", "battle_time": (start + timedelta(minutes=index * 5)).isoformat(),
+                         "brawler_name": brawler, "brawler_trophies_before": 800, "mode": "brawlBall",
+                         "result": "victory" if index != 2 else "defeat", "trophy_change": 8 if index != 2 else -6,
+                         "team_composition": None, "raw_battle": {}})
+        obj._get = Mock(side_effect=[rows, []])
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/progressione")
+        obj.progression_detail_text("2LVRCLV8LV")
+        emz = obj._publish_telegraph.call_args_list[0].args[1]
+        logs = emz[emz.index("LOG BATTAGLIE") + 1:]
+        numbers = [line.split(".", 1)[0] for line in logs if line[:1].isdigit() and ". " in line]
+        self.assertEqual(numbers, ["1", "2", "3"])
+        nodes = obj._telegraph_nodes(emz)
+        self.assertFalse(any(node.get("tag") == "h3" and node.get("children") == ["👥 SQUADRA"] for node in nodes))
+        self.assertGreaterEqual(sum(node.get("children") == ["\u00a0"] for node in nodes), 2)
+        self.assertIn("Vittorie: 3 · Sconfitte: 1 · Win rate: 75,0%", obj._publish_telegraph.call_args_list[-1].args[1])
 
     def test_progressione_oggi_includes_localized_team_solo_loss_and_bonus(self):
         obj = self.make_features()
@@ -535,12 +557,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Extra osservato: +2 (Bonus osservato)", report)
         self.assertIn("Compagno — ENERGETIK — 1900", report)
         self.assertLess(report.index("Compagno — ENERGETIK — 1900"), report.index("Giorgio — EL PRIMO — 1800"))
-        self.assertLess(report.index("Extra osservato: +2"), report.index("\nSQUADRA\n"))
-        self.assertIn("Giocatori ordinati per trofei del Brawler:", report)
+        self.assertLess(report.index("Extra osservato: +2"), report.index("Squadra: Compagno"))
+        self.assertIn("Squadra: Compagno — ENERGETIK — 1900", report)
         nodes = obj._telegraph_nodes(obj._publish_telegraph.call_args_list[0].args[1])
-        self.assertTrue(any(node.get("tag") == "h3" and node.get("children") == ["👥 SQUADRA"] for node in nodes))
-        self.assertIn("Team Value: 1900", report)
-        self.assertIn("SQUADRA\nModalità Solo", report)
+        self.assertFalse(any(node.get("tag") == "h3" and node.get("children") == ["👥 SQUADRA"] for node in nodes))
+        self.assertIn("Squadra: Modalità Solo", report)
         self.assertIn("Punti Progressione: 0 (sconfitta non conteggiata)", report)
         self.assertIn("🦸 EL PRIMO", payload["fallback"])
         self.assertIn("🦸 NITA", payload["fallback"])
