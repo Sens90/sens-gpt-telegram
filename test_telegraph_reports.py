@@ -456,36 +456,54 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rendered[progression_second - 1], "['\\xa0']")
         self.assertTrue(any(node.get("tag") == "h3" and "CLASSIFICA PROGRESSIONE" in str(node) for node in nodes))
 
-    def test_skin_catalog_uses_current_categories_without_snapshot_counts(self):
-        from community_features import SkinBridgeBackoff
+    @patch("player_tracking._brawlytix_progression")
+    def test_skin_account_uses_same_owned_counts_as_stats(self, progression):
         obj = self.make_features()
-        silver = [{"external_id": i + 1, "brawler_id": i % 106, "price_coins": 10000,
-                   "acquisition_type": "coins"} for i in range(108)]
-        mythic = [{"external_id": 200 + i, "rarity": "MYTHIC"} for i in range(3)]
-        legendary = [{"external_id": 300 + i, "rarity": "LEGENDARY"} for i in range(2)]
-        obj._get = Mock(return_value=silver + mythic + legendary)
-        obj._official_owned_skin_ids = Mock(side_effect=SkinBridgeBackoff("offline"))
+        progression.return_value = {"skins_owned": 477, "skin_rarity_counts": {
+            "mythic": 28, "legendary": 10, "true silver": 0, "rare": 103,
+        }}
+        obj._get = Mock()
+        obj._official_owned_skin_ids = Mock()
         result = obj.skin_account_text({"player_tag": "2GU9UV2RG"})
-        self.assertIn("SKIN — CATALOGO ATTUALE", result)
-        self.assertIn("Argento: 106 Brawler (108 varianti)", result)
-        self.assertIn("Mitiche: 3 skin", result)
-        self.assertIn("Leggendarie: 2 skin", result)
-        self.assertNotIn("Possedute:", result)
+        self.assertIn("SKIN POSSEDUTE — ACCOUNT", result)
+        self.assertIn("🎨 Totale possedute: 477", result)
+        self.assertIn("🔴 Mitiche\nPossedute: 28", result)
+        self.assertIn("🟡 Leggendarie\nPossedute: 10", result)
+        self.assertIn("🥈 Argento\nPossedute: 0", result)
+        self.assertNotIn("106 Brawler", result)
         obj._official_owned_skin_ids.assert_not_called()
         fallback = obj._cached_skin_account_text("2GU9UV2RG")
         self.assertEqual(fallback, result)
-        obj._get.assert_any_call("skins_catalog", unittest.mock.ANY)
+        obj._get.assert_not_called()
+        self.assertEqual(progression.call_count, 2)
+
+    @patch("player_tracking._brawlytix_progression", return_value={})
+    def test_skin_account_does_not_invent_ownership_when_stats_unavailable(self, progression):
+        result = self.make_features().skin_account_text({"player_tag": "2GU9UV2RG"})
+        self.assertIn("non sono disponibili", result)
+        self.assertNotIn("CATALOGO", result)
+
+    def test_skin_telegraph_has_spacing_and_category_headings(self):
+        obj = self.make_features()
+        nodes = obj._telegraph_nodes([
+            "SKIN POSSEDUTE — ACCOUNT", "", "🎨 Totale possedute: 38", "",
+            "📊 PER RARITÀ", "", "🔴 Mitiche", "Possedute: 28", "",
+            "🟡 Leggendarie", "Possedute: 10",
+        ])
+        headings = [i for i, node in enumerate(nodes) if node.get("tag") == "h4"]
+        self.assertEqual(len(headings), 2)
+        self.assertTrue(all(nodes[i - 1] == {"tag": "p", "children": ["\u00a0"]} for i in headings))
 
     async def test_skin_output_is_read_from_private_telegraph_button(self):
         obj = self.make_features()
-        obj._publish_telegraph = Mock(return_value="https://telegra.ph/skin-catalogo")
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/skin-possedute")
         obj._send_ranking_message = AsyncMock(return_value=True)
-        await obj.send_skin_telegraph(SimpleNamespace(), 456, "SKIN — CATALOGO ATTUALE\nMitiche: 85 skin")
+        await obj.send_skin_telegraph(SimpleNamespace(), 456, "SKIN POSSEDUTE — ACCOUNT\n🔴 Mitiche\nPossedute: 28")
         payload = obj._send_ranking_message.await_args.args[2]
         self.assertEqual(obj._send_ranking_message.await_args.args[1], 456)
-        self.assertEqual(payload["report_url"], "https://telegra.ph/skin-catalogo")
-        self.assertNotIn("Mitiche: 85", payload["text"])
-        self.assertIn("Mitiche: 85", "\n".join(obj._publish_telegraph.call_args.args[1]))
+        self.assertEqual(payload["report_url"], "https://telegra.ph/skin-possedute")
+        self.assertNotIn("Possedute: 28", payload["text"])
+        self.assertIn("Possedute: 28", "\n".join(obj._publish_telegraph.call_args.args[1]))
 
     @patch.dict(os.environ, {"TELEGRAM_TOKEN": "000000:test-token", "GEMINI_API_KEY": "test-key"})
     def test_explicit_stats_send_uses_private_destination_for_group(self):
