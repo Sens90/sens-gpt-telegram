@@ -46,4 +46,4 @@ coalesce(w.positive_trophies,0),
 coalesce(w.battle_count,0),
 coalesce(pt.play_seconds,0),l.recorded_at
 from latest l left join weighted w using(player_tag) left join playtime pt using(player_tag);
-$function$
+$function$;
