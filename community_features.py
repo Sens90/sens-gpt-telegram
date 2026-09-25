@@ -145,29 +145,29 @@ Mostra l'immagine disponibile della Skin specificata.
 
 🏆 CLASSIFICHE & REPORT
 [[CMDNAME:Classifica]]
-Apre l'indice essenziale OGGI, 7, 15 e 30 giorni: classifica dei 4 club, trofei e Progressione dei roster completi, Report globale. Ogni Apri porta direttamente al Telegraph scelto.
+Mostra in privato i Resoconti di OGGI, 7, 15 e 30 giorni e apre l'indice Telegraph delle classifiche cliccabili.
 
 [[CMDNAME:Classifiche]]
 Sinonimo di Classifica: apre lo stesso indice generale.
 
 📅 ACCESSI RAPIDI PER PERIODO
 [[CMDNAME:classifiche oggi]]
-Apre le quattro viste essenziali di oggi. Classifica oggi e Progressione oggi restano comandi diretti separati.
+Mostra il Resoconto di oggi in privato e le tre classifiche cliccabili nel Telegraph giornaliero.
 
 [[CMDNAME:classifiche 7]]
-Apre le quattro viste essenziali di 7 giorni: club, trofei globali, Progressione globale e Report globale.
+Mostra il Resoconto dei 7 giorni in privato e le tre classifiche cliccabili nel Telegraph del periodo.
 
 [[CMDNAME:classifiche 15]]
-Apre lo stesso indice essenziale riferito agli ultimi 15 giorni.
+Mostra Resoconto e classifiche cliccabili dei 15 giorni.
 
 [[CMDNAME:classifiche 30]]
-Apre lo stesso indice essenziale riferito agli ultimi 30 giorni.
+Mostra Resoconto e classifiche cliccabili dei 30 giorni.
 
-Sono accettate anche le forme Classifica 7, Classifica 15 e Classifica 30. Gli invii automatici pubblicano un indice con link Telegraph diretti alle 06:00, 12:00, 18:00 e 23:59 per oggi, ogni lunedì alle 06:00 per la settimana conclusa, il 1° e il 16 del mese alle 06:00 per le due metà di mese concluse e il 1° alle 06:00 per il mese solare precedente.
+Sono accettate anche le forme Classifica 7, Classifica 15 e Classifica 30. Gli invii automatici pubblicano Resoconto e indice con link Telegraph diretti alle 06:00, 12:00, 18:00 e 23:59 per oggi, ogni lunedì alle 06:00 per la settimana conclusa, il 1° e il 16 del mese alle 06:00 per le due metà di mese concluse e il 1° alle 06:00 per il mese solare precedente.
 
 ⚡ COMANDI DIRETTI DI OGGI
 [[CMDNAME:classifica oggi]]
-Mostra subito in privato la classifica Trofei di oggi, con dettaglio completo nel Telegraph.
+Mostra in privato il Resoconto di oggi e apre il Telegraph giornaliero con le tre classifiche cliccabili.
 
 [[CMDNAME:progressione oggi]]
 Mostra subito in privato la tua Progressione di oggi, con dettaglio dei Brawler nel Telegraph.
@@ -1455,7 +1455,7 @@ class CommunityFeatures:
         is_ranking_report = first_value.upper().startswith("CLASSIFICA")
         is_skin_account = first_value.upper().startswith("SKIN POSSEDUTE — ACCOUNT")
         is_command_guide = first_value.upper().startswith("COMANDI SENS GPT")
-        is_dashboard = first_value.upper().startswith("CLASSIFICHE & REPORT")
+        is_dashboard = first_value.upper().startswith("CLASSIFICHE")
         # A detailed ranking has continuation/stat lines between numbered players.
         # One-line rankings stay compact; multi-line player blocks get visual
         # separation before every player across every Telegraph ranking.
@@ -3341,7 +3341,7 @@ class CommunityFeatures:
                 lines.append(f"- {name}: {inactive_days} giorni{' - RISCHIO KICK' if risk else ''}")
         return "\n".join(lines)
 
-    def periodic_report_text(self, chat_id, scope="community", days=7, window=None, return_full=False):
+    def periodic_report_text(self, chat_id, scope="community", days=7, window=None, return_full=False, publish=True):
         """Combined Trophy + Progressione report. Telegram gets Top 5; Telegraph keeps the full lists."""
         days = int(days)
         if days not in (0, 7, 15, 30):
@@ -3514,7 +3514,7 @@ class CommunityFeatures:
             f"🔥 Progressione complessiva: +{self.number_formatter(total_progression)}",
         ])
 
-        report_url = self._publish_telegraph(title, full)
+        report_url = self._publish_telegraph(title, full) if publish else None
         summary = [title, "", "🏆 CLASSIFICA TROFEI"]
         for i, r in enumerate(trophy_rows[:5], 1):
             sign = "+" if r["delta"] > 0 else ""
@@ -3549,10 +3549,11 @@ class CommunityFeatures:
             if cached and cached[0] > time.monotonic():
                 return cached[1]
         if days is None:
-            title = "Classifiche & Report — TITANI ABUSIVI"
+            title = "Classifiche — TITANI ABUSIVI"
             now = datetime.now(ROME)
             lines = [title.upper(), f"Aggiornato: {now:%d/%m/%Y %H:%M}", "",
-                     "Tutte le classifiche, le Progressioni e i Report: Apri porta direttamente al Telegraph scelto."]
+                     "Tre classifiche cliccabili per periodo; i Resoconti sono nel messaggio Telegram."]
+            summaries = ["📊 " + title.upper(), lines[1]]
             for period in (0, 7, 15, 30):
                 period_payload = self.rankings_dashboard_text(chat_id, period)
                 if not isinstance(period_payload, dict) or not period_payload.get("report_url"):
@@ -3562,8 +3563,9 @@ class CommunityFeatures:
                 if start is None:
                     raise RuntimeError("Period dashboard has no period heading")
                 lines.extend(["", *period_lines[start:]])
+                summaries.extend(["", period_payload["text"]])
             url = self._publish_telegraph(title, lines)
-            payload = self._telegraph_reply(["📊 " + title.upper(), lines[1], "", "Tutti i link aprono direttamente Telegraph."], url, lines) if url else None
+            payload = self._telegraph_reply(summaries, url, lines) if url else None
         else:
             payload = self._direct_dashboard_snapshot(chat_id, days, None)
         if isinstance(payload, dict) and payload.get("report_url"):
@@ -3580,12 +3582,12 @@ class CommunityFeatures:
     def _direct_dashboard_snapshot(self, chat_id, days, window):
         """Create direct detail links for one period; optional fixed scheduler window."""
         label = "OGGI" if days == 0 else f"{days} GIORNI"
-        title = f"Classifiche & Report — {label}"
+        title = f"Classifiche — {label}"
         lines = self._build_rankings_dashboard_text(days, publish=False, include_today_reports=True)
         links = {}
-        report, report_lines, club_totals = self.periodic_report_text(chat_id, "global_clubs", days, window=window, return_full=True)
-        match = re.search(r"https://telegra\.ph/[A-Za-z0-9_/-]+", report)
-        links[f"dash_r_2_{days}"] = match.group(0) if match else None
+        _report, report_lines, club_totals = self.periodic_report_text(
+            chat_id, "global_clubs", days, window=window, return_full=True, publish=False,
+        )
         club_lines = [f"CLASSIFICA 4 CLUB — {label}",
                       "Roster completi dei quattro club: registrati e non registrati.", ""]
         ranked_clubs = sorted(club_totals.items(), key=lambda item: (item[1]["delta"], item[1]["players"]), reverse=True)
@@ -3615,18 +3617,19 @@ class CommunityFeatures:
         url = self._publish_telegraph(title, lines)
         if not url:
             raise RuntimeError("Scheduled dashboard Telegraph page is unavailable")
-        return self._telegraph_reply([f"📊 {title.upper()}", lines[1], "", "🏆 Classifiche · 🔥 Progressioni · 📋 Report"], url, lines)
+        resoconto = report_lines[report_lines.index("📊 RESOCONTO") + 1:]
+        return self._telegraph_reply([f"📊 {title.upper()}", lines[1], "", "📋 RESOCONTO", *resoconto], url, lines)
 
     def _build_rankings_dashboard_text(self, days=None, publish=True, include_today_reports=True):
         now = datetime.now(ROME)
         all_periods = [(0, "OGGI"), (7, "7 GIORNI"), (15, "15 GIORNI"), (30, "30 GIORNI")]
         periods = all_periods if days is None else [period for period in all_periods if period[0] == days]
-        title = "Classifiche & Report — TITANI ABUSIVI" if days is None else f"Classifiche & Report — {periods[0][1]}"
+        title = "Classifiche — TITANI ABUSIVI" if days is None else f"Classifiche — {periods[0][1]}"
         lines = [
             title.upper(),
             f"Aggiornato: {now:%d/%m/%Y %H:%M}",
             "",
-            "Quattro viste per periodo. Trofei, Progressione e Report globali includono i roster completi dei quattro club, registrati e non registrati.",
+            "Tre classifiche per periodo: club, trofei e Progressione. I roster includono registrati e non registrati. Il Resoconto è nel messaggio Telegram.",
         ]
         for days, label in periods:
             lines.extend(["", f"══ {label} ══", ""])
@@ -3640,9 +3643,6 @@ class CommunityFeatures:
                 f"🔥 Progressione Globale Club — {label}",
                 "Tutti i giocatori dei quattro club; Progressione calcolata battaglia per battaglia.",
                 f"[[DASH:dash_p_2_{days}|Apri]]", "",
-                f"📊 Report Globale Club — {label}",
-                "Trofei, Progressione e resoconto dei roster completi dei quattro club.",
-                f"[[DASH:dash_r_2_{days}|Apri]]", "",
             ])
         if not publish:
             return lines
@@ -3772,7 +3772,7 @@ class CommunityFeatures:
                 return True
             await self._send_ranking_message(context, int(message.from_user.id), payload)
             return True
-        period_hub = re.fullmatch(r"(?:classifica\s+(7|15|30)|classifiche\s+(oggi|7|15|30))(?:\s+giorni)?", q0l)
+        period_hub = re.fullmatch(r"(?:classifica\s+(oggi|7|15|30)|classifiche\s+(oggi|7|15|30))(?:\s+giorni)?", q0l)
         if period_hub:
             requested = period_hub.group(1) or period_hub.group(2)
             days = 0 if requested == "oggi" else int(requested)
