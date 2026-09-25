@@ -80,6 +80,33 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.number_formatter = lambda value: f"{int(value):,}".replace(",", ".")
         return obj
 
+    @patch("community_features.requests.post")
+    def test_daily_report_lists_only_positive_players_but_preserves_totals(self, post):
+        obj = self.make_features()
+        obj.supabase_url = "https://example.supabase.co"
+        obj.supabase_key = "test-secret"
+        obj._get = Mock(return_value=[
+            {"player_tag": "AAA", "player_name": "Active"},
+            {"player_tag": "BBB", "player_name": "Zero"},
+            {"player_tag": "CCC", "player_name": "Loss"},
+        ])
+        obj.history_fetcher = Mock(side_effect=lambda tag, days: [{"trophies": {"AAA": 110, "BBB": 100, "CCC": 90}[tag]}])
+        obj.change_calculator = Mock(side_effect=lambda history, current: {"today": current - 100})
+        post.return_value.json.return_value = [
+            {"player_tag": "AAA", "progression_value": 12, "positive_trophies": 10, "battle_count": 1},
+            {"player_tag": "BBB", "progression_value": 0, "positive_trophies": 0, "battle_count": 1},
+            {"player_tag": "CCC", "progression_value": -2, "positive_trophies": 0, "battle_count": 1},
+        ]
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/test")
+        summary, full, _clubs = obj.periodic_report_text(123, "community", 0, return_full=True)
+        trophy = full[full.index("🏆 CLASSIFICA TROFEI") + 1:full.index("🔥 CLASSIFICA PROGRESSIONE")]
+        progression = full[full.index("🔥 CLASSIFICA PROGRESSIONE") + 1:full.index("📊 RESOCONTO")]
+        self.assertTrue(any("Active" in line for line in trophy))
+        self.assertTrue(any("Active" in line for line in progression))
+        self.assertFalse(any("Zero" in line or "Loss" in line for line in trophy + progression + summary.splitlines()))
+        self.assertIn("👥 Giocatori monitorati: 3", full)
+        self.assertIn("🎮 Battaglie analizzate: 3", full)
+
     def test_dashboard_has_compact_global_links_for_every_period(self):
         from community_features import _DASHBOARD_CACHE
         _DASHBOARD_CACHE.clear()
