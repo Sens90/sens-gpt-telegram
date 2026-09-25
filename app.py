@@ -3956,7 +3956,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     skin_q = re.sub(r"\\s+", " ", skin_q).strip()
     if skin_q in {"quante skin ho", "quante skin possiedo", "skin", "skin ho", "skin possiedo"}:
         skin_answer = community.skin_account_text(registered_user)
-        await message.reply_text(skin_answer)
+        await community.send_skin_telegraph(context, int(message.from_user.id), skin_answer)
         return
 
     if await handle_premium_command(
