@@ -1472,6 +1472,8 @@ class CommunityFeatures:
         # has multi-line player blocks that need their own visual separation.
         in_report_progression = False
         progression_position = 0
+        in_battle_logs = False
+        battle_log_position = 0
         section_headings = {
             "PROFILO": "👤 PROFILO",
             "RANKED": "🏅 RANKED",
@@ -1597,7 +1599,11 @@ class CommunityFeatures:
                 # player blocks are visually separated so names/stats never merge.
                 if in_report_progression:
                     progression_position += 1
-                if (is_detailed_ranking and position > 1) or (in_report_progression and progression_position > 1):
+                if in_battle_logs:
+                    battle_log_position += 1
+                if ((is_detailed_ranking and position > 1)
+                        or (in_report_progression and progression_position > 1)
+                        or (in_battle_logs and battle_log_position > 1)):
                     nodes.append({"tag": "p", "children": ["\u00a0"]})
                 nodes.append({"tag": "p", "children": children})
                 continue
@@ -1614,6 +1620,8 @@ class CommunityFeatures:
                 continue
             heading = section_headings.get(value.rstrip(":").upper())
             if heading:
+                if value.rstrip(":").upper() == "LOG BATTAGLIE":
+                    in_battle_logs = True
                 if nodes:
                     nodes.append({"tag": "p", "children": ["\u00a0"]})
                 nodes.append({"tag": "h3", "children": [heading]})
@@ -2182,10 +2190,17 @@ class CommunityFeatures:
         raw_total = sum(int(r.get("trophy_change") or 0) for r in rows)
         weighted_total = int(Decimal(str(sum(weighted_delta(r) for r in rows))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
         extra_total = sum(int(r.get("observed_extra") or 0) for r in rows if r.get("observed_extra") is not None)
+        total_wins = sum(str(r.get("result") or "").casefold() == "victory" for r in rows)
+        total_losses = sum(str(r.get("result") or "").casefold() == "defeat" for r in rows)
+        def results_line(wins, losses):
+            decided = wins + losses
+            rate = f"{100 * wins / decided:.1f}".replace(".", ",") if decided else "n.d."
+            return f"Vittorie: {wins} · Sconfitte: {losses} · Win rate: {rate}{'%' if decided else ''}"
         name = next((r.get("player_name") for r in reversed(rows) if r.get("player_name")), tag)
         lines = [
             f"PROGRESSIONE ABUSIVA — {name}", f"Periodo: {period}",
             f"Partite osservate valide: {len(rows)}",
+            results_line(total_wins, total_losses),
             f"Coppe nette: {'+' if raw_total > 0 else ''}{self.number_formatter(raw_total)}",
             f"Punteggio Progressione: {'+' if weighted_total > 0 else ''}{self.number_formatter(weighted_total)}",
             f"Valore difficoltà: {'+' if weighted_total-raw_total > 0 else ''}{self.number_formatter(weighted_total-raw_total)}",
@@ -2208,8 +2223,8 @@ class CommunityFeatures:
             ends = [max(0, int(r.get("brawler_trophies_before") or 0)+int(r.get("trophy_change") or 0)) for r in br]
             first, last = dt_local(br[0]["battle_time"]), dt_local(br[-1]["battle_time"])
             lines += ["", f"🦸 {brawler_name_it(brawler)}", f"Orario: {first:%H:%M}–{last:%H:%M} | Partite: {len(br)}",
+                      results_line(wins, losses),
                       f"Coppe osservate: {min(starts+ends):,}–{max(starts+ends):,}".replace(",", "."),
-                      f"Vittorie: {wins} | Sconfitte: {losses}",
                       f"Coppe positive: +{self.number_formatter(positive)} | Coppe perse: {self.number_formatter(lost)} | Saldo: {'+' if raw > 0 else ''}{self.number_formatter(raw)}",
                       f"Bonus: {'+' if bonus > 0 else ''}{self.number_formatter(bonus)} | Progressione: {'+' if weighted > 0 else ''}{self.number_formatter(weighted)}",
                       f"Coeff. Progressione: {progression_coefficient:.6f}".replace(".", ","),
@@ -2221,7 +2236,7 @@ class CommunityFeatures:
                     sessions.append(current); current=[]
                 current.append(r)
             if current: sessions.append(current)
-            lines.extend(["", "SESSIONI", f"Sessioni osservate: {len(sessions)}"])
+            lines.append(f"Sessioni osservate: {len(sessions)}")
             for ss in sessions:
                 sr=sum(int(x.get("trophy_change") or 0) for x in ss)
                 sw=int(Decimal(str(sum(weighted_delta(x) for x in ss))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
@@ -2229,7 +2244,11 @@ class CommunityFeatures:
             brawler_sections[brawler] = lines[section_start:]
         lines += ["", "LOG BATTAGLIE"]
         battle_sections = {}
-        for index, row in enumerate(rows, 1):
+        brawler_battle_counts = {}
+        for row in rows:
+            brawler_key = str(row.get("brawler_name") or "Brawler")
+            brawler_battle_counts[brawler_key] = brawler_battle_counts.get(brawler_key, 0) + 1
+            index = brawler_battle_counts[brawler_key]
             battle_start = len(lines)
             t0 = max(0, int(row.get("brawler_trophies_before") or 0))
             delta = int(row.get("trophy_change") or 0)
@@ -2258,24 +2277,23 @@ class CommunityFeatures:
                     f"Extra osservato: +{int(extra)} ({self._progression_bonus_it(row.get('bonus_type'))})"
                 )
             if isinstance(team, list) and team:
-                lines.extend(["", "SQUADRA", "Giocatori ordinati per trofei del Brawler:"])
+                members = []
                 for member in sorted(team, key=lambda item: int(item.get("brawler_trophies") or 0), reverse=True):
                     member_trophies = member.get("brawler_trophies")
                     crown = (
                         " 👑" if max_trophies is not None and member_trophies is not None
                         and int(member_trophies) == int(max_trophies) else ""
                     )
-                    lines.append(
-                        f"• {member.get('name') or member.get('tag') or 'Giocatore'} — "
+                    members.append(
+                        f"{member.get('name') or member.get('tag') or 'Giocatore'} — "
                         f"{brawler_name_it(member.get('brawler_name'))} — "
                         f"{member_trophies if member_trophies is not None else '?'} 🏆{crown}"
                     )
-                if max_trophies is not None:
-                    lines.append(f"Team Value: {int(max_trophies)} 🏆")
+                lines.append("Squadra: " + " · ".join(members))
             elif mode_key in {"soloshowdown", "solo"}:
-                lines.extend(["", "SQUADRA", "Modalità Solo"])
+                lines.append("Squadra: Modalità Solo")
             else:
-                lines.extend(["", "SQUADRA", "Non disponibile nel battle log."])
+                lines.append("Squadra: non disponibile nel battle log.")
             if row.get("current_win_streak") is not None:
                 lines.append(f"Serie di vittorie osservata: {int(row['current_win_streak'])}")
             battle_sections.setdefault(str(row.get("brawler_name") or "Brawler"), []).extend(lines[battle_start:])
@@ -2292,6 +2310,8 @@ class CommunityFeatures:
                 break
             points = int(Decimal(str(sum(weighted_delta(r) for r in br))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
             overview.extend(["", f"🦸 {brawler_name_it(brawler)}", f"Partite: {len(br)} · Progressione: +{self.number_formatter(points)}",
+                             results_line(sum(str(r.get("result") or "").casefold() == "victory" for r in br),
+                                          sum(str(r.get("result") or "").casefold() == "defeat" for r in br)),
                              f"[[URL:{detail_url}|Apri]]"])
         lines = overview
         report_url = self._publish_telegraph(f"Progressione {name} — {period}", lines)
@@ -2300,6 +2320,7 @@ class CommunityFeatures:
                 f"PROGRESSIONE ABUSIVA — {name}",
                 f"Periodo: {period}",
                 f"Partite osservate valide: {len(rows)}",
+                results_line(total_wins, total_losses),
                 f"Coppe nette: {'+' if raw_total > 0 else ''}{self.number_formatter(raw_total)}",
                 f"Punteggio Progressione: {'+' if weighted_total > 0 else ''}{self.number_formatter(weighted_total)}",
             ]
