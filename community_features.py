@@ -25,8 +25,8 @@ _SKIN_BRIDGE_FAILURE_LIMIT = 3
 _SKIN_BRIDGE_BACKOFF_SECONDS = 6 * 60 * 60
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_FORMAT_REVISION = 3
-_DASHBOARD_SOURCE_MARKER = "Liste: solo valori positivi verificati · storico dei roster completi."
+_DASHBOARD_FORMAT_REVISION = 4
+_DASHBOARD_SOURCE_MARKER = "Liste: solo valori positivi verificati · copertura dei roster indicata per club."
 _PROGRESSION_DETAIL_CACHE = {}
 _PROGRESSION_DETAIL_LOCK = threading.Lock()
 _PROGRESSION_DETAIL_FLIGHTS = {}
@@ -171,6 +171,7 @@ Mostra Resoconto e classifiche cliccabili dei 15 giorni.
 Mostra Resoconto e classifiche cliccabili dei 30 giorni.
 
 Sono accettate anche le forme Classifica 7, Classifica 15 e Classifica 30. Gli invii automatici pubblicano Resoconto e indice con link Telegraph diretti alle 06:00, 12:00, 18:00 e 23:59 per oggi; ogni lunedì alle 06:00 per la settimana conclusa; il 16 alle 06:00 per i giorni 1–15; l'ultimo giorno del mese alle 23:59 per i giorni 16–fine mese; il 1° alle 06:00 per il mese solare precedente.
+Per le classifiche Trofei dei 4 Club il roster comprende anche i non registrati: la crescita del periodo si calcola solo quando esistono misure reali prima dell'inizio e alla fine. Ogni club indica quanti giocatori hanno uno storico sufficiente rispetto al roster completo. Nelle liste compaiono solo crescite positive.
 
 ⚡ COMANDI DIRETTI DI OGGI
 [[CMDNAME:classifica oggi]]
@@ -3802,7 +3803,11 @@ class CommunityFeatures:
         if report_url:
             summary.extend(["", f"📊 REPORT COMPLETO: {report_url}"])
         if return_full:
-            club_totals = {name: {"delta": 0, "players": 0} for name in self.CLUB_TAGS}
+            club_totals = {name: {"delta": 0, "players": 0, "roster": 0} for name in self.CLUB_TAGS}
+            for member in by_tag.values():
+                club = str(member.get("club_name") or "").strip().upper()
+                if club in club_totals:
+                    club_totals[club]["roster"] += 1
             for row in trophy_rows:
                 club = str(by_tag[row["tag"]].get("club_name") or "").strip().upper()
                 if club in club_totals:
@@ -3965,12 +3970,15 @@ class CommunityFeatures:
             chat_id, "global_clubs", days, window=window, return_full=True, publish=False,
         )
         club_lines = [f"CLASSIFICA 4 CLUB — {label}",
-                      "Roster completi dei quattro club: registrati e non registrati.", ""]
+                      "Roster completi dei quattro club: registrati e non registrati.",
+                      "📌 Il saldo usa solo i giocatori con misure reali all'inizio e alla fine del periodo.",
+                      "I giocatori senza storico sufficiente non vengono contati come zero.", ""]
         ranked_clubs = sorted(club_totals.items(), key=lambda item: (item[1]["delta"], item[1]["players"]), reverse=True)
         for position, (name, result) in enumerate((item for item in ranked_clubs if item[1]["delta"] > 0), 1):
             delta = result["delta"]
-            club_lines.append(f"{position}. {name} — {'+' if delta > 0 else ''}{self.number_formatter(delta)} ({result['players']} giocatori)")
-        if len(club_lines) == 3:
+            club_lines.append(f"{position}. {name} — {'+' if delta > 0 else ''}{self.number_formatter(delta)} "
+                              f"({result['players']}/{result.get('roster', result['players'])} con storico sufficiente)")
+        if len(club_lines) == 5:
             club_lines.append("Nessun club con crescita positiva nel periodo.")
         links[f"dash_t_1_{days}"] = self._publish_telegraph(f"Classifica 4 Club — {label}", club_lines)
         trophy_start = report_lines.index("🏆 CLASSIFICA TROFEI")
