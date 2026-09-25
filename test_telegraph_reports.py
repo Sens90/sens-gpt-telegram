@@ -91,6 +91,10 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.periodic_report_text = Mock(return_value=("📊 REPORT COMPLETO: https://telegra.ph/report", report_full, {"TITANI ABUSIVI": {"delta": 10, "players": 2}}))
         payload = obj.rankings_dashboard_text(-1001)
         self.assertEqual(payload["report_url"], "https://telegra.ph/classifiche")
+        self.assertNotIn("RESOCONTO", payload["text"])
+        self.assertNotIn("Coppe totali reali", payload["text"])
+        self.assertIn("OGGI · 7 · 15 · 30", payload["text"])
+        self.assertIn("📋 RESOCONTO", obj.rankings_dashboard_text(-1001, 0)["text"])
         self.assertIs(payload, obj.rankings_dashboard_text(-1001))
         self.assertEqual(obj._publish_telegraph.call_count, 13)
         lines = obj._publish_telegraph.call_args.args[1]
