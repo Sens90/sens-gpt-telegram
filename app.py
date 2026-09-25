@@ -5627,22 +5627,11 @@ async def _send_auto_ranking_slot(context, slot, frozen_only=False):
                 # Freeze every payload before the first send. A failed 23:59
                 # delivery can then resume after midnight without recalculating
                 # "oggi" against the new calendar day.
-                text = await asyncio.to_thread(community.ranking_text, chat_id, 0)
-                progression_text = await asyncio.to_thread(
-                    community.coefficient_ranking_text, chat_id, "community", 0
+                start = slot.replace(hour=0, minute=0, second=0, microsecond=0)
+                dashboard = await asyncio.to_thread(
+                    community.scheduled_dashboard_snapshot, chat_id, 0, (start, slot)
                 )
-                final_slot = slot.hour == 23 and slot.minute == 59
-                payloads = [("trofei", text), ("progressione", progression_text)]
-                if final_slot:
-                    progression_club_text = await asyncio.to_thread(
-                        community.coefficient_ranking_text, chat_id, "community_club", 0
-                    )
-                    payloads.extend([
-                        ("progressione club", progression_club_text),
-                        ("club", await asyncio.to_thread(community.club_trophy_ranking_text, chat_id, 0)),
-                        ("globale", await asyncio.to_thread(community.global_ranking_text, chat_id, 0)),
-                        ("club globale", await asyncio.to_thread(community.global_club_ranking_text, chat_id, False)),
-                    ])
+                payloads = [("classifiche e report", dashboard)]
                 pending = {"slot": key, "payloads": payloads, "next_index": 0}
                 await asyncio.to_thread(_persist_auto_ranking_pending, chat_id, previous_slot, pending)
                 _AUTO_RANKING_PENDING[flight_key] = pending
@@ -5700,10 +5689,14 @@ async def _send_auto_ranking_slot(context, slot, frozen_only=False):
 
 
 async def automatic_periodic_report_job(context):
-    """Publish registered + complete-roster Trophy/Progressione reports for 7/15/30 days."""
+    """Publish one period dashboard with direct Telegraph links and a persisted retry."""
     data = context.job.data or {}
     days = int(data.get("days") or 7)
     now = datetime.now(ROME)
+    window = _scheduled_period_window(now, days)
+    if window is None:
+        return
+    key = f"{now:%Y-%m-%d}-period-{days}"
     try:
         settings_rows = await asyncio.to_thread(
             community._get, "community_settings", {"select": "chat_id"}
@@ -5713,30 +5706,47 @@ async def automatic_periodic_report_job(context):
         return
     for row in settings_rows or []:
         chat_id = int(row["chat_id"])
-        for scope, label in (("community", "REGISTRATI"), ("global_clubs", "GLOBALE CLUB")):
-            try:
-                text_report = await asyncio.to_thread(
-                    community.periodic_report_text, chat_id, scope, days
-                )
-                await context.bot.send_message(chat_id=chat_id, text=text_report)
-                print("REPORT PERIODICO AUTO: chat=%s scope=%s days=%s local=%s" % (
-                    chat_id, label, days, now.strftime("%Y-%m-%d %H:%M:%S")
-                ), flush=True)
-            except Exception as exc:
-                print("REPORT PERIODICO AUTO SEND ERROR:", chat_id, label, days, repr(exc), flush=True)
         try:
-            progression_global = await asyncio.to_thread(
-                community.coefficient_ranking_text, chat_id, "global_clubs", days
-            )
-            await community._send_ranking_message(context, chat_id, progression_global)
-            print("REPORT PERIODICO AUTO: chat=%s scope=PROGRESSIONE GLOBALE CLUB days=%s local=%s" % (
-                chat_id, days, now.strftime("%Y-%m-%d %H:%M:%S")
-            ), flush=True)
+            existing = await asyncio.to_thread(community._get, "scheduled_dashboard_delivery", {
+                "select": "payload,sent_at", "chat_id": f"eq.{chat_id}", "slot": f"eq.{key}", "limit": "1",
+            })
+            saved = existing[0] if existing else {}
+            if saved.get("sent_at"):
+                continue
+            payload = saved.get("payload")
+            if not payload:
+                payload = await asyncio.to_thread(community.scheduled_dashboard_snapshot, chat_id, days, window)
+                await asyncio.to_thread(community._post, "scheduled_dashboard_delivery", {
+                    "chat_id": chat_id, "slot": key, "payload": payload,
+                }, prefer="resolution=merge-duplicates,return=representation")
+            if not await community._send_ranking_message(context, chat_id, payload):
+                raise RuntimeError("Telegram dashboard delivery failed")
+            await asyncio.to_thread(community._patch, "scheduled_dashboard_delivery", {
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+            }, params={"chat_id": f"eq.{chat_id}", "slot": f"eq.{key}"})
+            print("REPORT PERIODICO AUTO: chat=%s days=%s slot=%s" % (chat_id, days, key), flush=True)
         except Exception as exc:
-            print(
-                "REPORT PERIODICO AUTO SEND ERROR:",
-                chat_id, "PROGRESSIONE GLOBALE CLUB", days, repr(exc), flush=True
-            )
+            print("REPORT PERIODICO AUTO SEND ERROR:", chat_id, days, repr(exc), flush=True)
+
+
+def _scheduled_period_window(now, days):
+    """Completed Rome-local calendar windows, with exclusive end."""
+    midnight = now.astimezone(ROME).replace(hour=0, minute=0, second=0, microsecond=0)
+    if days == 7:
+        if midnight.weekday() != 0:
+            return None
+        return midnight - timedelta(days=7), midnight
+    if days == 15:
+        if midnight.day == 16:
+            return midnight.replace(day=1), midnight
+        if midnight.day == 1:
+            previous = midnight - timedelta(days=1)
+            return previous.replace(day=16, hour=0, minute=0, second=0, microsecond=0), midnight
+        return None
+    if days == 30 and midnight.day == 1:
+        previous = midnight - timedelta(days=1)
+        return previous.replace(day=1, hour=0, minute=0, second=0, microsecond=0), midnight
+    return None
 
 
 async def log_automatic_ranking_schedule(context):
@@ -5863,27 +5873,34 @@ def main():
             first=75,
             name="classifica_oggi_watchdog"
         )
-        # Automatic combined reports. Each run publishes both scopes:
-        # registered users and complete 4-club roster (registered + non-registered).
+        # Complete calendar periods. All three jobs start at 06:00 Rome time.
         application.job_queue.run_daily(
             automatic_periodic_report_job,
-            time=dt_time(hour=6, minute=5, tzinfo=ROME),
-            days=(0,),
+            time=dt_time(hour=6, minute=0, tzinfo=ROME),
+            days=(1,),
             data={"days": 7},
             name="report_7_giorni",
             job_kwargs={"misfire_grace_time": 1800, "coalesce": True, "max_instances": 1},
         )
         application.job_queue.run_monthly(
             automatic_periodic_report_job,
-            when=dt_time(hour=6, minute=10, tzinfo=ROME),
-            day=15,
+            when=dt_time(hour=6, minute=0, tzinfo=ROME),
+            day=16,
             data={"days": 15},
             name="report_15_giorni",
             job_kwargs={"misfire_grace_time": 1800, "coalesce": True, "max_instances": 1},
         )
         application.job_queue.run_monthly(
             automatic_periodic_report_job,
-            when=dt_time(hour=6, minute=15, tzinfo=ROME),
+            when=dt_time(hour=6, minute=0, tzinfo=ROME),
+            day=1,
+            data={"days": 15},
+            name="report_15_giorni_seconda_meta",
+            job_kwargs={"misfire_grace_time": 1800, "coalesce": True, "max_instances": 1},
+        )
+        application.job_queue.run_monthly(
+            automatic_periodic_report_job,
+            when=dt_time(hour=6, minute=0, tzinfo=ROME),
             day=1,
             data={"days": 30},
             name="report_30_giorni",
