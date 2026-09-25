@@ -4,6 +4,7 @@ import io
 import asyncio
 import html
 from datetime import datetime, timedelta, timezone, time as dt_time
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import matplotlib
@@ -5565,6 +5566,7 @@ async def ranked_catalog_job(context):
         print("RANKED CATALOG SYNC ERROR: %s: %s" % (type(exc).__name__,exc),flush=True)
 
 _AUTO_RANKING_IN_FLIGHT = set()
+_AUTO_PERIODIC_IN_FLIGHT = set()
 _AUTO_RANKING_PENDING = {}
 
 
@@ -5706,6 +5708,10 @@ async def automatic_periodic_report_job(context):
         return
     for row in settings_rows or []:
         chat_id = int(row["chat_id"])
+        flight_key = (chat_id, key)
+        if flight_key in _AUTO_PERIODIC_IN_FLIGHT:
+            continue
+        _AUTO_PERIODIC_IN_FLIGHT.add(flight_key)
         try:
             existing = await asyncio.to_thread(community._get, "scheduled_dashboard_delivery", {
                 "select": "payload,sent_at", "chat_id": f"eq.{chat_id}", "slot": f"eq.{key}", "limit": "1",
@@ -5727,6 +5733,19 @@ async def automatic_periodic_report_job(context):
             print("REPORT PERIODICO AUTO: chat=%s days=%s slot=%s" % (chat_id, days, key), flush=True)
         except Exception as exc:
             print("REPORT PERIODICO AUTO SEND ERROR:", chat_id, days, repr(exc), flush=True)
+        finally:
+            _AUTO_PERIODIC_IN_FLIGHT.discard(flight_key)
+
+
+async def automatic_periodic_report_catchup_job(context):
+    """Retry a failed calendar dashboard while its completed period is still current."""
+    now = datetime.now(ROME)
+    if not (now.hour >= 6 and (now.hour < 12 or (now.hour == 12 and now.minute == 0))):
+        return
+    for days in (7, 15, 30):
+        if _scheduled_period_window(now, days) is not None:
+            retry_context = SimpleNamespace(job=SimpleNamespace(data={"days": days}), bot=context.bot)
+            await automatic_periodic_report_job(retry_context)
 
 
 def _scheduled_period_window(now, days):
@@ -5872,6 +5891,12 @@ def main():
             interval=60,
             first=75,
             name="classifica_oggi_watchdog"
+        )
+        application.job_queue.run_repeating(
+            automatic_periodic_report_catchup_job,
+            interval=300,
+            first=300,
+            name="classifiche_periodiche_watchdog",
         )
         # Complete calendar periods. All three jobs start at 06:00 Rome time.
         application.job_queue.run_daily(
