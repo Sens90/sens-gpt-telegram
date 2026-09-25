@@ -145,23 +145,23 @@ Mostra l'immagine disponibile della Skin specificata.
 
 🏆 CLASSIFICHE & REPORT
 [[CMDNAME:Classifica]]
-Apre il Telegraph generale: OGGI, 7, 15 e 30 giorni. Ogni Apri porta direttamente alla pagina Telegraph completa della voce scelta.
+Apre l'indice essenziale OGGI, 7, 15 e 30 giorni: classifica dei 4 club, trofei e Progressione dei roster completi, Report globale. Ogni Apri porta direttamente al Telegraph scelto.
 
 [[CMDNAME:Classifiche]]
 Sinonimo di Classifica: apre lo stesso indice generale.
 
 📅 ACCESSI RAPIDI PER PERIODO
 [[CMDNAME:classifiche oggi]]
-Apre le classifiche Trofei, le 11 Progressioni e gli 11 Report di oggi.
+Apre le quattro viste essenziali di oggi. Classifica oggi e Progressione oggi restano comandi diretti separati.
 
 [[CMDNAME:classifiche 7]]
-Apre il Telegraph di 7 giorni: classifiche Trofei Community e Club, le 11 Progressioni e gli 11 Report dei rispettivi ambiti.
+Apre le quattro viste essenziali di 7 giorni: club, trofei globali, Progressione globale e Report globale.
 
 [[CMDNAME:classifiche 15]]
-Apre lo stesso indice completo riferito agli ultimi 15 giorni.
+Apre lo stesso indice essenziale riferito agli ultimi 15 giorni.
 
 [[CMDNAME:classifiche 30]]
-Apre lo stesso indice completo riferito agli ultimi 30 giorni.
+Apre lo stesso indice essenziale riferito agli ultimi 30 giorni.
 
 Sono accettate anche le forme Classifica 7, Classifica 15 e Classifica 30. Gli invii automatici pubblicano un indice con link Telegraph diretti alle 06:00, 12:00, 18:00 e 23:59 per oggi, ogni lunedì alle 06:00 per la settimana conclusa, il 1° e il 16 del mese alle 06:00 per le due metà di mese concluse e il 1° alle 06:00 per il mese solare precedente.
 
@@ -3341,7 +3341,7 @@ class CommunityFeatures:
                 lines.append(f"- {name}: {inactive_days} giorni{' - RISCHIO KICK' if risk else ''}")
         return "\n".join(lines)
 
-    def periodic_report_text(self, chat_id, scope="community", days=7, window=None):
+    def periodic_report_text(self, chat_id, scope="community", days=7, window=None, return_full=False):
         """Combined Trophy + Progressione report. Telegram gets Top 5; Telegraph keeps the full lists."""
         days = int(days)
         if days not in (0, 7, 15, 30):
@@ -3529,6 +3529,14 @@ class CommunityFeatures:
         ])
         if report_url:
             summary.extend(["", f"📊 REPORT COMPLETO: {report_url}"])
+        if return_full:
+            club_totals = {name: {"delta": 0, "players": 0} for name in self.CLUB_TAGS}
+            for row in trophy_rows:
+                club = str(by_tag[row["tag"]].get("club_name") or "").strip().upper()
+                if club in club_totals:
+                    club_totals[club]["delta"] += row["delta"]
+                    club_totals[club]["players"] += 1
+            return "\n".join(summary), full, club_totals
         return "\n".join(summary)
 
     def rankings_dashboard_text(self, chat_id, days=None):
@@ -3571,34 +3579,31 @@ class CommunityFeatures:
 
     def _direct_dashboard_snapshot(self, chat_id, days, window):
         """Create direct detail links for one period; optional fixed scheduler window."""
-        families = ("community", "community_club", "global_clubs", "titani", "tamarri",
-                    "tornadi", "talenti", "global_single:titani", "global_single:tamarri",
-                    "global_single:tornadi", "global_single:talenti")
         label = "OGGI" if days == 0 else f"{days} GIORNI"
         title = f"Classifiche & Report — {label}"
         lines = self._build_rankings_dashboard_text(days, publish=False, include_today_reports=True)
         links = {}
-        for index, builder in enumerate((self.ranking_text, self.club_trophy_ranking_text)):
-            ranking = builder(chat_id, days, window=window)
-            if isinstance(ranking, dict):
-                ranking = ranking.get("fallback") or ranking.get("text") or ""
-            url = self._publish_telegraph(f"Classifica {'Community' if index == 0 else 'Club'} — {label}", ranking.splitlines())
-            if not url:
-                raise RuntimeError("Trophy Telegraph page is unavailable")
-            links[f"dash_t_{index}_{days}"] = url
-        for index, scope in enumerate(families):
-            progression = self.coefficient_ranking_text(chat_id, scope, days, window=window)
-            url = progression.get("report_url") if isinstance(progression, dict) else None
-            if not url and isinstance(progression, str):
-                url = self._publish_telegraph(f"Progressione {scope} — {label}", progression.splitlines())
-            if not url:
-                raise RuntimeError(f"Progression Telegraph page is unavailable: {scope}")
-            links[f"dash_p_{index}_{days}"] = url
-            report = self.periodic_report_text(chat_id, scope, days, window=window)
-            found = re.search(r"https://telegra\.ph/[A-Za-z0-9_/-]+", report)
-            if not found:
-                raise RuntimeError(f"Report Telegraph page is unavailable: {scope}")
-            links[f"dash_r_{index}_{days}"] = found.group(0)
+        report, report_lines, club_totals = self.periodic_report_text(chat_id, "global_clubs", days, window=window, return_full=True)
+        match = re.search(r"https://telegra\.ph/[A-Za-z0-9_/-]+", report)
+        links[f"dash_r_2_{days}"] = match.group(0) if match else None
+        club_lines = [f"CLASSIFICA 4 CLUB — {label}",
+                      "Roster completi dei quattro club: registrati e non registrati.", ""]
+        ranked_clubs = sorted(club_totals.items(), key=lambda item: (item[1]["delta"], item[1]["players"]), reverse=True)
+        for position, (name, result) in enumerate(ranked_clubs, 1):
+            delta = result["delta"]
+            club_lines.append(f"{position}. {name} — {'+' if delta > 0 else ''}{self.number_formatter(delta)} ({result['players']} giocatori)")
+        links[f"dash_t_1_{days}"] = self._publish_telegraph(f"Classifica 4 Club — {label}", club_lines)
+        trophy_start = report_lines.index("🏆 CLASSIFICA TROFEI")
+        trophy_end = report_lines.index("🔥 CLASSIFICA PROGRESSIONE", trophy_start)
+        trophy_lines = [f"CLASSIFICA TROFEI GLOBALE CLUB — {label}", report_lines[3], "",
+                        *report_lines[trophy_start:trophy_end]]
+        links[f"dash_t_2_{days}"] = self._publish_telegraph(f"Trofei Globali 4 Club — {label}", trophy_lines)
+        progression = self.coefficient_ranking_text(chat_id, "global_clubs", days, window=window)
+        links[f"dash_p_2_{days}"] = progression.get("report_url") if isinstance(progression, dict) else None
+        if not links[f"dash_p_2_{days}"] and isinstance(progression, str):
+            links[f"dash_p_2_{days}"] = self._publish_telegraph(f"Progressione Globale Club — {label}", progression.splitlines())
+        if any(not url for url in links.values()):
+            raise RuntimeError("A global dashboard Telegraph page is unavailable")
         for i, line in enumerate(lines):
             match = re.fullmatch(r"\[\[DASH:(dash_[prt]_(?:[0-9]|10)_(?:0|7|15|30))\|Apri\]\]", line)
             if match:
@@ -3617,49 +3622,28 @@ class CommunityFeatures:
         all_periods = [(0, "OGGI"), (7, "7 GIORNI"), (15, "15 GIORNI"), (30, "30 GIORNI")]
         periods = all_periods if days is None else [period for period in all_periods if period[0] == days]
         title = "Classifiche & Report — TITANI ABUSIVI" if days is None else f"Classifiche & Report — {periods[0][1]}"
-        families = [
-            ("Progressione", "community", "Tutti gli utenti registrati, indipendentemente dal club."),
-            ("Progressione Club", "community_club", "Utenti registrati che appartengono ai quattro club ABUSIVI."),
-            ("Progressione Globale Club", "global_clubs", "Roster completi dei quattro club ABUSIVI: registrati e non registrati."),
-            ("Progressione TITANI", "titani", "Utenti registrati dei TITANI ABUSIVI."),
-            ("Progressione TAMARRI", "tamarri", "Utenti registrati dei TAMARRI ABUSIVI."),
-            ("Progressione TORNADI", "tornadi", "Utenti registrati dei TORNADI ABUSIVI."),
-            ("Progressione TALENTI", "talenti", "Utenti registrati dei TALENTI ABUSIVI."),
-            ("Progressione Club Globale TITANI", "global_single:titani", "Roster completo TITANI ABUSIVI, registrati e non registrati."),
-            ("Progressione Club Globale TAMARRI", "global_single:tamarri", "Roster completo TAMARRI ABUSIVI, registrati e non registrati."),
-            ("Progressione Club Globale TORNADI", "global_single:tornadi", "Roster completo TORNADI ABUSIVI, registrati e non registrati."),
-            ("Progressione Club Globale TALENTI", "global_single:talenti", "Roster completo TALENTI ABUSIVI, registrati e non registrati."),
-        ]
         lines = [
             title.upper(),
             f"Aggiornato: {now:%d/%m/%Y %H:%M}",
             "",
-            "Dashboard unica della community. Ogni voce spiega esattamente chi viene conteggiato e apre la classifica o il report completo.",
+            "Quattro viste per periodo. Trofei, Progressione e Report globali includono i roster completi dei quattro club, registrati e non registrati.",
         ]
         for days, label in periods:
             lines.extend(["", f"══ {label} ══", ""])
             lines.extend([
-                f"🏆 Classifica Community — {label}",
-                "Andamento trofei degli utenti registrati della community.",
-                f"[[DASH:dash_t_0_{days}|Apri]]", "",
-                f"🏆 Classifica Club — {label}",
-                "Andamento trofei dei quattro club ABUSIVI, calcolato sui membri registrati.",
+                f"🏆 Classifica dei 4 Club — {label}",
+                "Confronto fra TITANI, TAMARRI, TORNADI e TALENTI; roster completi, registrati e non registrati.",
                 f"[[DASH:dash_t_1_{days}|Apri]]", "",
+                f"🏆 Classifica Trofei Globale Club — {label}",
+                "Tutti i giocatori dei quattro club, registrati e non registrati.",
+                f"[[DASH:dash_t_2_{days}|Apri]]", "",
+                f"🔥 Progressione Globale Club — {label}",
+                "Tutti i giocatori dei quattro club; Progressione calcolata battaglia per battaglia.",
+                f"[[DASH:dash_p_2_{days}|Apri]]", "",
+                f"📊 Report Globale Club — {label}",
+                "Trofei, Progressione e resoconto dei roster completi dei quattro club.",
+                f"[[DASH:dash_r_2_{days}|Apri]]", "",
             ])
-            for index, (name, scope, description) in enumerate(families):
-                lines.extend([
-                    f"🔥 {name} — {label}",
-                    description + " Progressione calcolata battaglia per battaglia e Brawler per Brawler.",
-                    f"[[DASH:dash_p_{index}_{days}|Apri]]",
-                    "",
-                ])
-            if days or include_today_reports:
-                for index, (name, scope, description) in enumerate(families):
-                    lines.extend([
-                        f"📊 {name.replace('Progressione', 'Report', 1)} — {label}",
-                        description + " Trofei, Progressione e resoconto per lo stesso ambito.",
-                        f"[[DASH:dash_r_{index}_{days}|Apri]]", "",
-                    ])
         if not publish:
             return lines
         dashboard_url = self._publish_telegraph(title, lines)
