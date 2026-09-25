@@ -145,7 +145,7 @@ Mostra l'immagine disponibile della Skin specificata.
 
 🏆 CLASSIFICHE & REPORT
 [[CMDNAME:Classifica]]
-Mostra in privato i Resoconti di OGGI, 7, 15 e 30 giorni e apre l'indice Telegraph delle classifiche cliccabili.
+Apre l'indice Telegraph generale di OGGI, 7, 15 e 30 giorni. Il messaggio resta breve: il Resoconto si vede chiedendo il singolo periodo.
 
 [[CMDNAME:Classifiche]]
 Sinonimo di Classifica: apre lo stesso indice generale.
@@ -3553,7 +3553,6 @@ class CommunityFeatures:
             now = datetime.now(ROME)
             lines = [title.upper(), f"Aggiornato: {now:%d/%m/%Y %H:%M}", "",
                      "Tre classifiche cliccabili per periodo; i Resoconti sono nel messaggio Telegram."]
-            summaries = ["📊 " + title.upper(), lines[1]]
             for period in (0, 7, 15, 30):
                 period_payload = self.rankings_dashboard_text(chat_id, period)
                 if not isinstance(period_payload, dict) or not period_payload.get("report_url"):
@@ -3563,9 +3562,11 @@ class CommunityFeatures:
                 if start is None:
                     raise RuntimeError("Period dashboard has no period heading")
                 lines.extend(["", *period_lines[start:]])
-                summaries.extend(["", period_payload["text"]])
             url = self._publish_telegraph(title, lines)
-            payload = self._telegraph_reply(summaries, url, lines) if url else None
+            payload = self._telegraph_reply(
+                ["📊 " + title.upper(), lines[1], "", "🏆 OGGI · 7 · 15 · 30 GIORNI", "Apri l'indice per le classifiche dei quattro periodi."],
+                url, lines,
+            ) if url else None
         else:
             payload = self._direct_dashboard_snapshot(chat_id, days, None)
         if isinstance(payload, dict) and payload.get("report_url"):
