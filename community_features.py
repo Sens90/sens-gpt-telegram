@@ -3838,19 +3838,21 @@ class CommunityFeatures:
                         and payload.get("cache_revision") == _DASHBOARD_FORMAT_REVISION):
                     stored_at = datetime.fromisoformat(str(payload.get("cached_at") or "").replace("Z", "+00:00"))
                     age = (datetime.now(timezone.utc) - stored_at).total_seconds()
-                    if 0 <= age <= (120 if days == 0 else 300):
+                    max_age = 120 if days == 0 else 300
+                    if 0 <= age < max_age:
                         LOG.info("CLASSIFICHE PERIOD CACHE REUSED: chat=%s days=%s age_seconds=%s", chat_id, days, int(age))
                         with _DASHBOARD_CACHE_LOCK:
-                            _DASHBOARD_CACHE[cache_key] = (time.monotonic() + (120 if days == 0 else 300), payload)
+                            _DASHBOARD_CACHE[cache_key] = (time.monotonic() + max_age - age, payload)
                         return payload
             except (requests.RequestException, ValueError, TypeError, KeyError, IndexError) as exc:
                 LOG.warning("CLASSIFICHE PERIOD CACHE READ FAILED: %s", type(exc).__name__)
         if days is None:
             published = self._latest_published_dashboard()
             if published:
+                payload, age = published
                 with _DASHBOARD_CACHE_LOCK:
-                    _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 300, published)
-                return published
+                    _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 300 - age, payload)
+                return payload
         if days is None:
             title = "Classifiche — TITANI ABUSIVI"
             now = datetime.now(ROME)
@@ -3942,14 +3944,14 @@ class CommunityFeatures:
                     except ValueError:
                         continue
                     age = (datetime.now(ROME) - published_at).total_seconds()
-                    if not 0 <= age <= 300:
+                    if not 0 <= age < 300:
                         continue
                     LOG.info("CLASSIFICHE DASHBOARD REUSED: url=%s age_seconds=%s", url, int(age))
                     return self._telegraph_reply(
                         ["📊 CLASSIFICHE — TITANI ABUSIVI", updated, "", "🏆 OGGI · 7 · 15 · 30 GIORNI",
                          "Apri l'indice per le classifiche pubblicate dei quattro periodi."],
                         url, ["CLASSIFICHE — TITANI ABUSIVI", updated, url],
-                    )
+                    ), age
                 if len(pages) < 200:
                     break
         except (requests.RequestException, ValueError, TypeError) as exc:
