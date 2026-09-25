@@ -357,6 +357,58 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(post.call_args.kwargs["json"]["p_start"], window[0].isoformat())
                 self.assertIn("coefficient_progression_rows_range", post.call_args.args[0])
 
+    @patch("community_features.requests.post")
+    def test_large_report_fetches_independent_histories_concurrently(self, post):
+        from threading import Lock
+        import time as clock
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        members = [{"player_tag": f"TAG{i}", "player_name": f"Player {i}"} for i in range(18)]
+        obj._get = Mock(return_value=members)
+        lock = Lock()
+        active = peak = 0
+        def history(tag, days):
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            clock.sleep(0.01)
+            with lock:
+                active -= 1
+            return [{"trophies": 100}]
+        obj.history_fetcher = Mock(side_effect=history)
+        obj.change_calculator = Mock(return_value={"7d": 5})
+        post.return_value.json.return_value = []
+        summary, full, _ = obj.periodic_report_text(-100, "community", 7, return_full=True, publish=False)
+        self.assertGreater(peak, 1)
+        self.assertEqual(obj.history_fetcher.call_count, 18)
+        self.assertIn("🏆 Coppe totali reali: 1.800", summary)
+        self.assertEqual(sum(line.startswith(tuple(f"{i}. " for i in range(1, 19))) for line in full), 18)
+
+    def test_large_ranking_keeps_member_results_with_parallel_history(self):
+        from threading import Lock
+        import time as clock
+        obj = self.make_features()
+        obj.members = Mock(return_value=[{"player_tag": f"TAG{i}", "player_name": f"Player {i}"} for i in range(18)])
+        lock = Lock()
+        active = peak = 0
+        def history(tag, days):
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            clock.sleep(0.005)
+            with lock:
+                active -= 1
+            return [{"recorded_at": "2026-09-25T12:00:00Z", "trophies": 100 + int(tag[3:])}]
+        obj.history_fetcher = Mock(side_effect=history)
+        obj.change_calculator = Mock(return_value={"today": 5})
+        rows = obj.ranking(-123, 0)
+        self.assertGreater(peak, 1)
+        self.assertEqual(len(rows), 18)
+        self.assertEqual(rows[0]["tag"], "TAG17")
+        self.assertTrue(all(row["delta"] == 5 for row in rows))
+
     async def test_coefficient_guide_routes_directly_to_telegraph(self):
         obj = self.make_features()
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/guida-coefficiente")
