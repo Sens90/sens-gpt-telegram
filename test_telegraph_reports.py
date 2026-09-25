@@ -188,7 +188,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         from datetime import datetime as _datetime
         updated = _datetime.now(ROME).strftime("Aggiornato: %d/%m/%Y %H:%M")
         nodes = [{"tag": "p", "children": [updated]},
-                 {"tag": "p", "children": ["Liste: solo valori positivi verificati · copertura dei roster indicata per club."]}]
+                 {"tag": "p", "children": ["Liste: valori positivi verificati · copertura roster e periodi non misurabili indicati."]}]
         nodes += [{"tag": "h3", "children": [period]} for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")]
         nodes += [{"tag": "a", "attrs": {"href": f"https://telegra.ph/Classifica-{i}-09-25"}, "children": ["Apri"]} for i in range(12)]
         get.return_value.json.return_value = {"ok": True, "result": {"content": nodes}}
@@ -204,7 +204,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         payload = {"text": "📋 RESOCONTO\n🏆 Coppe totali reali: 100", "report_url": "https://telegra.ph/periodo-7",
-                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 4}
+                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 5}
         obj._get = Mock(return_value=[{"payload": payload}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse the exact period"))
         result = obj.rankings_dashboard_text(-123, 7)
@@ -226,7 +226,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._direct_dashboard_snapshot = Mock(return_value=fresh)
         self.assertEqual(obj.rankings_dashboard_text(-123, 0), fresh)
         obj._direct_dashboard_snapshot.assert_called_once()
-        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 4)
+        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 5)
 
     @patch("community_features.requests.post")
     def test_global_roster_uses_observed_nonregistered_snapshots_at_period_boundary(self, post):
@@ -405,6 +405,26 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         clubs = next(lines for title, lines in published if title == "Classifica 4 Club — 7 GIORNI")
         self.assertTrue(any("2/30 con storico sufficiente" in line for line in clubs))
         self.assertTrue(any("non vengono contati come zero" in line for line in clubs))
+
+    def test_fifteen_and_thirty_day_club_pages_mark_missing_baseline(self):
+        obj = self.make_features()
+        for period in (15, 30):
+            published = []
+            obj._publish_telegraph = Mock(side_effect=lambda title, lines: (
+                published.append((title, lines)) or f"https://telegra.ph/page-{len(published)}"
+            ))
+            full = ["REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI",
+                    "Storico Trofei non ancora sufficiente per calcolare questo periodo.",
+                    "", "🔥 CLASSIFICA PROGRESSIONE", "📊 RESOCONTO"]
+            obj.periodic_report_text = Mock(return_value=("REPORT", full, {
+                "TITANI ABUSIVI": {"delta": 0, "players": 0, "roster": 30},
+            }))
+            obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progression"})
+            obj._direct_dashboard_snapshot(-1001, period, None)
+            clubs = next(lines for title, lines in published if title == f"Classifica 4 Club — {period} GIORNI")
+            self.assertIn("📌 Copertura Trofei: 0/30 giocatori con storico sufficiente.", clubs)
+            self.assertTrue(any("Storico Trofei non ancora sufficiente" in line for line in clubs))
+            self.assertFalse(any("Nessun club con crescita" in line for line in clubs))
 
     def test_scheduled_today_index_focuses_on_global_roster(self):
         obj = self.make_features()
