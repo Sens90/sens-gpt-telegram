@@ -459,15 +459,18 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
     def test_skin_account_uses_dated_snapshot_during_bridge_backoff(self):
         from community_features import SkinBridgeBackoff
         obj = self.make_features()
+        silver = [{"external_id": i + 1, "brawler_id": i % 106, "price_coins": 10000,
+                   "acquisition_type": "coins"} for i in range(108)]
         obj._get = Mock(side_effect=lambda table, params: ([
             {"snapshot_date": "2026-09-22", "category": "Totale", "owned_count": 50, "total_count": 100},
-            {"snapshot_date": "2026-09-22", "category": "Rare", "owned_count": 10, "total_count": 20},
-        ] if table == "skin_account_history" else [{"external_id": 1}]))
+            {"snapshot_date": "2026-09-22", "category": "Argento", "owned_count": 0, "total_count": 8},
+        ] if table == "skin_account_history" else silver))
         obj._official_owned_skin_ids = Mock(side_effect=SkinBridgeBackoff("offline"))
         result = obj.skin_account_text({"player_tag": "2GU9UV2RG"})
         self.assertIn("2026-09-22", result)
-        self.assertIn("50/100", result)
-        self.assertIn("Rare: 10/20", result)
+        self.assertIn("Skin possedute alla rilevazione: 50", result)
+        self.assertIn("Argento: 106 Brawler (108 varianti)", result)
+        self.assertNotIn("Argento: 0/8", result)
         self.assertIn("potrebbero essere cambiati", result)
 
     @patch.dict(os.environ, {"TELEGRAM_TOKEN": "000000:test-token", "GEMINI_API_KEY": "test-key"})
