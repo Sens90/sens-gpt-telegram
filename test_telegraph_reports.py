@@ -94,14 +94,14 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._publish_telegraph.assert_called_once()
         lines = obj._publish_telegraph.call_args.args[1]
         links = [line for line in lines if line.startswith("[[DASH:")]
-        self.assertEqual(len(links), 85)
+        self.assertEqual(len(links), 96)
         self.assertIn("[[DASH:dash_p_2_0|Apri]]", links)
         self.assertIn("[[DASH:dash_r_10_30|Apri]]", links)
-        self.assertNotIn("[[DASH:dash_r_0_0|Apri]]", links)
+        self.assertIn("[[DASH:dash_r_0_0|Apri]]", links)
         self.assertEqual(obj.dashboard_command("dash_p_2_0"), "classifica progressione globale club oggi")
         self.assertEqual(obj.dashboard_command("dash_r_10_30"), "report club globale talenti 30")
         self.assertEqual(obj.dashboard_command("dash_t_1_15"), "classifica club 15")
-        self.assertIsNone(obj.dashboard_command("dash_r_1_0"))
+        self.assertEqual(obj.dashboard_command("dash_r_1_0"), "report club oggi")
         self.assertIsNone(obj.dashboard_command("dash_p_11_7"))
         nodes = obj._telegraph_nodes(["CLASSIFICHE & REPORT", "[[DASH:dash_r_10_30|Apri]]"])
         self.assertEqual(nodes[-1]["children"][0]["attrs"]["href"],
@@ -140,7 +140,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         _DASHBOARD_CACHE.clear()
         obj = self.make_features()
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/periodo")
-        for days, count in ((0, 13), (7, 24), (15, 24), (30, 24)):
+        for days, count in ((0, 24), (7, 24), (15, 24), (30, 24)):
             obj.rankings_dashboard_text(-1001, days)
             lines = obj._publish_telegraph.call_args.args[1]
             links = [line for line in lines if line.startswith("[[DASH:")]
@@ -154,6 +154,57 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         for command in ("Classifica", "Classifiche", "classifiche oggi", "classifiche 7", "classifiche 15", "classifiche 30",
                         "classifica oggi", "progressione oggi"):
             self.assertIn(f"[[CMDNAME:{command}]]", HELP_TEXT)
+
+    def test_calendar_trophy_snapshot_excludes_next_period(self):
+        from datetime import timezone
+        obj = self.make_features()
+        start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 9, 16, tzinfo=timezone.utc)
+        history = [
+            {"recorded_at": "2026-08-31T23:00:00Z", "trophies": 100},
+            {"recorded_at": "2026-09-15T23:00:00Z", "trophies": 110},
+            {"recorded_at": "2026-09-16T01:00:00Z", "trophies": 125},
+        ]
+        self.assertEqual(obj._window_trophy_values(history, start, end), (100, 110))
+
+    def test_scheduled_index_links_open_telegraph_directly(self):
+        from datetime import timezone
+        obj = self.make_features()
+        start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 9, 16, tzinfo=timezone.utc)
+        captured = []
+        def publish(_title, lines):
+            captured.append(lines)
+            return f"https://telegra.ph/page-{len(captured)}"
+        with (
+            patch.object(obj, "_publish_telegraph", side_effect=publish),
+            patch.object(obj, "ranking_text", return_value="CLASSIFICA\n1. player 10"),
+            patch.object(obj, "club_trophy_ranking_text", return_value="CLASSIFICA CLUB\n1. club 10"),
+            patch.object(obj, "coefficient_ranking_text", return_value={"report_url": "https://telegra.ph/progression"}),
+            patch.object(obj, "periodic_report_text", return_value="📊 REPORT COMPLETO: https://telegra.ph/report"),
+        ):
+            result = obj.scheduled_dashboard_snapshot(-1001, 15, (start, end))
+        self.assertEqual(result["report_url"], "https://telegra.ph/page-3")
+        self.assertEqual(sum("[[URL:" in row for row in captured[-1]), 24)
+        self.assertFalse(any("[[DASH:" in row for row in captured[-1]))
+        nodes = obj._telegraph_nodes(["[[URL:https://telegra.ph/report|Apri]]"])
+        self.assertEqual(nodes[0]["children"][0]["attrs"]["href"], "https://telegra.ph/report")
+
+    def test_scheduled_today_index_includes_all_report_families(self):
+        obj = self.make_features()
+        lines = obj._build_rankings_dashboard_text(0, publish=False, include_today_reports=True)
+        self.assertEqual(sum(row.startswith("[[DASH:") for row in lines), 24)
+        self.assertIn("[[DASH:dash_r_10_0|Apri]]", lines)
+        self.assertEqual(obj.dashboard_command("dash_r_0_0"), "report community oggi")
+
+    async def test_report_today_from_dashboard_uses_requested_scope(self):
+        obj = self.make_features()
+        obj.periodic_report_text = Mock(return_value="REPORT OGGI")
+        message = SimpleNamespace(chat_id=-1001, chat=SimpleNamespace(type="group"),
+                                  from_user=SimpleNamespace(id=456), reply_text=AsyncMock())
+        context = SimpleNamespace(user_data={"_registered_user": {"player_tag": "2GU9UV2RG"}})
+        self.assertTrue(await obj.handle_command(message, context, "report club oggi"))
+        obj.periodic_report_text.assert_called_once_with(-1001, "community_club", 0)
 
     @patch("community_features.requests.post")
     def test_periodic_report_summary_and_scope(self, post):
@@ -202,6 +253,22 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("CLASSIFICA PROGRESSIONE", summary)
                 self.assertNotIn("Coeff.", summary)
                 self.assertIn("CLASSIFICA PROGRESSIONE", "\n".join(obj._publish_telegraph.call_args.args[1]))
+
+        # The same three scopes use the exact calendar boundaries and retain
+        # their own current-roster membership instead of sharing a tag set.
+        obj.history_fetcher = Mock(side_effect=lambda tag, days: [
+            {"recorded_at": "2026-09-01T00:00:00Z", "trophies": {"AAA": 90, "BBB": 180, "CCC": 290}[tag]},
+            {"recorded_at": "2026-09-15T22:00:00Z", "trophies": {"AAA": 100, "BBB": 200, "CCC": 300}[tag]},
+        ])
+        window = (datetime(2026, 9, 1, tzinfo=timezone.utc), datetime(2026, 9, 16, tzinfo=timezone.utc))
+        for scope, expected_tags in (("community", {"AAA", "BBB"}),
+                                     ("community_club", {"AAA"}),
+                                     ("global_single:titani", {"AAA", "CCC"})):
+            with self.subTest(calendar_scope=scope):
+                obj.periodic_report_text(123, scope, 15, window=window)
+                self.assertEqual(set(post.call_args.kwargs["json"]["p_player_tags"]), expected_tags)
+                self.assertEqual(post.call_args.kwargs["json"]["p_start"], window[0].isoformat())
+                self.assertIn("coefficient_progression_rows_range", post.call_args.args[0])
 
     async def test_coefficient_guide_routes_directly_to_telegraph(self):
         obj = self.make_features()
