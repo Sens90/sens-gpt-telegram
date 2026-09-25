@@ -80,22 +80,22 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.number_formatter = lambda value: f"{int(value):,}".replace(",", ".")
         return obj
 
-    def test_dashboard_has_direct_links_for_all_existing_scopes(self):
+    def test_dashboard_has_compact_global_links_for_every_period(self):
         from community_features import _DASHBOARD_CACHE
         _DASHBOARD_CACHE.clear()
         obj = self.make_features()
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/classifiche")
-        obj.ranking_text = Mock(return_value="CLASSIFICA\n1. Utente 10")
-        obj.club_trophy_ranking_text = Mock(return_value="CLASSIFICA CLUB\n1. Club 10")
+        obj.club_trophy_ranking_text = Mock(side_effect=AssertionError("registered-only ranking must not be used"))
         obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progressione"})
-        obj.periodic_report_text = Mock(return_value="📊 REPORT COMPLETO: https://telegra.ph/report")
+        report_full = ["REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI", "1. Utente +10", "", "🔥 CLASSIFICA PROGRESSIONE"]
+        obj.periodic_report_text = Mock(return_value=("📊 REPORT COMPLETO: https://telegra.ph/report", report_full, {"TITANI ABUSIVI": {"delta": 10, "players": 2}}))
         payload = obj.rankings_dashboard_text(-1001)
         self.assertEqual(payload["report_url"], "https://telegra.ph/classifiche")
         self.assertIs(payload, obj.rankings_dashboard_text(-1001))
         self.assertEqual(obj._publish_telegraph.call_count, 13)
         lines = obj._publish_telegraph.call_args.args[1]
         links = [line for line in lines if line.startswith("[[URL:")]
-        self.assertEqual(len(links), 96)
+        self.assertEqual(len(links), 16)
         self.assertIn("[[URL:https://telegra.ph/progressione|Apri]]", links)
         self.assertIn("[[URL:https://telegra.ph/report|Apri]]", links)
         self.assertFalse(any("[[DASH:" in line for line in lines))
@@ -109,9 +109,12 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                          "https://t.me/SensGPT_TitaniAbusiviBot?start=dash_r_10_30")
         direct_nodes = obj._telegraph_nodes(lines)
         self.assertEqual(sum(node.get("tag") == "h3" and node.get("children") == ["OGGI"] for node in direct_nodes), 1)
-        self.assertEqual(sum(node.get("tag") == "h4" for node in direct_nodes), 96)
+        self.assertEqual(sum(node.get("tag") == "h4" for node in direct_nodes), 16)
         self.assertEqual(sum(node.get("tag") == "a" and node.get("attrs", {}).get("href", "").startswith("https://telegra.ph/")
-                             for item in direct_nodes for node in item.get("children", []) if isinstance(node, dict)), 96)
+                             for item in direct_nodes for node in item.get("children", []) if isinstance(node, dict)), 16)
+        self.assertEqual(obj.periodic_report_text.call_count, 4)
+        self.assertTrue(all(call.args[1] == "global_clubs" and call.kwargs.get("return_full") for call in obj.periodic_report_text.call_args_list))
+        self.assertTrue(all(call.args[1] == "global_clubs" for call in obj.coefficient_ranking_text.call_args_list))
 
     async def test_period_hubs_and_today_shortcuts_stay_private(self):
         from community_features import _DASHBOARD_CACHE
@@ -146,11 +149,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         _DASHBOARD_CACHE.clear()
         obj = self.make_features()
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/periodo")
-        obj.ranking_text = Mock(return_value="CLASSIFICA\n1. Utente 10")
-        obj.club_trophy_ranking_text = Mock(return_value="CLASSIFICA CLUB\n1. Club 10")
+        obj.club_trophy_ranking_text = Mock(side_effect=AssertionError("registered-only ranking must not be used"))
         obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progressione"})
-        obj.periodic_report_text = Mock(return_value="📊 REPORT COMPLETO: https://telegra.ph/report")
-        for days, count in ((0, 24), (7, 24), (15, 24), (30, 24)):
+        report_full = ["REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI", "1. Utente +10", "", "🔥 CLASSIFICA PROGRESSIONE"]
+        obj.periodic_report_text = Mock(return_value=("📊 REPORT COMPLETO: https://telegra.ph/report", report_full, {"TITANI ABUSIVI": {"delta": 10, "players": 2}}))
+        for days, count in ((0, 4), (7, 4), (15, 4), (30, 4)):
             obj.rankings_dashboard_text(-1001, days)
             lines = obj._publish_telegraph.call_args.args[1]
             links = [line for line in lines if line.startswith("[[URL:")]
@@ -188,23 +191,22 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             return f"https://telegra.ph/page-{len(captured)}"
         with (
             patch.object(obj, "_publish_telegraph", side_effect=publish),
-            patch.object(obj, "ranking_text", return_value="CLASSIFICA\n1. player 10"),
-            patch.object(obj, "club_trophy_ranking_text", return_value="CLASSIFICA CLUB\n1. club 10"),
+            patch.object(obj, "club_trophy_ranking_text", side_effect=AssertionError("registered-only ranking must not be used")),
             patch.object(obj, "coefficient_ranking_text", return_value={"report_url": "https://telegra.ph/progression"}),
-            patch.object(obj, "periodic_report_text", return_value="📊 REPORT COMPLETO: https://telegra.ph/report"),
+            patch.object(obj, "periodic_report_text", return_value=("📊 REPORT COMPLETO: https://telegra.ph/report", ["REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI", "1. player +10", "", "🔥 CLASSIFICA PROGRESSIONE"], {"TITANI ABUSIVI": {"delta": 10, "players": 2}})),
         ):
             result = obj.scheduled_dashboard_snapshot(-1001, 15, (start, end))
         self.assertEqual(result["report_url"], "https://telegra.ph/page-3")
-        self.assertEqual(sum("[[URL:" in row for row in captured[-1]), 24)
+        self.assertEqual(sum("[[URL:" in row for row in captured[-1]), 4)
         self.assertFalse(any("[[DASH:" in row for row in captured[-1]))
         nodes = obj._telegraph_nodes(["[[URL:https://telegra.ph/report|Apri]]"])
         self.assertEqual(nodes[0]["children"][0]["attrs"]["href"], "https://telegra.ph/report")
 
-    def test_scheduled_today_index_includes_all_report_families(self):
+    def test_scheduled_today_index_focuses_on_global_roster(self):
         obj = self.make_features()
         lines = obj._build_rankings_dashboard_text(0, publish=False, include_today_reports=True)
-        self.assertEqual(sum(row.startswith("[[DASH:") for row in lines), 24)
-        self.assertIn("[[DASH:dash_r_10_0|Apri]]", lines)
+        self.assertEqual(sum(row.startswith("[[DASH:") for row in lines), 4)
+        self.assertIn("[[DASH:dash_r_2_0|Apri]]", lines)
         self.assertEqual(obj.dashboard_command("dash_r_0_0"), "report community oggi")
 
     async def test_report_today_from_dashboard_uses_requested_scope(self):
@@ -250,6 +252,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         for scope, expected_tags, expected_cups in (
             ("community", {"AAA", "BBB"}, "300"),
             ("community_club", {"AAA"}, "100"),
+            ("global_clubs", {"AAA", "CCC"}, "400"),
             ("global_single:titani", {"AAA", "CCC"}, "400"),
         ):
             with self.subTest(scope=scope):
@@ -263,6 +266,12 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("CLASSIFICA PROGRESSIONE", summary)
                 self.assertNotIn("Coeff.", summary)
                 self.assertIn("CLASSIFICA PROGRESSIONE", "\n".join(obj._publish_telegraph.call_args.args[1]))
+
+        summary, full, club_totals = obj.periodic_report_text(123, "global_clubs", 7, return_full=True)
+        self.assertIn("📊 REPORT COMPLETO", summary)
+        self.assertIn("1. Unregistered", "\n".join(full))
+        self.assertIn("🔥 CLASSIFICA PROGRESSIONE", full)
+        self.assertEqual(club_totals["TITANI ABUSIVI"]["players"], 1)
 
         # The same three scopes use the exact calendar boundaries and retain
         # their own current-roster membership instead of sharing a tag set.
