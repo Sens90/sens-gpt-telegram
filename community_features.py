@@ -25,6 +25,10 @@ _SKIN_BRIDGE_FAILURE_LIMIT = 3
 _SKIN_BRIDGE_BACKOFF_SECONDS = 6 * 60 * 60
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
+_PROGRESSION_DETAIL_CACHE = {}
+_PROGRESSION_DETAIL_LOCK = threading.Lock()
+_PROGRESSION_DETAIL_FLIGHTS = {}
+_TELEGRAPH_PAGE_LOCK = threading.Lock()
 
 PROGRESSION_MODE_NAMES_IT = {
     "gemgrab": "Arraffagemme",
@@ -2083,6 +2087,22 @@ class CommunityFeatures:
         ])
 
     def progression_detail_text(self, player_tag, days=0):
+        """Avoid rebuilding the same player's Brawler pages on rapid retries."""
+        tag = str(player_tag or "").strip().lstrip("#").upper()
+        key = (id(self), tag, int(days), datetime.now(ROME).date() if int(days) == 0 else None)
+        with _PROGRESSION_DETAIL_LOCK:
+            flight = _PROGRESSION_DETAIL_FLIGHTS.setdefault(key, threading.Lock())
+        with flight:
+            cached = _PROGRESSION_DETAIL_CACHE.get(key)
+            if cached and cached[0] > time.monotonic():
+                LOG.info("PROGRESSION DETAIL REUSED: tag=%s days=%s", tag, days)
+                return cached[1]
+            payload = self._progression_detail_uncached(tag, days)
+            if isinstance(payload, dict) and payload.get("report_url"):
+                _PROGRESSION_DETAIL_CACHE[key] = (time.monotonic() + 120, payload)
+            return payload
+
+    def _progression_detail_uncached(self, player_tag, days=0):
         """Detailed observed progression report for one monitored player."""
         from trophy_coefficient import TROPHY_COEFFICIENT_BANDS, score_brawler_trophies
         tag = str(player_tag or "").strip().lstrip("#").upper()
@@ -2399,26 +2419,32 @@ class CommunityFeatures:
         content = self._telegraph_nodes(lines)
 
         def create_page(page_title, nodes):
-            response = requests.post(
-                "https://api.telegra.ph/createPage",
-                data={
-                    "access_token": token,
-                    "title": str(page_title)[:256],
-                    "author_name": "TITANI ABUSIVI",
-                    "content": __import__("json").dumps(nodes, ensure_ascii=False),
-                    "return_content": "false",
-                },
-                timeout=20,
-            )
-            response.raise_for_status()
-            payload = response.json()
-            if not payload.get("ok"):
-                LOG.error(
-                    "TELEGRAPH API ERROR: status=%s error=%s",
-                    response.status_code,
-                    str(payload.get("error") or "unknown")[:300],
-                )
-                return None
+            with _TELEGRAPH_PAGE_LOCK:
+                for attempt in range(4):
+                    response = requests.post(
+                        "https://api.telegra.ph/createPage",
+                        data={
+                            "access_token": token,
+                            "title": str(page_title)[:256],
+                            "author_name": "TITANI ABUSIVI",
+                            "content": __import__("json").dumps(nodes, ensure_ascii=False),
+                            "return_content": "false",
+                        },
+                        timeout=20,
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+                    if payload.get("ok"):
+                        break
+                    error = str(payload.get("error") or "unknown")
+                    flood = re.fullmatch(r"FLOOD_WAIT_(\d+)", error)
+                    if flood and attempt < 3:
+                        delay = min(int(flood.group(1)) + 1, 30)
+                        LOG.warning("TELEGRAPH FLOOD WAIT: seconds=%s attempt=%s", delay, attempt + 1)
+                        time.sleep(delay)
+                        continue
+                    LOG.error("TELEGRAPH API ERROR: status=%s error=%s", response.status_code, error[:300])
+                    return None
             url = payload.get("result", {}).get("url")
             if not url:
                 LOG.error("TELEGRAPH API ERROR: status=%s error=missing_result_url", response.status_code)
