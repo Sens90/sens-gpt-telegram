@@ -107,6 +107,48 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(nodes[-1]["children"][0]["attrs"]["href"],
                          "https://t.me/SensGPT_TitaniAbusiviBot?start=dash_r_10_30")
 
+    async def test_period_hubs_and_today_shortcuts_stay_private(self):
+        from community_features import _DASHBOARD_CACHE
+        _DASHBOARD_CACHE.clear()
+        obj = self.make_features()
+        obj.rankings_dashboard_text = Mock(return_value={"text": "7 GIORNI", "report_url": "https://telegra.ph/7"})
+        obj.ranking_text = Mock(return_value="CLASSIFICA OGGI")
+        obj.progression_detail_text = Mock(return_value="PROGRESSIONE OGGI")
+        obj._send_ranking_message = AsyncMock(return_value=True)
+        message = SimpleNamespace(chat_id=-1001, chat=SimpleNamespace(type="group"),
+                                  from_user=SimpleNamespace(id=456), reply_text=AsyncMock())
+        context = SimpleNamespace(user_data={"_registered_user": {"player_tag": "2GU9UV2RG"}})
+        for days in (7, 15, 30):
+            self.assertTrue(await obj.handle_command(message, context, f"Classifica {days}"))
+            self.assertEqual(obj.rankings_dashboard_text.call_args.args[1], days)
+            self.assertEqual(obj._send_ranking_message.await_args.args[1], 456)
+        self.assertTrue(await obj.handle_command(message, context, "Classifica oggi"))
+        obj.ranking_text.assert_called_with(-1001, 0)
+        self.assertEqual(obj.rankings_dashboard_text.call_count, 3)
+        self.assertTrue(await obj.handle_command(message, context, "Progressione oggi"))
+        obj.progression_detail_text.assert_called_once_with("2GU9UV2RG", 0)
+        self.assertEqual(obj._send_ranking_message.await_args.args[1], 456)
+
+    def test_each_period_index_contains_only_its_own_reports(self):
+        from community_features import _DASHBOARD_CACHE
+        _DASHBOARD_CACHE.clear()
+        obj = self.make_features()
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/periodo")
+        for days, count in ((0, 13), (7, 24), (15, 24), (30, 24)):
+            obj.rankings_dashboard_text(-1001, days)
+            lines = obj._publish_telegraph.call_args.args[1]
+            links = [line for line in lines if line.startswith("[[DASH:")]
+            self.assertEqual(len(links), count)
+            self.assertTrue(all(line.endswith(f"_{days}|Apri]]") for line in links))
+            self.assertEqual(obj._publish_telegraph.call_count, (0, 7, 15, 30).index(days) + 1)
+        self.assertEqual(obj.dashboard_command("dash_t_0_7"), "classifica della community 7")
+
+    def test_command_guide_describes_current_period_hubs(self):
+        from community_features import HELP_TEXT
+        for command in ("classifiche oggi", "classifica 7", "classifica 15", "classifica 30",
+                        "classifica oggi", "progressione oggi"):
+            self.assertIn(f"[[CMDNAME:{command}]]", HELP_TEXT)
+
     @patch("community_features.requests.post")
     def test_periodic_report_summary_and_scope(self, post):
         obj = self.make_features()
