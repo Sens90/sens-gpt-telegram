@@ -1064,35 +1064,61 @@ class CommunityFeatures:
             return "Non riesco a recuperare l'immagine della skin in questo momento."
 
     def _owned_skin_stats_text(self, player_tag):
-        """Use the same account ownership source as Stats, never catalog totals."""
+        """Combine Stats ownership with current verified catalog denominators."""
         from player_tracking import _brawlytix_progression
         stats = _brawlytix_progression(player_tag) or {}
         owned = stats.get("skins_owned")
         raw_counts = stats.get("skin_rarity_counts") or {}
         if owned is None and not raw_counts:
             return "I dati delle skin possedute non sono disponibili in questo momento. Riprova più tardi."
+        catalog, offset = [], 0
+        while True:
+            page = self._get("skins_catalog", {
+                "select": "external_id,rarity,source_payload,price_coins,acquisition_type,acquisition_note,name_it,name_en",
+                "verification_status": "eq.structured_verified",
+                "external_id": "not.in.(29001472,29001473,29001831,29001832,29001833,29001834,29001835,29001836)",
+                "order": "external_id.asc", "limit": "1000", "offset": str(offset),
+            }) or []
+            catalog.extend(page)
+            if len(page) < 1000:
+                break
+            offset += 1000
+        totals = {}
+        uncategorized = []
+        for row in catalog:
+            label = self._skin_category_label(row)
+            totals[label] = totals.get(label, 0) + 1
+            if label == "Senza rarità":
+                uncategorized.append(str(row.get("name_it") or row.get("name_en") or row.get("external_id")))
         labels = (
-            ("rare", "🟢", "Rare"), ("super rare", "🔵", "Super rare"),
-            ("epic", "🟣", "Epiche"), ("mythic", "🔴", "Mitiche"),
-            ("legendary", "🟡", "Leggendarie"), ("hypercharge", "🔥", "Skin Overdrive"),
-            ("ranked", "🏅", "Ranked"), ("true silver", "🥈", "Argento"),
-            ("true gold", "🥇", "Oro"),
+            ("rare", "🟢", "Rare", "Rare"), ("super rare", "🔵", "Super rare", "Super rare"),
+            ("epic", "🟣", "Epiche", "Epiche"), ("mythic", "🔴", "Mitiche", "Mitiche"),
+            ("legendary", "🟡", "Leggendarie", "Leggendarie"),
+            ("hypercharge", "🔥", "Skin Overdrive", "Skin Overdrive"),
+            ("ranked", "🏅", "Ranked / Pass Pro", "Pass Pro"),
+            ("true silver", "🥈", "Argento", "Argento"),
+            ("true gold", "🥇", "Oro", "Oro"),
         )
         counts = {str(key).strip().casefold(): int(value) for key, value in raw_counts.items()
                   if value is not None and str(value).strip().isdigit()}
-        lines = ["SKIN POSSEDUTE — ACCOUNT", "", f"🎨 Totale possedute: {int(owned)}" if owned is not None else "🎨 Totale possedute: non disponibile",
+        total_display = f"{int(owned) if owned is not None else 'n.d.'}/{len(catalog) if catalog else 'n.d.'}"
+        lines = ["SKIN POSSEDUTE — ACCOUNT", "", f"🎨 Totale: {total_display}",
                  "", "📊 PER RARITÀ"]
-        for key, emoji, name in labels:
-            if key in counts:
-                lines.extend(["", f"{emoji} {name}", f"Possedute: {counts[key]}"])
-        known = {key for key, _, _ in labels}
+        for key, emoji, name, catalog_label in labels:
+            if key in counts or catalog_label in totals:
+                numerator = str(counts[key]) if key in counts else "n.d."
+                denominator = str(totals[catalog_label]) if catalog_label in totals else "n.d."
+                lines.extend(["", f"{emoji} {name}", f"Possedute / totali: {numerator}/{denominator}"])
+        known = {key for key, _, _, _ in labels}
         for key in sorted(counts.keys() - known):
-            lines.extend(["", f"🎨 {key.replace('_', ' ').title()}", f"Possedute: {counts[key]}"])
+            lines.extend(["", f"🎨 {key.replace('_', ' ').title()}", f"Possedute / totali: {counts[key]}/n.d."])
+        if uncategorized:
+            lines.extend(["", "⚪ Senza rarità", f"Possedute / totali: n.d./{len(uncategorized)}",
+                          "Skin: " + ", ".join(uncategorized)])
         if not counts:
-            lines.extend(["", "La fonte Stats non ha restituito la suddivisione per rarità."])
+            lines.extend(["", "La suddivisione delle skin possedute non è disponibile."])
         elif owned is not None and sum(counts.values()) < int(owned):
-            lines.extend(["", f"Altre skin senza rarità specificata dalla fonte: {int(owned) - sum(counts.values())}"])
-        lines.extend(["", "Fonte: stessi dati account usati da Stats. Le categorie assenti non sono stimate."])
+            lines.extend(["", f"Altre categorie non suddivise: {int(owned) - sum(counts.values())} skin possedute"])
         return "\n".join(lines)
 
     def _cached_skin_account_text(self, player_tag, detailed=False):
@@ -1463,7 +1489,7 @@ class CommunityFeatures:
             if is_skin_account and value == "📊 PER RARITÀ":
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h3", "children": [value]}])
                 continue
-            if is_skin_account and re.match(r"^(?:🟢|🔵|🟣|🔴|🟡|🔥|🏅|🥈|🥇|🎨) .+", value) and value != "🎨 Totale possedute:":
+            if is_skin_account and re.match(r"^(?:🟢|🔵|🟣|🔴|🟡|🔥|🏅|🥈|🥇|🎨|⚪) .+", value):
                 if ":" not in value:
                     nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h4", "children": [value]}])
                     continue
