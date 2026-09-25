@@ -1491,6 +1491,8 @@ class CommunityFeatures:
         }
         field_emojis = {
             "data": "📅", "periodo": "🗓️", "partite osservate valide": "🎮",
+            "sessioni osservate": "🕹️", "vittorie": "✅", "sconfitte": "❌",
+            "coppe positive": "🏆", "bonus": "⚡", "coeff. progressione": "📊",
             "coppe nette": "🏆", "coppe osservate": "🏆", "coppe": "🏆",
             "punteggio progressione": "📈", "punti progressione": "📈", "punti": "📈",
             "valore difficoltà": "⚖️", "extra osservati vs delta base": "✨",
@@ -1618,9 +1620,9 @@ class CommunityFeatures:
             if is_command_guide and value in command_sections:
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h3", "children": [value]}])
                 continue
-            heading = section_headings.get(value.rstrip(":").upper())
+            heading = section_headings.get(value.upper())
             if heading:
-                if value.rstrip(":").upper() == "LOG BATTAGLIE":
+                if value.upper() == "LOG BATTAGLIE":
                     in_battle_logs = True
                 if nodes:
                     nodes.append({"tag": "p", "children": ["\u00a0"]})
@@ -2240,7 +2242,7 @@ class CommunityFeatures:
             for ss in sessions:
                 sr=sum(int(x.get("trophy_change") or 0) for x in ss)
                 sw=int(Decimal(str(sum(weighted_delta(x) for x in ss))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-                lines.append(f"• {dt_local(ss[0]['battle_time']):%H:%M}–{dt_local(ss[-1]['battle_time']):%H:%M}: {len(ss)} partite, {'+' if sr>0 else ''}{sr} coppe, {'+' if sw>0 else ''}{sw} punti")
+                lines.append(f"🕒 {dt_local(ss[0]['battle_time']):%H:%M}–{dt_local(ss[-1]['battle_time']):%H:%M}: {len(ss)} partite, {'+' if sr>0 else ''}{sr} coppe, {'+' if sw>0 else ''}{sw} punti")
             brawler_sections[brawler] = lines[section_start:]
         lines += ["", "LOG BATTAGLIE"]
         battle_sections = {}
@@ -2289,7 +2291,9 @@ class CommunityFeatures:
                         f"{brawler_name_it(member.get('brawler_name'))} — "
                         f"{member_trophies if member_trophies is not None else '?'} 🏆{crown}"
                     )
-                lines.append("Squadra: " + " · ".join(members))
+                lines.append("Squadra:")
+                lines.extend(f"{('🥇', '🥈', '🥉')[index] if index < 3 else '👤'} {member}"
+                             for index, member in enumerate(members))
             elif mode_key in {"soloshowdown", "solo"}:
                 lines.append("Squadra: Modalità Solo")
             else:
@@ -2329,6 +2333,10 @@ class CommunityFeatures:
 
     def _publish_command_guide(self):
         """Publish category reference pages and link every guide entry to Telegraph."""
+        with _DASHBOARD_CACHE_LOCK:
+            cached = _DASHBOARD_CACHE.get(("commands", "guide"))
+            if cached and cached[0] > time.monotonic():
+                return cached[1]
         source = HELP_TEXT.splitlines()
         headings = {
             "👤 ACCOUNT E PROFILO", "🎨 SKIN ACCOUNT", "🏆 CLASSIFICHE & REPORT",
@@ -2372,7 +2380,11 @@ class CommunityFeatures:
             else:
                 rendered.append(line)
         guide_url = self._publish_telegraph("Comandi Sens GPT — TITANI ABUSIVI", rendered)
-        return self._telegraph_reply(["COMANDI SENS GPT", "Apri la guida Telegraph: ogni voce porta alla sua categoria."], guide_url, rendered) if guide_url else None
+        payload = self._telegraph_reply(["COMANDI SENS GPT", "Apri la guida Telegraph: ogni voce porta alla sua categoria."], guide_url, rendered) if guide_url else None
+        if payload:
+            with _DASHBOARD_CACHE_LOCK:
+                _DASHBOARD_CACHE[("commands", "guide")] = (time.monotonic() + 6 * 3600, payload)
+        return payload
 
     def _publish_telegraph(self, title, lines):
         token = os.getenv("TELEGRAPH_ACCESS_TOKEN", "").strip()
@@ -3659,6 +3671,23 @@ class CommunityFeatures:
             cached = _DASHBOARD_CACHE.get(cache_key)
             if cached and cached[0] > time.monotonic():
                 return cached[1]
+        if days is not None and getattr(self, "ready", False):
+            try:
+                saved = self._get("scheduled_dashboard_delivery", {
+                    "select": "payload", "chat_id": f"eq.{int(chat_id)}",
+                    "slot": f"eq.manual:rolling:{days}", "limit": "1",
+                })
+                payload = saved[0].get("payload") if saved else None
+                if isinstance(payload, dict) and payload.get("report_url"):
+                    stored_at = datetime.fromisoformat(str(payload.get("cached_at") or "").replace("Z", "+00:00"))
+                    age = (datetime.now(timezone.utc) - stored_at).total_seconds()
+                    if 0 <= age <= (3 if days == 0 else 12) * 3600:
+                        LOG.info("CLASSIFICHE PERIOD CACHE REUSED: chat=%s days=%s age_seconds=%s", chat_id, days, int(age))
+                        with _DASHBOARD_CACHE_LOCK:
+                            _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 900, payload)
+                        return payload
+            except (requests.RequestException, ValueError, TypeError, KeyError, IndexError) as exc:
+                LOG.warning("CLASSIFICHE PERIOD CACHE READ FAILED: %s", type(exc).__name__)
         if days is None:
             published = self._latest_published_dashboard()
             if published:
@@ -3689,6 +3718,14 @@ class CommunityFeatures:
         if isinstance(payload, dict) and payload.get("report_url"):
             with _DASHBOARD_CACHE_LOCK:
                 _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 900, payload)
+            if days is not None and getattr(self, "ready", False):
+                try:
+                    saved_payload = {**payload, "cached_at": datetime.now(timezone.utc).isoformat()}
+                    self._post("scheduled_dashboard_delivery", {
+                        "chat_id": int(chat_id), "slot": f"manual:rolling:{days}", "payload": saved_payload,
+                    }, prefer="resolution=merge-duplicates,return=minimal")
+                except requests.RequestException as exc:
+                    LOG.warning("CLASSIFICHE PERIOD CACHE WRITE FAILED: %s", type(exc).__name__)
         return payload or "Dashboard Classifiche & Report temporaneamente non disponibile."
 
     def _latest_published_dashboard(self):
