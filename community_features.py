@@ -3304,7 +3304,7 @@ class CommunityFeatures:
         ])
 
         report_url = self._publish_telegraph(title, full)
-        summary = [title, "", f"👥 Ambito: {scope_note}", "", "🏆 CLASSIFICA TROFEI"]
+        summary = [title, "", "🏆 CLASSIFICA TROFEI"]
         for i, r in enumerate(trophy_rows[:5], 1):
             sign = "+" if r["delta"] > 0 else ""
             summary.append(f"{i}. {r['name']} — {sign}{self.number_formatter(r['delta'])}")
