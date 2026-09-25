@@ -165,7 +165,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         from datetime import datetime as _datetime
         updated = _datetime.now(ROME).strftime("Aggiornato: %d/%m/%Y %H:%M")
         nodes = [{"tag": "p", "children": [updated]},
-                 {"tag": "p", "children": ["Liste: solo valori positivi verificati."]}]
+                 {"tag": "p", "children": ["Liste: solo valori positivi verificati · storico dei roster completi."]}]
         nodes += [{"tag": "h3", "children": [period]} for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")]
         nodes += [{"tag": "a", "attrs": {"href": f"https://telegra.ph/Classifica-{i}-09-25"}, "children": ["Apri"]} for i in range(12)]
         get.return_value.json.return_value = {"ok": True, "result": {"content": nodes}}
@@ -181,7 +181,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         payload = {"text": "📋 RESOCONTO\n🏆 Coppe totali reali: 100", "report_url": "https://telegra.ph/periodo-7",
-                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 2}
+                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 3}
         obj._get = Mock(return_value=[{"payload": payload}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse the exact period"))
         result = obj.rankings_dashboard_text(-123, 7)
@@ -203,7 +203,45 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._direct_dashboard_snapshot = Mock(return_value=fresh)
         self.assertEqual(obj.rankings_dashboard_text(-123, 0), fresh)
         obj._direct_dashboard_snapshot.assert_called_once()
-        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 2)
+        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 3)
+
+    @patch("community_features.requests.post")
+    def test_global_roster_uses_observed_nonregistered_snapshots_at_period_boundary(self, post):
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        club = "TITANI ABUSIVI"
+        roster = [
+            {"player_tag": "AAA", "player_name": "Unregistered", "club_name": club},
+            {"player_tag": "BBB", "player_name": "Newcomer", "club_name": club},
+        ]
+        snapshots = [
+            {"player_tag": "AAA", "first_seen_at": "2026-09-17T00:00:00Z", "last_seen_at": "2026-09-25T12:00:00Z",
+             "first_trophies": 100, "last_trophies": 120},
+            {"player_tag": "BBB", "first_seen_at": "2026-09-20T00:00:00Z", "last_seen_at": "2026-09-25T12:00:00Z",
+             "first_trophies": 100, "last_trophies": 140},
+        ]
+        def get_rows(table, params):
+            if table != "club_roster_daily":
+                return []
+            if params.get("select") == "snapshot_date":
+                return [{"snapshot_date": "2026-09-25"}] if params.get("club_name") == f"eq.{club}" else []
+            if params.get("select", "").startswith("player_tag,first_trophies"):
+                return snapshots
+            return roster if params.get("club_name") == f"eq.{club}" else []
+        obj._get = Mock(side_effect=get_rows)
+        obj.history_fetcher = Mock(return_value=[])
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/global")
+        post.return_value.json.return_value = []
+        start = datetime(2026, 9, 18, tzinfo=timezone.utc)
+        end = datetime(2026, 9, 25, 13, tzinfo=timezone.utc)
+        _summary, full, totals = obj.periodic_report_text(123, "global_clubs", 7,
+                                                           window=(start, end), return_full=True)
+        trophy = full[full.index("🏆 CLASSIFICA TROFEI") + 1:full.index("🔥 CLASSIFICA PROGRESSIONE")]
+        self.assertTrue(any("Unregistered" in line and "+20" in line for line in trophy))
+        self.assertFalse(any("Newcomer" in line for line in trophy))
+        self.assertTrue(any("1 su 2 giocatori" in line for line in trophy))
+        self.assertIn("🏆 Coppe totali reali: 260", full)
+        self.assertEqual(totals[club]["delta"], 20)
 
     @patch("community_features.requests.post")
     def test_progression_ranking_excludes_zero_for_every_period(self, post):
