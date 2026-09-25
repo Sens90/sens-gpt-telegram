@@ -80,24 +80,25 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.number_formatter = lambda value: f"{int(value):,}".replace(",", ".")
         return obj
 
-    def test_dashboard_is_one_page_with_lazy_links_for_all_existing_scopes(self):
+    def test_dashboard_has_direct_links_for_all_existing_scopes(self):
         from community_features import _DASHBOARD_CACHE
         _DASHBOARD_CACHE.clear()
         obj = self.make_features()
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/classifiche")
-        obj.ranking_text = Mock(side_effect=AssertionError("eager ranking"))
-        obj.coefficient_ranking_text = Mock(side_effect=AssertionError("eager progression"))
-        obj.periodic_report_text = Mock(side_effect=AssertionError("eager report"))
+        obj.ranking_text = Mock(return_value="CLASSIFICA\n1. Utente 10")
+        obj.club_trophy_ranking_text = Mock(return_value="CLASSIFICA CLUB\n1. Club 10")
+        obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progressione"})
+        obj.periodic_report_text = Mock(return_value="📊 REPORT COMPLETO: https://telegra.ph/report")
         payload = obj.rankings_dashboard_text(-1001)
         self.assertEqual(payload["report_url"], "https://telegra.ph/classifiche")
-        self.assertIs(payload, obj.rankings_dashboard_text(-1002))
-        obj._publish_telegraph.assert_called_once()
+        self.assertIs(payload, obj.rankings_dashboard_text(-1001))
+        self.assertEqual(obj._publish_telegraph.call_count, 13)
         lines = obj._publish_telegraph.call_args.args[1]
-        links = [line for line in lines if line.startswith("[[DASH:")]
+        links = [line for line in lines if line.startswith("[[URL:")]
         self.assertEqual(len(links), 96)
-        self.assertIn("[[DASH:dash_p_2_0|Apri]]", links)
-        self.assertIn("[[DASH:dash_r_10_30|Apri]]", links)
-        self.assertIn("[[DASH:dash_r_0_0|Apri]]", links)
+        self.assertIn("[[URL:https://telegra.ph/progressione|Apri]]", links)
+        self.assertIn("[[URL:https://telegra.ph/report|Apri]]", links)
+        self.assertFalse(any("[[DASH:" in line for line in lines))
         self.assertEqual(obj.dashboard_command("dash_p_2_0"), "classifica progressione globale club oggi")
         self.assertEqual(obj.dashboard_command("dash_r_10_30"), "report club globale talenti 30")
         self.assertEqual(obj.dashboard_command("dash_t_1_15"), "classifica club 15")
@@ -106,6 +107,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         nodes = obj._telegraph_nodes(["CLASSIFICHE & REPORT", "[[DASH:dash_r_10_30|Apri]]"])
         self.assertEqual(nodes[-1]["children"][0]["attrs"]["href"],
                          "https://t.me/SensGPT_TitaniAbusiviBot?start=dash_r_10_30")
+        direct_nodes = obj._telegraph_nodes(lines)
+        self.assertEqual(sum(node.get("tag") == "h3" and node.get("children") == ["OGGI"] for node in direct_nodes), 1)
+        self.assertEqual(sum(node.get("tag") == "h4" for node in direct_nodes), 96)
+        self.assertEqual(sum(node.get("tag") == "a" and node.get("attrs", {}).get("href", "").startswith("https://telegra.ph/")
+                             for item in direct_nodes for node in item.get("children", []) if isinstance(node, dict)), 96)
 
     async def test_period_hubs_and_today_shortcuts_stay_private(self):
         from community_features import _DASHBOARD_CACHE
@@ -140,13 +146,17 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         _DASHBOARD_CACHE.clear()
         obj = self.make_features()
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/periodo")
+        obj.ranking_text = Mock(return_value="CLASSIFICA\n1. Utente 10")
+        obj.club_trophy_ranking_text = Mock(return_value="CLASSIFICA CLUB\n1. Club 10")
+        obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progressione"})
+        obj.periodic_report_text = Mock(return_value="📊 REPORT COMPLETO: https://telegra.ph/report")
         for days, count in ((0, 24), (7, 24), (15, 24), (30, 24)):
             obj.rankings_dashboard_text(-1001, days)
             lines = obj._publish_telegraph.call_args.args[1]
-            links = [line for line in lines if line.startswith("[[DASH:")]
+            links = [line for line in lines if line.startswith("[[URL:")]
             self.assertEqual(len(links), count)
-            self.assertTrue(all(line.endswith(f"_{days}|Apri]]") for line in links))
-            self.assertEqual(obj._publish_telegraph.call_count, (0, 7, 15, 30).index(days) + 1)
+            self.assertTrue(all(line.endswith("|Apri]]") for line in links))
+            self.assertEqual(obj._publish_telegraph.call_count, 3 * ((0, 7, 15, 30).index(days) + 1))
         self.assertEqual(obj.dashboard_command("dash_t_0_7"), "classifica della community 7")
 
     def test_command_guide_describes_current_period_hubs(self):
