@@ -6,6 +6,7 @@ import io
 import asyncio
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -1791,11 +1792,11 @@ class CommunityFeatures:
         return max(10, (datetime.now(timezone.utc) - start.astimezone(timezone.utc)).days + 3)
 
     def ranking(self, chat_id, days=7, window=None):
-        rows = []
-        for member in self.members(chat_id):
+        members = self.members(chat_id)
+        def rank_member(member):
             tag = member.get("player_tag")
             if not tag:
-                continue
+                return None
             if window:
                 history = self.history_fetcher(tag, days=self._window_history_days(window[0]))
                 baseline, current = self._window_trophy_values(history, *window)
@@ -1803,21 +1804,25 @@ class CommunityFeatures:
             else:
                 current = self._member_current_trophies(member)
                 if current is None:
-                    continue
+                    return None
                 history = self.history_fetcher(tag, days=max(days + 2, 10))
                 changes = self.change_calculator(history, current)
                 key = {0: "today", 7: "7d", 15: "15d", 30: "30d", 90: "90d"}.get(days, "7d")
                 delta = changes.get(key)
             if current is None:
-                continue
-            rows.append(
-                {
-                    "name": member.get("player_name") or member.get("display_name") or tag,
-                    "tag": tag,
-                    "current": current,
-                    "delta": int(delta) if delta is not None else None,
-                }
-            )
+                return None
+            return {
+                "name": member.get("player_name") or member.get("display_name") or tag,
+                "tag": tag,
+                "current": current,
+                "delta": int(delta) if delta is not None else None,
+            }
+        if len(members) >= 16:
+            with ThreadPoolExecutor(max_workers=min(6, len(members))) as executor:
+                results = list(executor.map(rank_member, members))
+        else:
+            results = [rank_member(member) for member in members]
+        rows = [row for row in results if row is not None]
         rows.sort(
             key=lambda x: (
                 x["delta"] is not None,
@@ -3532,11 +3537,30 @@ class CommunityFeatures:
                 by_tag[tag] = m
         tags = list(by_tag)
 
+        # A complete club roster can exceed 100 accounts. Fetch independent
+        # histories concurrently, then process them in the original tag order.
+        # Keep small reports sequential to avoid thread overhead and preserve
+        # their existing behavior.
+        history_by_tag = None
+        if len(tags) >= 16:
+            history_days = self._window_history_days(window[0]) if window else max(days + 2, 10)
+            def fetch_history(tag):
+                try:
+                    return self.history_fetcher(tag, days=history_days)
+                except Exception as exc:
+                    LOG.warning("REPORT TROPHY HISTORY FAILED: tag=%s type=%s", tag, type(exc).__name__)
+                    return None
+            with ThreadPoolExecutor(max_workers=min(6, len(tags))) as executor:
+                history_by_tag = dict(zip(tags, executor.map(fetch_history, tags)))
+
         trophy_rows = []
         current_trophies_by_tag = {}
         for tag, m in by_tag.items():
             try:
-                history = self.history_fetcher(tag, days=(self._window_history_days(window[0]) if window else max(days + 2, 10)))
+                history = (history_by_tag[tag] if history_by_tag is not None else
+                           self.history_fetcher(tag, days=(self._window_history_days(window[0]) if window else max(days + 2, 10))))
+                if history_by_tag is not None and history is None:
+                    continue
                 if window:
                     baseline, current = self._window_trophy_values(history, *window)
                     if current is None:
