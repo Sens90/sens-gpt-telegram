@@ -471,10 +471,15 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["report_url"], "https://telegra.ph/progressione-oggi")
         self.assertIn("Partite osservate valide: 1", payload["text"])
         self.assertIn("Data:", payload["fallback"])
-        self.assertIn("Sessioni:", payload["fallback"])
-        self.assertIn("LOG BATTAGLIE", payload["fallback"])
-        self.assertIn("Brawler: Nita", payload["fallback"])
-        self.assertIn("Risultato: Risultato non disponibile", payload["fallback"])
+        self.assertIn("🦸 Nita", payload["fallback"])
+        self.assertIn("[[URL:https://telegra.ph/progressione-oggi|Apri]]", payload["fallback"])
+        detail = obj._publish_telegraph.call_args_list[0].args[1]
+        self.assertIn("SESSIONI", detail)
+        self.assertIn("Sessioni osservate: 1", detail)
+        self.assertLess(next(i for i, line in enumerate(detail) if line.startswith("Fasce:")), detail.index("SESSIONI"))
+        self.assertIn("LOG BATTAGLIE", detail)
+        self.assertIn("Brawler: Nita", detail)
+        self.assertIn("Risultato: Risultato non disponibile", detail)
 
     def test_progressione_oggi_includes_localized_team_solo_loss_and_bonus(self):
         obj = self.make_features()
@@ -513,14 +518,38 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
 
         payload = obj.progression_detail_text("2LVRCLV8LV", 0)
 
-        report = payload["fallback"]
+        report = "\n".join("\n".join(call.args[1]) for call in obj._publish_telegraph.call_args_list[:-1])
         self.assertIn("Sopravvivenza in trio", report)
         self.assertIn("Risultato: Vittoria", report)
         self.assertIn("Extra osservato: +2 (Bonus osservato)", report)
         self.assertIn("Compagno — ENERGETIK — 1900", report)
+        self.assertLess(report.index("Compagno — ENERGETIK — 1900"), report.index("Giorgio — EL PRIMO — 1800"))
+        self.assertLess(report.index("Extra osservato: +2"), report.index("Squadra: giocatori ordinati"))
         self.assertIn("Team Value: 1900", report)
         self.assertIn("Squadra: Modalità Solo", report)
         self.assertIn("Punti Progressione: 0 (sconfitta non conteggiata)", report)
+        self.assertIn("🦸 EL PRIMO", payload["fallback"])
+        self.assertIn("🦸 NITA", payload["fallback"])
+
+    def test_comandi_links_open_telegraph_reference_pages(self):
+        from community_features import HELP_TEXT
+        obj = self.make_features()
+        published = []
+        def publish(title, lines):
+            published.append((title, lines))
+            return f"https://telegra.ph/comandi-{len(published)}"
+        obj._publish_telegraph = Mock(side_effect=publish)
+        payload = obj._publish_command_guide()
+        self.assertEqual(len(published), 12)
+        self.assertEqual(payload["report_url"], "https://telegra.ph/comandi-12")
+        guide = published[-1][1]
+        self.assertEqual(sum(line.startswith("[[GUIDE:") for line in guide),
+                         sum(line.startswith(("[[CMDNAME:", "[[CMD:")) for line in HELP_TEXT.splitlines()))
+        self.assertFalse(any(line.startswith(("[[CMDNAME:", "[[CMD:")) for line in guide))
+        nodes = obj._telegraph_nodes(guide)
+        self.assertFalse(any("t.me/" in str(node) for node in nodes))
+        self.assertTrue(any(node.get("tag") == "h3" and node.get("children") == ["🏆 CLASSIFICHE & REPORT"] for node in nodes))
+        self.assertTrue(any(node.get("tag") == "h3" and node.get("children") == ["📑 REPORT PERIODICI — TROFEI + PROGRESSIONE"] for node in nodes))
 
     def test_progressione_brawler_recovers_and_localizes_raw_team(self):
         obj = self.make_features()
