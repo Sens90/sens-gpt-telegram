@@ -580,14 +580,21 @@ class CommunityFeatures:
     def _get(self, table, params=None):
         if not self.ready:
             return []
-        response = requests.get(
-            f"{self.supabase_url}/rest/v1/{table}",
-            headers=self._headers(),
-            params=params or {},
-            timeout=15,
-        )
-        response.raise_for_status()
-        return response.json()
+        for attempt in range(3):
+            try:
+                response = requests.get(
+                    f"{self.supabase_url}/rest/v1/{table}",
+                    headers=self._headers(),
+                    params=params or {},
+                    timeout=15,
+                )
+                response.raise_for_status()
+                return response.json()
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt == 2:
+                    raise
+                LOG.warning("SUPABASE READ RETRY: table=%s attempt=%s", table, attempt + 1)
+                time.sleep(0.5 * (attempt + 1))
 
     def _post(self, table, payload, params=None, prefer="return=representation"):
         if not self.ready:
@@ -3613,6 +3620,27 @@ class CommunityFeatures:
         )
         roster_histories = (self._roster_trophy_histories(tags, period_start, period_end)
                             if global_scope else {})
+        registered_tags = set()
+        if global_scope and roster_histories:
+            registered_tags = {
+                str(row.get("player_tag") or "").strip().lstrip("#").upper()
+                for row in self._get("community_members", {
+                    "select": "player_tag", "player_tag": "not.is.null", "limit": "1000",
+                }) or []
+            }
+
+        def fetch_history(tag):
+            # Complete rosters include many nonregistrants whose measured
+            # trophy history is already in club_roster_daily. Avoid one empty
+            # trophy_history HTTP request per such player and period.
+            if tag in roster_histories and tag not in registered_tags:
+                return []
+            try:
+                history_days = self._window_history_days(window[0]) if window else max(days + 2, 10)
+                return self.history_fetcher(tag, days=history_days)
+            except Exception as exc:
+                LOG.warning("REPORT TROPHY HISTORY FAILED: tag=%s type=%s", tag, type(exc).__name__)
+                return None
 
         # A complete club roster can exceed 100 accounts. Fetch independent
         # histories concurrently, then process them in the original tag order.
@@ -3620,13 +3648,6 @@ class CommunityFeatures:
         # their existing behavior.
         history_by_tag = None
         if len(tags) >= 16:
-            history_days = self._window_history_days(window[0]) if window else max(days + 2, 10)
-            def fetch_history(tag):
-                try:
-                    return self.history_fetcher(tag, days=history_days)
-                except Exception as exc:
-                    LOG.warning("REPORT TROPHY HISTORY FAILED: tag=%s type=%s", tag, type(exc).__name__)
-                    return None
             with ThreadPoolExecutor(max_workers=min(6, len(tags))) as executor:
                 history_by_tag = dict(zip(tags, executor.map(fetch_history, tags)))
 
@@ -3635,7 +3656,7 @@ class CommunityFeatures:
         for tag, m in by_tag.items():
             try:
                 history = (history_by_tag[tag] if history_by_tag is not None else
-                           self.history_fetcher(tag, days=(self._window_history_days(window[0]) if window else max(days + 2, 10))))
+                           fetch_history(tag))
                 if history_by_tag is not None and history is None:
                     continue
                 roster_history = roster_histories.get(tag, [])
@@ -3959,8 +3980,8 @@ class CommunityFeatures:
         links[f"dash_t_2_{days}"] = self._publish_telegraph(f"Trofei Globali 4 Club — {label}", trophy_lines)
         progression = self.coefficient_ranking_text(chat_id, "global_clubs", days, window=window)
         links[f"dash_p_2_{days}"] = progression.get("report_url") if isinstance(progression, dict) else None
-        if not links[f"dash_p_2_{days}"] and isinstance(progression, str):
-            links[f"dash_p_2_{days}"] = self._publish_telegraph(f"Progressione Globale Club — {label}", progression.splitlines())
+        if not links[f"dash_p_2_{days}"]:
+            raise RuntimeError("The global progression page is unavailable")
         if any(not url for url in links.values()):
             raise RuntimeError("A global dashboard Telegraph page is unavailable")
         for i, line in enumerate(lines):
