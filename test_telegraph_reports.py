@@ -91,21 +91,25 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             {"player_tag": "CCC", "player_name": "Loss"},
         ])
         obj.history_fetcher = Mock(side_effect=lambda tag, days: [{"trophies": {"AAA": 110, "BBB": 100, "CCC": 90}[tag]}])
-        obj.change_calculator = Mock(side_effect=lambda history, current: {"today": current - 100})
+        obj.change_calculator = Mock(side_effect=lambda history, current: {
+            key: current - 100 for key in ("today", "7d", "15d", "30d")
+        })
         post.return_value.json.return_value = [
             {"player_tag": "AAA", "progression_value": 12, "positive_trophies": 10, "battle_count": 1},
             {"player_tag": "BBB", "progression_value": 0, "positive_trophies": 0, "battle_count": 1},
             {"player_tag": "CCC", "progression_value": -2, "positive_trophies": 0, "battle_count": 1},
         ]
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/test")
-        summary, full, _clubs = obj.periodic_report_text(123, "community", 0, return_full=True)
-        trophy = full[full.index("🏆 CLASSIFICA TROFEI") + 1:full.index("🔥 CLASSIFICA PROGRESSIONE")]
-        progression = full[full.index("🔥 CLASSIFICA PROGRESSIONE") + 1:full.index("📊 RESOCONTO")]
-        self.assertTrue(any("Active" in line for line in trophy))
-        self.assertTrue(any("Active" in line for line in progression))
-        self.assertFalse(any("Zero" in line or "Loss" in line for line in trophy + progression + summary.splitlines()))
-        self.assertIn("👥 Giocatori monitorati: 3", full)
-        self.assertIn("🎮 Battaglie analizzate: 3", full)
+        for days in (0, 7, 15, 30):
+            with self.subTest(days=days):
+                summary, full, _clubs = obj.periodic_report_text(123, "community", days, return_full=True)
+                trophy = full[full.index("🏆 CLASSIFICA TROFEI") + 1:full.index("🔥 CLASSIFICA PROGRESSIONE")]
+                progression = full[full.index("🔥 CLASSIFICA PROGRESSIONE") + 1:full.index("📊 RESOCONTO")]
+                self.assertTrue(any("Active" in line for line in trophy))
+                self.assertTrue(any("Active" in line for line in progression))
+                self.assertFalse(any("Zero" in line or "Loss" in line for line in trophy + progression + summary.splitlines()))
+                self.assertIn("👥 Giocatori monitorati: 3", full)
+                self.assertIn("🎮 Battaglie analizzate: 3", full)
 
     def test_dashboard_has_compact_global_links_for_every_period(self):
         from community_features import _DASHBOARD_CACHE
@@ -160,7 +164,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         post.return_value.json.return_value = {"ok": True, "result": {"pages": [{"title": "Classifiche — TITANI ABUSIVI", "url": url}]}}
         from datetime import datetime as _datetime
         updated = _datetime.now(ROME).strftime("Aggiornato: %d/%m/%Y %H:%M")
-        nodes = [{"tag": "p", "children": [updated]}]
+        nodes = [{"tag": "p", "children": [updated]},
+                 {"tag": "p", "children": ["Liste: solo valori positivi verificati."]}]
         nodes += [{"tag": "h3", "children": [period]} for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")]
         nodes += [{"tag": "a", "attrs": {"href": f"https://telegra.ph/Classifica-{i}-09-25"}, "children": ["Apri"]} for i in range(12)]
         get.return_value.json.return_value = {"ok": True, "result": {"content": nodes}}
@@ -176,7 +181,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         payload = {"text": "📋 RESOCONTO\n🏆 Coppe totali reali: 100", "report_url": "https://telegra.ph/periodo-7",
-                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat()}
+                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 2}
         obj._get = Mock(return_value=[{"payload": payload}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse the exact period"))
         result = obj.rankings_dashboard_text(-123, 7)
@@ -185,6 +190,38 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(obj._get.call_args.args[0], "scheduled_dashboard_delivery")
         self.assertEqual(obj._get.call_args.args[1]["slot"], "eq.manual:rolling:7")
         self.assertEqual(obj._get.call_args.args[1]["chat_id"], "eq.-123")
+
+    def test_stale_period_cache_is_rebuilt_and_revision_checked(self):
+        from community_features import _DASHBOARD_CACHE
+        _DASHBOARD_CACHE.clear()
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        stale = {"report_url": "https://telegra.ph/old", "cached_at": datetime.now(timezone.utc).isoformat()}
+        obj._get = Mock(return_value=[{"payload": stale}])
+        obj._post = Mock()
+        fresh = {"text": "fresh", "report_url": "https://telegra.ph/fresh", "fallback": "fresh"}
+        obj._direct_dashboard_snapshot = Mock(return_value=fresh)
+        self.assertEqual(obj.rankings_dashboard_text(-123, 0), fresh)
+        obj._direct_dashboard_snapshot.assert_called_once()
+        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 2)
+
+    @patch("community_features.requests.post")
+    def test_progression_ranking_excludes_zero_for_every_period(self, post):
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        obj._get = Mock(return_value=[{"player_tag": "AAA", "player_name": "Active"},
+                                          {"player_tag": "BBB", "player_name": "Zero"}])
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/progression")
+        post.return_value.json.return_value = [
+            {"player_tag": "AAA", "progression_value": 10, "positive_trophies": 9, "battle_count": 1, "coefficient": 1},
+            {"player_tag": "BBB", "progression_value": 0, "positive_trophies": 0, "battle_count": 1, "coefficient": 1},
+        ]
+        for days in (0, 7, 15, 30):
+            with self.subTest(days=days):
+                obj.coefficient_ranking_text(123, "community", days)
+                published = "\n".join(obj._publish_telegraph.call_args.args[1])
+                self.assertIn("Active", published)
+                self.assertNotIn("Zero", published)
 
     def test_period_dashboard_saves_telegram_summary_with_its_page(self):
         from community_features import _DASHBOARD_CACHE

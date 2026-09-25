@@ -25,6 +25,7 @@ _SKIN_BRIDGE_FAILURE_LIMIT = 3
 _SKIN_BRIDGE_BACKOFF_SECONDS = 6 * 60 * 60
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
+_DASHBOARD_FORMAT_REVISION = 2
 _PROGRESSION_DETAIL_CACHE = {}
 _PROGRESSION_DETAIL_LOCK = threading.Lock()
 _PROGRESSION_DETAIL_FLIGHTS = {}
@@ -2803,7 +2804,7 @@ class CommunityFeatures:
             row["name"] = row.get("player_name") or member.get("player_name") or member.get("display_name") or row.get("player_tag")
             row["value"] = row.get("coefficient_value") if days is None else row.get("progression_value")
         rows = [row for row in rows if row.get("value") is not None
-                and (days != 0 or int(row["value"]) > 0)]
+                and (days is None or int(row["value"]) > 0)]
         rows.sort(
             key=lambda row: (
                 int(row["value"]),
@@ -3630,8 +3631,7 @@ class CommunityFeatures:
                 continue
         trophy_rows.sort(key=lambda r: (r["delta"], r["current"]), reverse=True)
         # Keep all rows for club totals; hide inactive/negative players only in today's lists.
-        visible_trophy_rows = ([r for r in trophy_rows if r["delta"] > 0]
-                               if days == 0 else trophy_rows)
+        visible_trophy_rows = [r for r in trophy_rows if r["delta"] > 0]
 
         progression_rows = []
         if tags:
@@ -3656,18 +3656,20 @@ class CommunityFeatures:
             row["_coeff"] = (row["_value"] / row["_cups"]) if row["_cups"] > 0 else 0.0
         progression_rows = [r for r in progression_rows if int(r.get("battle_count") or 0) > 0]
         progression_rows.sort(key=lambda r: (r["_value"], r["_coeff"]), reverse=True)
-        visible_progression_rows = ([r for r in progression_rows if r["_value"] > 0]
-                                    if days == 0 else progression_rows)
+        visible_progression_rows = [r for r in progression_rows if r["_value"] > 0]
 
         title = f"🔥 REPORT {scope_label} — {'OGGI' if days == 0 else f'{days} GIORNI'}"
         full = [title, f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}", "", f"👥 Ambito: {scope_note}", ""]
         full.append("🏆 CLASSIFICA TROFEI")
+        if scope_key == "global_clubs":
+            full.append(f"📌 Storico trofei disponibile: {len(trophy_rows)} su {len(tags)} giocatori del roster."
+                        " Sono elencati solo quelli con crescita positiva verificabile.")
         if visible_trophy_rows:
             for i, r in enumerate(visible_trophy_rows, 1):
                 sign = "+" if r["delta"] > 0 else ""
                 full.append(f"{i}. {r['name']} — {sign}{self.number_formatter(r['delta'])}")
         else:
-            full.append("Nessun giocatore con trofei guadagnati oggi." if days == 0 else "Storico trofei non ancora disponibile.")
+            full.append("Nessun giocatore con trofei guadagnati nel periodo.")
         full.extend(["", "🔥 CLASSIFICA PROGRESSIONE"])
         if visible_progression_rows:
             for i, r in enumerate(visible_progression_rows, 1):
@@ -3681,7 +3683,7 @@ class CommunityFeatures:
                     "",
                 ])
         else:
-            full.append("Nessun giocatore con Progressione positiva oggi." if days == 0 else "Battaglie osservate non ancora disponibili.")
+            full.append("Nessun giocatore con Progressione positiva nel periodo.")
 
         total_battles = sum(int(r.get("battle_count") or 0) for r in progression_rows)
         # Real current trophy total for the exact report scope (not period gains).
@@ -3704,7 +3706,7 @@ class CommunityFeatures:
             sign = "+" if r["delta"] > 0 else ""
             summary.append(f"{i}. {r['name']} — {sign}{self.number_formatter(r['delta'])}")
         if not visible_trophy_rows:
-            summary.append("Nessun giocatore con trofei guadagnati oggi." if days == 0 else "Storico trofei non ancora disponibile.")
+            summary.append("Nessun giocatore con trofei guadagnati nel periodo.")
         summary.extend([
             "", "📋 RESOCONTO",
             f"👥 Giocatori monitorati: {len(tags)}",
@@ -3739,13 +3741,14 @@ class CommunityFeatures:
                     "slot": f"eq.manual:rolling:{days}", "limit": "1",
                 })
                 payload = saved[0].get("payload") if saved else None
-                if isinstance(payload, dict) and payload.get("report_url"):
+                if (isinstance(payload, dict) and payload.get("report_url")
+                        and payload.get("cache_revision") == _DASHBOARD_FORMAT_REVISION):
                     stored_at = datetime.fromisoformat(str(payload.get("cached_at") or "").replace("Z", "+00:00"))
                     age = (datetime.now(timezone.utc) - stored_at).total_seconds()
-                    if 0 <= age <= (3 if days == 0 else 12) * 3600:
+                    if 0 <= age <= (120 if days == 0 else 300):
                         LOG.info("CLASSIFICHE PERIOD CACHE REUSED: chat=%s days=%s age_seconds=%s", chat_id, days, int(age))
                         with _DASHBOARD_CACHE_LOCK:
-                            _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 900, payload)
+                            _DASHBOARD_CACHE[cache_key] = (time.monotonic() + (120 if days == 0 else 300), payload)
                         return payload
             except (requests.RequestException, ValueError, TypeError, KeyError, IndexError) as exc:
                 LOG.warning("CLASSIFICHE PERIOD CACHE READ FAILED: %s", type(exc).__name__)
@@ -3753,12 +3756,12 @@ class CommunityFeatures:
             published = self._latest_published_dashboard()
             if published:
                 with _DASHBOARD_CACHE_LOCK:
-                    _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 900, published)
+                    _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 300, published)
                 return published
         if days is None:
             title = "Classifiche — TITANI ABUSIVI"
             now = datetime.now(ROME)
-            lines = [title.upper(), f"Aggiornato: {now:%d/%m/%Y %H:%M}", "",
+            lines = [title.upper(), f"Aggiornato: {now:%d/%m/%Y %H:%M}", "", "Liste: solo valori positivi verificati.",
                      "Tre classifiche cliccabili per periodo; i Resoconti sono nel messaggio Telegram."]
             for period in (0, 7, 15, 30):
                 period_payload = self.rankings_dashboard_text(chat_id, period)
@@ -3778,10 +3781,11 @@ class CommunityFeatures:
             payload = self._direct_dashboard_snapshot(chat_id, days, None)
         if isinstance(payload, dict) and payload.get("report_url"):
             with _DASHBOARD_CACHE_LOCK:
-                _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 900, payload)
+                _DASHBOARD_CACHE[cache_key] = (time.monotonic() + (120 if days == 0 else 300), payload)
             if days is not None and getattr(self, "ready", False):
                 try:
-                    saved_payload = {**payload, "cached_at": datetime.now(timezone.utc).isoformat()}
+                    saved_payload = {**payload, "cached_at": datetime.now(timezone.utc).isoformat(),
+                                     "cache_revision": _DASHBOARD_FORMAT_REVISION}
                     self._post("scheduled_dashboard_delivery", {
                         "chat_id": int(chat_id), "slot": f"manual:rolling:{days}", "payload": saved_payload,
                     }, prefer="resolution=merge-duplicates,return=minimal")
@@ -3837,13 +3841,15 @@ class CommunityFeatures:
                         continue
                     if not all(period in values for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")):
                         continue
+                    if "Liste: solo valori positivi verificati." not in values:
+                        continue
                     updated = next((value for value in values if value.startswith("Aggiornato: ")), "")
                     try:
                         published_at = datetime.strptime(updated, "Aggiornato: %d/%m/%Y %H:%M").replace(tzinfo=ROME)
                     except ValueError:
                         continue
                     age = (datetime.now(ROME) - published_at).total_seconds()
-                    if not 0 <= age <= 24 * 3600:
+                    if not 0 <= age <= 300:
                         continue
                     LOG.info("CLASSIFICHE DASHBOARD REUSED: url=%s age_seconds=%s", url, int(age))
                     return self._telegraph_reply(
@@ -3875,9 +3881,11 @@ class CommunityFeatures:
         club_lines = [f"CLASSIFICA 4 CLUB — {label}",
                       "Roster completi dei quattro club: registrati e non registrati.", ""]
         ranked_clubs = sorted(club_totals.items(), key=lambda item: (item[1]["delta"], item[1]["players"]), reverse=True)
-        for position, (name, result) in enumerate(ranked_clubs, 1):
+        for position, (name, result) in enumerate((item for item in ranked_clubs if item[1]["delta"] > 0), 1):
             delta = result["delta"]
             club_lines.append(f"{position}. {name} — {'+' if delta > 0 else ''}{self.number_formatter(delta)} ({result['players']} giocatori)")
+        if len(club_lines) == 3:
+            club_lines.append("Nessun club con crescita positiva nel periodo.")
         links[f"dash_t_1_{days}"] = self._publish_telegraph(f"Classifica 4 Club — {label}", club_lines)
         trophy_start = report_lines.index("🏆 CLASSIFICA TROFEI")
         trophy_end = report_lines.index("🔥 CLASSIFICA PROGRESSIONE", trophy_start)
