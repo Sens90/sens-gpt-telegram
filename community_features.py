@@ -152,10 +152,10 @@ Sinonimo di Classifica: apre lo stesso indice generale.
 
 📅 ACCESSI RAPIDI PER PERIODO
 [[CMDNAME:classifiche oggi]]
-Mostra il Resoconto di oggi in privato e le tre classifiche cliccabili nel Telegraph giornaliero.
+Mostra il Resoconto di oggi in privato e nel Telegraph, nell'ordine: Trofei globali, Progressione Globale Club, 4 Club.
 
 [[CMDNAME:classifiche 7]]
-Mostra il Resoconto dei 7 giorni in privato e le tre classifiche cliccabili nel Telegraph del periodo.
+Mostra il Resoconto dei 7 giorni in privato e le tre classifiche cliccabili nello stesso ordine.
 
 [[CMDNAME:classifiche 15]]
 Mostra Resoconto e classifiche cliccabili dei 15 giorni.
@@ -3629,20 +3629,20 @@ class CommunityFeatures:
             title.upper(),
             f"Aggiornato: {now:%d/%m/%Y %H:%M}",
             "",
-            "Tre classifiche per periodo: club, trofei e Progressione. I roster includono registrati e non registrati. Il Resoconto è nel messaggio Telegram.",
+            "Tre classifiche per periodo: Trofei globali, Progressione Globale Club e 4 Club. I roster includono registrati e non registrati. Il Resoconto è nel messaggio Telegram.",
         ]
         for days, label in periods:
             lines.extend(["", f"══ {label} ══", ""])
             lines.extend([
-                f"🏆 Classifica dei 4 Club — {label}",
-                "Confronto fra TITANI, TAMARRI, TORNADI e TALENTI; roster completi, registrati e non registrati.",
-                f"[[DASH:dash_t_1_{days}|Apri]]", "",
                 f"🏆 Classifica Trofei Globale Club — {label}",
                 "Tutti i giocatori dei quattro club, registrati e non registrati.",
                 f"[[DASH:dash_t_2_{days}|Apri]]", "",
                 f"🔥 Progressione Globale Club — {label}",
                 "Tutti i giocatori dei quattro club; Progressione calcolata battaglia per battaglia.",
                 f"[[DASH:dash_p_2_{days}|Apri]]", "",
+                f"🏆 Classifica dei 4 Club — {label}",
+                "Confronto fra TITANI, TAMARRI, TORNADI e TALENTI; roster completi, registrati e non registrati.",
+                f"[[DASH:dash_t_1_{days}|Apri]]", "",
             ])
         if not publish:
             return lines

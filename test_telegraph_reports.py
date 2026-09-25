@@ -207,9 +207,14 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
 
     def test_scheduled_today_index_focuses_on_global_roster(self):
         obj = self.make_features()
-        lines = obj._build_rankings_dashboard_text(0, publish=False, include_today_reports=True)
-        self.assertEqual(sum(row.startswith("[[DASH:") for row in lines), 3)
-        self.assertNotIn("[[DASH:dash_r_2_0|Apri]]", lines)
+        for period in (0, 7, 15, 30):
+            lines = obj._build_rankings_dashboard_text(period, publish=False, include_today_reports=True)
+            self.assertEqual([row for row in lines if row.startswith("[[DASH:")], [
+                f"[[DASH:dash_t_2_{period}|Apri]]",
+                f"[[DASH:dash_p_2_{period}|Apri]]",
+                f"[[DASH:dash_t_1_{period}|Apri]]",
+            ])
+            self.assertNotIn(f"[[DASH:dash_r_2_{period}|Apri]]", lines)
         self.assertEqual(obj.dashboard_command("dash_r_0_0"), "report community oggi")
 
     async def test_report_today_from_dashboard_uses_requested_scope(self):
