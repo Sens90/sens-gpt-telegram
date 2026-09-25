@@ -1074,7 +1074,7 @@ class CommunityFeatures:
         catalog, offset = [], 0
         while True:
             page = self._get("skins_catalog", {
-                "select": "external_id,rarity,source_payload,price_coins,acquisition_type,acquisition_note,name_it,name_en",
+                "select": "external_id,rarity,source_payload,price_coins,acquisition_type,acquisition_note",
                 "verification_status": "eq.structured_verified",
                 "external_id": "not.in.(29001472,29001473,29001831,29001832,29001833,29001834,29001835,29001836)",
                 "order": "external_id.asc", "limit": "1000", "offset": str(offset),
@@ -1084,12 +1084,9 @@ class CommunityFeatures:
                 break
             offset += 1000
         totals = {}
-        uncategorized = []
         for row in catalog:
             label = self._skin_category_label(row)
             totals[label] = totals.get(label, 0) + 1
-            if label == "Senza rarità":
-                uncategorized.append(str(row.get("name_it") or row.get("name_en") or row.get("external_id")))
         labels = (
             ("rare", "🟢", "Rare", "Rare"), ("super rare", "🔵", "Super rare", "Super rare"),
             ("epic", "🟣", "Epiche", "Epiche"), ("mythic", "🔴", "Mitiche", "Mitiche"),
@@ -1112,9 +1109,6 @@ class CommunityFeatures:
         known = {key for key, _, _, _ in labels}
         for key in sorted(counts.keys() - known):
             lines.extend(["", f"🎨 {key.replace('_', ' ').title()}", f"Possedute / totali: {counts[key]}/n.d."])
-        if uncategorized:
-            lines.extend(["", "⚪ Senza rarità", f"Possedute / totali: n.d./{len(uncategorized)}",
-                          "Skin: " + ", ".join(uncategorized)])
         if not counts:
             lines.extend(["", "La suddivisione delle skin possedute non è disponibile."])
         elif owned is not None and sum(counts.values()) < int(owned):
