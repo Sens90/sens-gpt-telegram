@@ -177,8 +177,12 @@ class AutomaticPeriodicReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((weekly[0].day, weekly[1].day), (21, 28))
         first = app._scheduled_period_window(datetime(2026, 10, 16, 6, tzinfo=rome), 15)
         self.assertEqual((first[0].day, first[1].day), (1, 16))
-        second = app._scheduled_period_window(datetime(2026, 11, 1, 6, tzinfo=rome), 15)
-        self.assertEqual((second[0].month, second[0].day, second[1].month), (10, 16, 11))
+        second = app._scheduled_period_window(datetime(2026, 10, 31, 23, 59, 59, tzinfo=rome), 15)
+        self.assertEqual((second[0].month, second[0].day, second[1].month, second[1].day), (10, 16, 10, 31))
+        self.assertIsNone(app._scheduled_period_window(datetime(2026, 11, 1, 6, tzinfo=rome), 15))
+        self.assertIsNone(app._scheduled_period_window(datetime(2026, 10, 30, 23, 59, 59, tzinfo=rome), 15))
+        february = app._scheduled_period_window(datetime(2027, 2, 28, 23, 59, 59, tzinfo=rome), 15)
+        self.assertEqual((february[0].day, february[1].day), (16, 28))
         monthly = app._scheduled_period_window(datetime(2026, 3, 1, 6, tzinfo=rome), 30)
         self.assertEqual((monthly[0].month, monthly[0].day, monthly[1].day), (2, 1, 1))
 
@@ -222,6 +226,25 @@ class AutomaticPeriodicReportTests(unittest.IsolatedAsyncioTestCase):
         checkpoint.assert_not_called()
         send.assert_awaited_once()
         self.assertEqual(send.await_args.args[2], dashboard)
+        complete.assert_called_once()
+
+    async def test_last_day_half_month_retries_frozen_page_before_monthly_send(self):
+        fake_datetime = Mock()
+        fake_datetime.now.return_value = datetime(2026, 11, 1, 0, 5, tzinfo=app.ROME)
+        dashboard = {"text": "FROZEN", "report_url": "https://telegra.ph/frozen"}
+        with (
+            patch.object(app, "datetime", fake_datetime),
+            patch.object(app.community, "_get", side_effect=[[{"chat_id": -100123}],
+                                                           [{"payload": dashboard, "sent_at": None}]]),
+            patch.object(app.community, "scheduled_dashboard_snapshot") as rebuild,
+            patch.object(app.community, "_post") as checkpoint,
+            patch.object(app.community, "_patch") as complete,
+            patch.object(app.community, "_send_ranking_message", new=AsyncMock(return_value=True)) as send,
+        ):
+            await app.automatic_periodic_report_catchup_job(SimpleNamespace(bot=SimpleNamespace()))
+        rebuild.assert_not_called()
+        checkpoint.assert_not_called()
+        send.assert_awaited_once()
         complete.assert_called_once()
 
 

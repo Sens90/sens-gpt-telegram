@@ -168,7 +168,7 @@ Mostra Resoconto e classifiche cliccabili dei 15 giorni.
 [[CMDNAME:classifiche 30]]
 Mostra Resoconto e classifiche cliccabili dei 30 giorni.
 
-Sono accettate anche le forme Classifica 7, Classifica 15 e Classifica 30. Gli invii automatici pubblicano Resoconto e indice con link Telegraph diretti alle 06:00, 12:00, 18:00 e 23:59 per oggi, ogni lunedì alle 06:00 per la settimana conclusa, il 1° e il 16 del mese alle 06:00 per le due metà di mese concluse e il 1° alle 06:00 per il mese solare precedente.
+Sono accettate anche le forme Classifica 7, Classifica 15 e Classifica 30. Gli invii automatici pubblicano Resoconto e indice con link Telegraph diretti alle 06:00, 12:00, 18:00 e 23:59 per oggi; ogni lunedì alle 06:00 per la settimana conclusa; il 16 alle 06:00 per i giorni 1–15; l'ultimo giorno del mese alle 23:59 per i giorni 16–fine mese; il 1° alle 06:00 per il mese solare precedente.
 
 ⚡ COMANDI DIRETTI DI OGGI
 [[CMDNAME:classifica oggi]]
