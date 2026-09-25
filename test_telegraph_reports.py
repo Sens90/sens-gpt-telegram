@@ -188,7 +188,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         from datetime import datetime as _datetime
         updated = _datetime.now(ROME).strftime("Aggiornato: %d/%m/%Y %H:%M")
         nodes = [{"tag": "p", "children": [updated]},
-                 {"tag": "p", "children": ["Liste: solo valori positivi verificati · storico dei roster completi."]}]
+                 {"tag": "p", "children": ["Liste: solo valori positivi verificati · copertura dei roster indicata per club."]}]
         nodes += [{"tag": "h3", "children": [period]} for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")]
         nodes += [{"tag": "a", "attrs": {"href": f"https://telegra.ph/Classifica-{i}-09-25"}, "children": ["Apri"]} for i in range(12)]
         get.return_value.json.return_value = {"ok": True, "result": {"content": nodes}}
@@ -204,7 +204,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         payload = {"text": "📋 RESOCONTO\n🏆 Coppe totali reali: 100", "report_url": "https://telegra.ph/periodo-7",
-                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 3}
+                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 4}
         obj._get = Mock(return_value=[{"payload": payload}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse the exact period"))
         result = obj.rankings_dashboard_text(-123, 7)
@@ -226,7 +226,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._direct_dashboard_snapshot = Mock(return_value=fresh)
         self.assertEqual(obj.rankings_dashboard_text(-123, 0), fresh)
         obj._direct_dashboard_snapshot.assert_called_once()
-        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 3)
+        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 4)
 
     @patch("community_features.requests.post")
     def test_global_roster_uses_observed_nonregistered_snapshots_at_period_boundary(self, post):
@@ -265,6 +265,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("1 su 2 giocatori" in line for line in trophy))
         self.assertIn("🏆 Coppe totali reali: 260", full)
         self.assertEqual(totals[club]["delta"], 20)
+        self.assertEqual((totals[club]["players"], totals[club]["roster"]), (1, 2))
         obj.history_fetcher.assert_not_called()
 
     @patch("community_features.requests.post")
@@ -387,6 +388,23 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any("[[DASH:" in row for row in captured[-1]))
         nodes = obj._telegraph_nodes(["[[URL:https://telegra.ph/report|Apri]]"])
         self.assertEqual(nodes[0]["children"][0]["attrs"]["href"], "https://telegra.ph/report")
+
+    def test_club_page_distinguishes_roster_from_measured_players(self):
+        obj = self.make_features()
+        published = []
+        obj._publish_telegraph = Mock(side_effect=lambda title, lines: (
+            published.append((title, lines)) or f"https://telegra.ph/page-{len(published)}"
+        ))
+        full = ["REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI",
+                "1. player +10", "", "🔥 CLASSIFICA PROGRESSIONE", "📊 RESOCONTO"]
+        obj.periodic_report_text = Mock(return_value=("REPORT", full, {
+            "TITANI ABUSIVI": {"delta": 10, "players": 2, "roster": 30},
+        }))
+        obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progression"})
+        obj._direct_dashboard_snapshot(-1001, 7, None)
+        clubs = next(lines for title, lines in published if title == "Classifica 4 Club — 7 GIORNI")
+        self.assertTrue(any("2/30 con storico sufficiente" in line for line in clubs))
+        self.assertTrue(any("non vengono contati come zero" in line for line in clubs))
 
     def test_scheduled_today_index_focuses_on_global_roster(self):
         obj = self.make_features()
