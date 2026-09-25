@@ -4,6 +4,8 @@ import re
 import logging
 import io
 import asyncio
+import threading
+import time
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -20,6 +22,8 @@ _SKIN_BRIDGE_FAILURES = 0
 _SKIN_BRIDGE_OPEN_UNTIL = 0.0
 _SKIN_BRIDGE_FAILURE_LIMIT = 3
 _SKIN_BRIDGE_BACKOFF_SECONDS = 6 * 60 * 60
+_DASHBOARD_CACHE = {}
+_DASHBOARD_CACHE_LOCK = threading.Lock()
 
 PROGRESSION_MODE_NAMES_IT = {
     "gemgrab": "Arraffagemme",
@@ -1521,6 +1525,13 @@ class CommunityFeatures:
                     "tag": "a",
                     "attrs": {"href": f"https://t.me/SensGPT_TitaniAbusiviBot?start={payload}"},
                     "children": [f"▶️ {label}"],
+                }]})
+                continue
+            dashboard_link = re.fullmatch(r"\[\[DASH:(dash_[prt]_(?:[0-9]|10)_(?:0|7|15|30))\|Apri\]\]", value)
+            if dashboard_link:
+                nodes.append({"tag": "p", "children": [{
+                    "tag": "a", "attrs": {"href": f"https://t.me/SensGPT_TitaniAbusiviBot?start={dashboard_link.group(1)}"},
+                    "children": ["📖 Apri"],
                 }]})
                 continue
             ranking = re.match(r"^(\d+)\.\s*(.+)$", value)
@@ -3437,7 +3448,17 @@ class CommunityFeatures:
         return "\n".join(summary)
 
     def rankings_dashboard_text(self, chat_id):
-        """Create one Telegraph index for every ranking/report family without flooding Telegram."""
+        """Create one index; build each ranking only when its private link is opened."""
+        with _DASHBOARD_CACHE_LOCK:
+            cached = _DASHBOARD_CACHE.get("shared")
+            if cached and cached[0] > time.monotonic():
+                return cached[1]
+            payload = self._build_rankings_dashboard_text()
+            if isinstance(payload, dict) and payload.get("report_url"):
+                _DASHBOARD_CACHE["shared"] = (time.monotonic() + 900, payload)
+            return payload
+
+    def _build_rankings_dashboard_text(self):
         now = datetime.now(ROME)
         periods = [(0, "OGGI"), (7, "7 GIORNI"), (15, "15 GIORNI"), (30, "30 GIORNI")]
         families = [
@@ -3461,49 +3482,28 @@ class CommunityFeatures:
         ]
         for days, label in periods:
             lines.extend(["", f"══ {label} ═=", ""])
-            # Trophy/report family.
-            if days in (0, 7, 15, 30):
-                trophy_text = self.ranking_text(chat_id, days)
-                trophy_url = self._publish_telegraph(f"Classifica Community — {label}", trophy_text.splitlines())
-                lines.extend([
-                    f"🏆 Classifica Community — {label}",
-                    "Andamento trofei di tutti gli utenti registrati della community.",
-                    f"📖 Apri: {trophy_url}" if trophy_url else "📖 Pagina temporaneamente non disponibile.",
-                    "",
-                ])
-                club_text = self.club_trophy_ranking_text(chat_id, days)
-                club_url = self._publish_telegraph(f"Classifica Club — {label}", club_text.splitlines())
-                lines.extend([
-                    f"🏆 Classifica Club — {label}",
-                    "Confronta i quattro club ABUSIVI sommando l'andamento trofei dei membri registrati.",
-                    f"📖 Apri: {club_url}" if club_url else "📖 Pagina temporaneamente non disponibile.",
-                    "",
-                ])
-            for name, scope, description in families:
-                try:
-                    ranking = self.coefficient_ranking_text(chat_id, scope, days)
-                    url = self._publish_telegraph(f"{name} — {label}", ranking.splitlines())
-                except Exception as exc:
-                    LOG.error("TELEGRAPH DASHBOARD FAMILY ERROR: family=%s days=%s error=%r", name, days, exc)
-                    url = None
+            lines.extend([
+                f"🏆 Classifica Community — {label}",
+                "Andamento trofei degli utenti registrati della community.",
+                f"[[DASH:dash_t_0_{days}|Apri]]", "",
+                f"🏆 Classifica Club — {label}",
+                "Andamento trofei dei quattro club ABUSIVI, calcolato sui membri registrati.",
+                f"[[DASH:dash_t_1_{days}|Apri]]", "",
+            ])
+            for index, (name, scope, description) in enumerate(families):
                 lines.extend([
                     f"🔥 {name} — {label}",
                     description + " Progressione calcolata battaglia per battaglia e Brawler per Brawler.",
-                    f"📖 Apri: {url}" if url else "📖 Pagina temporaneamente non disponibile.",
+                    f"[[DASH:dash_p_{index}_{days}|Apri]]",
                     "",
                 ])
-            # Combined reports already supported by the report engine.
-            if days in (7, 15, 30):
-                for report_name, scope, description in [
-                    ("Report Community", "community", "Trofei, Progressione e resoconto degli utenti registrati."),
-                    ("Report Club", "community_club", "Trofei, Progressione e resoconto dei registrati nei quattro club ABUSIVI."),
-                    ("Report Globale Club", "global_clubs", "Trofei, Progressione e resoconto dei roster completi dei quattro club."),
-                ]:
-                    try:
-                        report = self.periodic_report_text(chat_id, scope, days)
-                        lines.extend([f"📊 {report_name} — {label}", description, report, ""])
-                    except Exception as exc:
-                        LOG.error("TELEGRAPH DASHBOARD REPORT ERROR: report=%s days=%s error=%r", report_name, days, exc)
+            if days:
+                for index, (name, scope, description) in enumerate(families):
+                    lines.extend([
+                        f"📊 {name.replace('Progressione', 'Report', 1)} — {label}",
+                        description + " Trofei, Progressione e resoconto per lo stesso ambito.",
+                        f"[[DASH:dash_r_{index}_{days}|Apri]]", "",
+                    ])
         dashboard_url = self._publish_telegraph("Classifiche & Report — TITANI ABUSIVI", lines)
         if not dashboard_url:
             return "Dashboard Classifiche & Report temporaneamente non disponibile."
@@ -3512,6 +3512,26 @@ class CommunityFeatures:
             dashboard_url,
             lines,
         )
+
+    @staticmethod
+    def dashboard_command(payload):
+        """Resolve only the fixed dashboard scope/period matrix."""
+        match = re.fullmatch(r"dash_([prt])_(10|[0-9])_(0|7|15|30)", str(payload or ""))
+        if not match:
+            return None
+        kind, index, period = match.group(1), int(match.group(2)), int(match.group(3))
+        scopes = ("", "club", "globale club", "titani", "tamarri", "tornadi", "talenti",
+                  "club globale titani", "club globale tamarri", "club globale tornadi", "club globale talenti")
+        if kind == "t":
+            if index > 1:
+                return None
+            return f"classifica {'club ' if index else ''}{'oggi' if period == 0 else period}"
+        if index >= len(scopes) or (kind == "r" and period == 0):
+            return None
+        scope = scopes[index]
+        if kind == "p":
+            return f"classifica progressione{(' ' + scope) if scope else ''} {'oggi' if period == 0 else period}"
+        return f"report{(' ' + scope) if scope else ''} {period}"
 
     async def _send_ranking_message(self, context, chat_id, text):
         """Deliver ranking replies with bounded retries on transient Telegram timeouts."""
@@ -3729,6 +3749,13 @@ class CommunityFeatures:
             await context.bot.send_message(
                 chat_id=_ranking_reply_chat_id,
                 text=self.club_trophy_ranking_text(_ranking_chat_id, 0),
+            )
+            return True
+        club_period = re.fullmatch(r"classifica\s+club\s+(7|15|30)(?:\s+giorni)?", q0, re.I)
+        if club_period:
+            await self._send_ranking_message(
+                context, _ranking_reply_chat_id,
+                self.club_trophy_ranking_text(_ranking_chat_id, int(club_period.group(1))),
             )
             return True
         if re.fullmatch(r"classifica(?:\s+(?:della\s+community))?(?:\s+di)?\s+oggi", q0, re.I):
