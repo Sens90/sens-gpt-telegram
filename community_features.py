@@ -1063,41 +1063,41 @@ class CommunityFeatures:
             print("ERRORE INVIO SKIN IMAGE:", repr(exc), flush=True)
             return "Non riesco a recuperare l'immagine della skin in questo momento."
 
-    def _current_skin_catalog_text(self):
-        """Current verified catalog only; account ownership belongs to Stats."""
-        catalog, offset = [], 0
-        while True:
-            page = self._get("skins_catalog", {
-                "select": "external_id,brawler_id,rarity,source_payload,price_coins,acquisition_type,acquisition_note",
-                "verification_status": "eq.structured_verified",
-                "external_id": "not.in.(29001472,29001473,29001831,29001832,29001833,29001834,29001835,29001836)",
-                "order": "external_id.asc", "limit": "1000", "offset": str(offset),
-            }) or []
-            catalog.extend(page)
-            if len(page) < 1000:
-                break
-            offset += 1000
-        if not catalog:
-            return "Il catalogo skin non è disponibile in questo momento."
-        groups = {}
-        for row in catalog:
-            groups.setdefault(self._skin_category_label(row), []).append(row)
-        lines = ["SKIN — CATALOGO ATTUALE", f"Totale: {len(catalog)} varianti verificate", "", "PER RARITÀ E CATEGORIA"]
-        order = {"Rare": 10, "Super rare": 20, "Epiche": 30, "Mitiche": 40, "Leggendarie": 50,
-                 "Skin Overdrive": 60, "Skin Overdrive Pass Pro": 65, "Pass Pro": 70,
-                 "Brawl Pass": 80, "Collezione": 90, "Senza rarità": 100, "Argento": 1000, "Oro": 1001}
-        for name, group in sorted(groups.items(), key=lambda item: (order.get(item[0], 500), item[0])):
-            if name in ("Argento", "Oro"):
-                brawlers = {row["brawler_id"] for row in group if row.get("brawler_id") is not None}
-                lines.append(f"{name}: {len(brawlers)} Brawler ({len(group)} varianti)")
-            else:
-                lines.append(f"{name}: {len(group)} skin")
-        lines.extend(["", "I numeri indicano le skin del catalogo, non quelle possedute dall'account."])
+    def _owned_skin_stats_text(self, player_tag):
+        """Use the same account ownership source as Stats, never catalog totals."""
+        from player_tracking import _brawlytix_progression
+        stats = _brawlytix_progression(player_tag) or {}
+        owned = stats.get("skins_owned")
+        raw_counts = stats.get("skin_rarity_counts") or {}
+        if owned is None and not raw_counts:
+            return "I dati delle skin possedute non sono disponibili in questo momento. Riprova più tardi."
+        labels = (
+            ("rare", "🟢", "Rare"), ("super rare", "🔵", "Super rare"),
+            ("epic", "🟣", "Epiche"), ("mythic", "🔴", "Mitiche"),
+            ("legendary", "🟡", "Leggendarie"), ("hypercharge", "🔥", "Skin Overdrive"),
+            ("ranked", "🏅", "Ranked"), ("true silver", "🥈", "Argento"),
+            ("true gold", "🥇", "Oro"),
+        )
+        counts = {str(key).strip().casefold(): int(value) for key, value in raw_counts.items()
+                  if value is not None and str(value).strip().isdigit()}
+        lines = ["SKIN POSSEDUTE — ACCOUNT", "", f"🎨 Totale possedute: {int(owned)}" if owned is not None else "🎨 Totale possedute: non disponibile",
+                 "", "📊 PER RARITÀ"]
+        for key, emoji, name in labels:
+            if key in counts:
+                lines.extend(["", f"{emoji} {name}", f"Possedute: {counts[key]}"])
+        known = {key for key, _, _ in labels}
+        for key in sorted(counts.keys() - known):
+            lines.extend(["", f"🎨 {key.replace('_', ' ').title()}", f"Possedute: {counts[key]}"])
+        if not counts:
+            lines.extend(["", "La fonte Stats non ha restituito la suddivisione per rarità."])
+        elif owned is not None and sum(counts.values()) < int(owned):
+            lines.extend(["", f"Altre skin senza rarità specificata dalla fonte: {int(owned) - sum(counts.values())}"])
+        lines.extend(["", "Fonte: stessi dati account usati da Stats. Le categorie assenti non sono stimate."])
         return "\n".join(lines)
 
     def _cached_skin_account_text(self, player_tag, detailed=False):
-        """When ownership is offline, show only the current verified catalog."""
-        return self._current_skin_catalog_text()
+        """Exact collection unavailable: use the Stats account ownership data."""
+        return self._owned_skin_stats_text(player_tag)
 
     async def send_skin_telegraph(self, context, chat_id, answer):
         """Read Skin output on Telegraph; keep Telegram limited to the access button."""
@@ -1119,7 +1119,7 @@ class CommunityFeatures:
             return "Devi prima registrare il tuo tag Brawl Stars."
         try:
             if not brawler_name and not rarity and not category and mode == "summary":
-                return self._current_skin_catalog_text()
+                return self._owned_skin_stats_text(registered_user["player_tag"])
             catalog, offset = [], 0
             while True:
                 page = self._get("skins_catalog", {
@@ -1404,6 +1404,7 @@ class CommunityFeatures:
         nodes = []
         first_value = next((str(item or "").strip() for item in lines if str(item or "").strip()), "")
         is_ranking_report = first_value.upper().startswith("CLASSIFICA")
+        is_skin_account = first_value.upper().startswith("SKIN POSSEDUTE — ACCOUNT")
         is_command_guide = first_value.upper().startswith("COMANDI SENS GPT")
         # A detailed ranking has continuation/stat lines between numbered players.
         # One-line rankings stay compact; multi-line player blocks get visual
@@ -1459,6 +1460,13 @@ class CommunityFeatures:
             value = str(raw or "").strip()
             if not value:
                 continue
+            if is_skin_account and value == "📊 PER RARITÀ":
+                nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h3", "children": [value]}])
+                continue
+            if is_skin_account and re.match(r"^(?:🟢|🔵|🟣|🔴|🟡|🔥|🏅|🥈|🥇|🎨) .+", value) and value != "🎨 Totale possedute:":
+                if ":" not in value:
+                    nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h4", "children": [value]}])
+                    continue
             if first_value.upper().startswith("🔥 REPORT"):
                 if "CLASSIFICA PROGRESSIONE" in value.upper():
                     in_report_progression = True
@@ -1526,7 +1534,7 @@ class CommunityFeatures:
                 nodes.append({"tag": "h3", "children": [heading]})
                 continue
             if index == 0:
-                title_icon = "🏆" if value.upper().startswith("CLASSIFICA") else ("📈" if value.upper().startswith("PROGRESSIONE") else "👤")
+                title_icon = "🎨" if is_skin_account else ("🏆" if value.upper().startswith("CLASSIFICA") else ("📈" if value.upper().startswith("PROGRESSIONE") else "👤"))
                 nodes.append({"tag": "h3", "children": [f"{title_icon} {value}"]})
                 continue
             if ":" in value:
