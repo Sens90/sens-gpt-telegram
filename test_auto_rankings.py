@@ -302,7 +302,39 @@ class RegisteredBattleMonitorTests(unittest.TestCase):
             {"tag": "ABC", "name": "Uno"},
             {"tag": "DEF", "name": "Due"},
         ])
-        self.assertEqual(request.call_args.kwargs["params"]["is_active"], "eq.true")
+        self.assertTrue(any(call.kwargs["params"].get("is_active") == "eq.true"
+                            for call in request.call_args_list))
+
+    def test_battle_monitor_keeps_other_clubs_when_one_roster_read_fails(self):
+        def get(_url, headers, params, timeout):
+            response = Mock()
+            response.raise_for_status.return_value = None
+            if params.get("is_active") == "eq.true":
+                response.json.return_value = [{"player_tag": "#AAA", "player_name": "Registered"}]
+            elif params.get("club_name") == "eq.TALENTI ABUSIVI":
+                raise ConnectionError("temporary club roster error")
+            elif params.get("select") == "snapshot_date":
+                response.json.return_value = [{"snapshot_date": "2026-09-25"}]
+            elif params.get("club_name") == "eq.TITANI ABUSIVI":
+                response.json.return_value = [{"player_tag": "#BBB", "player_name": "Unregistered"}]
+            else:
+                response.json.return_value = []
+            return response
+        with patch.object(app.requests, "get", side_effect=get):
+            players = app.get_registered_players_for_battle_monitor()
+        self.assertEqual({player["tag"] for player in players}, {"AAA", "BBB"})
+
+    def test_trophy_monitor_keeps_club_roster_if_other_source_fails(self):
+        def get(url, headers, params, timeout):
+            if url.endswith("/community_members"):
+                raise ConnectionError("temporary member read error")
+            response = Mock()
+            response.raise_for_status.return_value = None
+            response.json.return_value = ([{"player_tag": "BBB"}]
+                                          if url.endswith("/club_roster_daily") else [])
+            return response
+        with patch.object(app.requests, "get", side_effect=get):
+            self.assertEqual(app.get_tracked_player_tags(), ["BBB"])
 
 
 class DeterministicCommandNormalizationTests(unittest.TestCase):
