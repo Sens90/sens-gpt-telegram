@@ -531,6 +531,18 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(self.make_features()._publish_telegraph("Report", ["Dato"]))
         self.assertIn("access token not configured", " ".join(captured.output))
 
+    @patch.dict(os.environ, {"TELEGRAPH_ACCESS_TOKEN": "test-token"})
+    @patch("community_features.time.sleep")
+    @patch("community_features.requests.post")
+    def test_telegraph_respects_flood_wait_and_retries_same_page(self, post, sleep):
+        post.side_effect = [
+            SimpleNamespace(status_code=200, raise_for_status=Mock(), json=Mock(return_value={"ok": False, "error": "FLOOD_WAIT_5"})),
+            SimpleNamespace(status_code=200, raise_for_status=Mock(), json=Mock(return_value={"ok": True, "result": {"url": "https://telegra.ph/report-test"}})),
+        ]
+        self.assertEqual(self.make_features()._publish_telegraph("Report test", ["Dati"]), "https://telegra.ph/report-test")
+        sleep.assert_called_once_with(6)
+        self.assertEqual(post.call_count, 2)
+
     async def test_numbered_battle_log_is_not_republished_as_ranking(self):
         obj = self.make_features()
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/should-not-be-used")
@@ -586,6 +598,9 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("LOG BATTAGLIE", detail)
         self.assertIn("Brawler: Nita", detail)
         self.assertIn("Risultato: Risultato non disponibile", detail)
+        self.assertIs(obj.progression_detail_text("2GU9UV2RG", 0), payload)
+        self.assertEqual(obj._publish_telegraph.call_count, 2)
+        self.assertEqual(obj._get.call_count, 2)
 
     def test_telegraph_brawler_links_with_unicode_slugs_render_as_links(self):
         obj = self.make_features()
