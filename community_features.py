@@ -117,7 +117,7 @@ Mostra le variazioni Ranked registrate nel tempo.
 
 🎨 SKIN ACCOUNT
 [[CMDNAME:skin / quante skin ho]]
-Riepiloga la collezione Skin del tuo account: possedute, mancanti e valori disponibili.
+Apre in privato il Telegraph con il totale delle Skin possedute dall'account e il dettaglio possedute/totali per le rarità disponibili.
 
 [[CMDNAME:skin account NOME_BRAWLER]]
 Mostra la situazione Skin completa del Brawler indicato.
@@ -145,15 +145,35 @@ Mostra l'immagine disponibile della Skin specificata.
 
 🏆 CLASSIFICHE & REPORT
 [[CMDNAME:Classifiche]]
-Apre un unico Telegraph con tutte le famiglie di Classifiche e Report, divise per OGGI, 7, 15 e 30 giorni. Ogni voce contiene la descrizione dell'ambito e il collegamento alla pagina completa.
+Apre il Telegraph generale: OGGI, 7, 15 e 30 giorni. Ogni voce indica ambito e periodo; Apri esegue in privato solo la classifica o il Report scelto.
 
-I comandi specifici restano disponibili per compatibilità e uso avanzato.
+📅 ACCESSI RAPIDI PER PERIODO
+[[CMDNAME:classifiche oggi]]
+Apre solo le classifiche Trofei e le 11 Progressioni di oggi. I Report periodici iniziano da 7 giorni.
+
+[[CMDNAME:classifica 7]]
+Apre il Telegraph di 7 giorni: classifiche Trofei Community e Club, le 11 Progressioni e gli 11 Report dei rispettivi ambiti.
+
+[[CMDNAME:classifica 15]]
+Apre lo stesso indice completo riferito agli ultimi 15 giorni.
+
+[[CMDNAME:classifica 30]]
+Apre lo stesso indice completo riferito agli ultimi 30 giorni.
+
+⚡ COMANDI DIRETTI DI OGGI
+[[CMDNAME:classifica oggi]]
+Mostra subito in privato la classifica Trofei di oggi, con dettaglio completo nel Telegraph.
+
+[[CMDNAME:progressione oggi]]
+Mostra subito in privato la tua Progressione di oggi, con dettaglio dei Brawler nel Telegraph.
+
+I comandi specifici dei singoli ambiti e periodi restano disponibili per l'uso avanzato.
 
 [[CMD:cmd_classifica|Classifica]]
 Mostra i periodi e le classifiche disponibili.
 
-[[CMDNAME:classifica oggi / 7 / 15 / 30]]
-Ordina i giocatori in base all'andamento trofei nel periodo scelto.
+[[CMDNAME:classifica della community 7 / 15 / 30]]
+Mostra direttamente la sola classifica Trofei dei registrati nel periodo scelto.
 
 [[CMDNAME:classifica trofei]]
 Ordina i giocatori per trofei attuali.
@@ -1551,6 +1571,7 @@ class CommunityFeatures:
                 continue
             command_sections = {
                 "👤 ACCOUNT E PROFILO", "🎨 SKIN ACCOUNT", "🏆 CLASSIFICHE COMMUNITY",
+                "📅 ACCESSI RAPIDI PER PERIODO", "⚡ COMANDI DIRETTI DI OGGI",
                 "🛡️ CLASSIFICHE DEI 4 CLUB", "📊 GRAFICI",
                 "🎯 DRAFT RANKED — SOLO CHAT PRIVATA", "🤝 COMMUNITY",
                 "🎮 BRAWL STARS — RICHIESTE LIBERE",
@@ -3447,20 +3468,25 @@ class CommunityFeatures:
             summary.extend(["", f"📊 REPORT COMPLETO: {report_url}"])
         return "\n".join(summary)
 
-    def rankings_dashboard_text(self, chat_id):
-        """Create one index; build each ranking only when its private link is opened."""
+    def rankings_dashboard_text(self, chat_id, days=None):
+        """Create the full or period-specific index; build details on private access."""
+        if days is not None and days not in (0, 7, 15, 30):
+            return "Periodo classifiche non disponibile. Usa oggi, 7, 15 o 30."
+        cache_key = "shared" if days is None else f"period:{days}"
         with _DASHBOARD_CACHE_LOCK:
-            cached = _DASHBOARD_CACHE.get("shared")
+            cached = _DASHBOARD_CACHE.get(cache_key)
             if cached and cached[0] > time.monotonic():
                 return cached[1]
-            payload = self._build_rankings_dashboard_text()
+            payload = self._build_rankings_dashboard_text(days)
             if isinstance(payload, dict) and payload.get("report_url"):
-                _DASHBOARD_CACHE["shared"] = (time.monotonic() + 900, payload)
+                _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 900, payload)
             return payload
 
-    def _build_rankings_dashboard_text(self):
+    def _build_rankings_dashboard_text(self, days=None):
         now = datetime.now(ROME)
-        periods = [(0, "OGGI"), (7, "7 GIORNI"), (15, "15 GIORNI"), (30, "30 GIORNI")]
+        all_periods = [(0, "OGGI"), (7, "7 GIORNI"), (15, "15 GIORNI"), (30, "30 GIORNI")]
+        periods = all_periods if days is None else [period for period in all_periods if period[0] == days]
+        title = "Classifiche & Report — TITANI ABUSIVI" if days is None else f"Classifiche & Report — {periods[0][1]}"
         families = [
             ("Progressione", "community", "Tutti gli utenti registrati, indipendentemente dal club."),
             ("Progressione Club", "community_club", "Utenti registrati che appartengono ai quattro club ABUSIVI."),
@@ -3475,7 +3501,7 @@ class CommunityFeatures:
             ("Progressione Club Globale TALENTI", "global_single:talenti", "Roster completo TALENTI ABUSIVI, registrati e non registrati."),
         ]
         lines = [
-            "CLASSIFICHE & REPORT — TITANI ABUSIVI",
+            title.upper(),
             f"Aggiornato: {now:%d/%m/%Y %H:%M}",
             "",
             "Dashboard unica della community. Ogni voce spiega esattamente chi viene conteggiato e apre la classifica o il report completo.",
@@ -3504,11 +3530,11 @@ class CommunityFeatures:
                         description + " Trofei, Progressione e resoconto per lo stesso ambito.",
                         f"[[DASH:dash_r_{index}_{days}|Apri]]", "",
                     ])
-        dashboard_url = self._publish_telegraph("Classifiche & Report — TITANI ABUSIVI", lines)
+        dashboard_url = self._publish_telegraph(title, lines)
         if not dashboard_url:
             return "Dashboard Classifiche & Report temporaneamente non disponibile."
         return self._telegraph_reply(
-            ["📊 CLASSIFICHE & REPORT — TITANI ABUSIVI", f"Aggiornato: {now:%d/%m/%Y %H:%M}", "", "Tutte le famiglie in un'unica dashboard."],
+            ["📊 " + title.upper(), f"Aggiornato: {now:%d/%m/%Y %H:%M}", "", "Tutte le famiglie del periodo in un'unica pagina."],
             dashboard_url,
             lines,
         )
@@ -3525,7 +3551,9 @@ class CommunityFeatures:
         if kind == "t":
             if index > 1:
                 return None
-            return f"classifica {'club ' if index else ''}{'oggi' if period == 0 else period}"
+            if index:
+                return f"classifica club {'oggi' if period == 0 else period}"
+            return "classifica oggi" if period == 0 else f"classifica della community {period}"
         if index >= len(scopes) or (kind == "r" and period == 0):
             return None
         scope = scopes[index]
@@ -3625,6 +3653,20 @@ class CommunityFeatures:
             except asyncio.TimeoutError:
                 LOG.error("CLASSIFICHE DASHBOARD TIMEOUT chat=%s", _ranking_chat_id)
                 await message.reply_text("La dashboard Classifiche & Report sta impiegando troppo tempo. Riprova tra poco.")
+                return True
+            await self._send_ranking_message(context, int(message.from_user.id), payload)
+            return True
+        period_hub = re.fullmatch(r"(?:classifica\s+(7|15|30)|classifiche\s+(oggi|7|15|30))(?:\s+giorni)?", q0l)
+        if period_hub:
+            requested = period_hub.group(1) or period_hub.group(2)
+            days = 0 if requested == "oggi" else int(requested)
+            try:
+                payload = await asyncio.wait_for(
+                    asyncio.to_thread(self.rankings_dashboard_text, _ranking_chat_id, days), timeout=45,
+                )
+            except asyncio.TimeoutError:
+                LOG.error("CLASSIFICHE PERIOD HUB TIMEOUT chat=%s days=%s", _ranking_chat_id, days)
+                await message.reply_text("Le classifiche del periodo stanno impiegando troppo tempo. Riprova tra poco.")
                 return True
             await self._send_ranking_message(context, int(message.from_user.id), payload)
             return True
