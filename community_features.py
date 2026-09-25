@@ -1082,17 +1082,35 @@ class CommunityFeatures:
         if not total:
             return None
         owned = int(total.get("owned_count") or 0)
-        available = int(total.get("total_count") or 0)
-        lines = ["SKIN ACCOUNT — ULTIMA RILEVAZIONE", f"Data: {latest}",
-                 f"Possedute: {owned}/{available}",
-                 "La fonte Skin Collection è temporaneamente non disponibile: questi dati potrebbero essere cambiati."]
+        lines = ["SKIN ACCOUNT — ULTIMA RILEVAZIONE", f"Data possedute: {latest}",
+                 f"Skin possedute alla rilevazione: {owned}",
+                 "La fonte Skin Collection è temporaneamente non disponibile: i posseduti potrebbero essere cambiati."]
         if detailed:
             lines.append("L'elenco delle singole skin sarà disponibile quando la fonte tornerà attiva.")
         else:
-            lines.extend(["", "PER CATEGORIA"])
-            for name, row in sorted(current.items()):
-                if name != "Totale":
-                    lines.append(f"{name}: {int(row.get('owned_count') or 0)}/{int(row.get('total_count') or 0)}")
+            catalog, offset = [], 0
+            while True:
+                page = self._get("skins_catalog", {
+                    "select": "external_id,brawler_id,rarity,source_payload,price_coins,acquisition_type,acquisition_note",
+                    "verification_status": "eq.structured_verified",
+                    "external_id": "not.in.(29001472,29001473,29001831,29001832,29001833,29001834,29001835,29001836)",
+                    "order": "external_id.asc", "limit": "1000", "offset": str(offset),
+                }) or []
+                catalog.extend(page)
+                if len(page) < 1000:
+                    break
+                offset += 1000
+            if catalog:
+                lines.extend(["", f"CATALOGO ATTUALE: {len(catalog)} varianti", "PER CATEGORIA — CATALOGO ATTUALE"])
+                groups = {}
+                for row in catalog:
+                    groups.setdefault(self._skin_category_label(row), []).append(row)
+                for name, group in sorted(groups.items()):
+                    if name in ("Argento", "Oro"):
+                        brawlers = {row["brawler_id"] for row in group if row.get("brawler_id") is not None}
+                        lines.append(f"{name}: {len(brawlers)} Brawler ({len(group)} varianti)")
+                    else:
+                        lines.append(f"{name}: {len(group)} skin")
         return "\n".join(lines)
 
     def skin_account_text(self, registered_user, brawler_name=None, rarity=None, category=None, mode="summary"):
@@ -1183,9 +1201,15 @@ class CommunityFeatures:
             if not brawler_name:
                 groups = {}
                 for r in rows:
-                    key=self._skin_category_label(r); d=groups.setdefault(key,[0,0]); d[1]+=1; d[0]+=1 if r["_owned"] else 0
+                    groups.setdefault(self._skin_category_label(r), []).append(r)
                 lines=[f"SKIN ACCOUNT\nTotale: {len(owned)}/{len(rows)}", f"Mancanti: {len(missing)}", f"Completamento: {len(owned)*100.0/len(rows):.1f}%", "", "PER RARITÀ"]
-                for key,(have,total) in sorted(groups.items(), key=lambda x:(order.get(x[0],500),x[0])): lines.append(f"{key}: {have}/{total}")
+                for key, group in sorted(groups.items(), key=lambda x:(order.get(x[0],500),x[0])):
+                    if key in ("Argento", "Oro"):
+                        brawlers = {r["brawler_id"] for r in group if r.get("brawler_id") is not None}
+                        owned_brawlers = {r["brawler_id"] for r in group if r.get("brawler_id") is not None and r["_owned"]}
+                        lines.append(f"{key}: {len(owned_brawlers)}/{len(brawlers)} Brawler ({len(group)} varianti)")
+                    else:
+                        lines.append(f"{key}: {sum(1 for r in group if r['_owned'])}/{len(group)}")
 
                 brawler_names = {}
                 try:
