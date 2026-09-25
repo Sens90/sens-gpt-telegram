@@ -120,6 +120,29 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(call.args[1] == "global_clubs" and call.kwargs.get("return_full") and call.kwargs.get("publish") is False for call in obj.periodic_report_text.call_args_list))
         self.assertTrue(all(call.args[1] == "global_clubs" for call in obj.coefficient_ranking_text.call_args_list))
 
+    @patch.dict(os.environ, {"TELEGRAPH_ACCESS_TOKEN": "fake-token"})
+    @patch("community_features.requests.get")
+    @patch("community_features.requests.post")
+    def test_classifiche_reuses_complete_published_dashboard_without_rebuilding(self, post, get):
+        from community_features import _DASHBOARD_CACHE, ROME
+        _DASHBOARD_CACHE.clear()
+        obj = self.make_features()
+        obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse the published pages"))
+        obj.periodic_report_text = Mock(side_effect=AssertionError("must not recalculate reports"))
+        url = "https://telegra.ph/Classifiche--TITANI-ABUSIVI-09-25"
+        post.return_value.json.return_value = {"ok": True, "result": {"pages": [{"title": "Classifiche — TITANI ABUSIVI", "url": url}]}}
+        from datetime import datetime as _datetime
+        updated = _datetime.now(ROME).strftime("Aggiornato: %d/%m/%Y %H:%M")
+        nodes = [{"tag": "p", "children": [updated]}]
+        nodes += [{"tag": "h3", "children": [period]} for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")]
+        nodes += [{"tag": "a", "attrs": {"href": f"https://telegra.ph/Classifica-{i}-09-25"}, "children": ["Apri"]} for i in range(12)]
+        get.return_value.json.return_value = {"ok": True, "result": {"content": nodes}}
+        payload = obj.rankings_dashboard_text(-123)
+        self.assertEqual(payload["report_url"], url)
+        self.assertEqual(payload, obj.rankings_dashboard_text(-123))
+        post.assert_called_once()
+        get.assert_called_once()
+
     async def test_period_hubs_and_today_shortcuts_stay_private(self):
         from community_features import _DASHBOARD_CACHE
         _DASHBOARD_CACHE.clear()
