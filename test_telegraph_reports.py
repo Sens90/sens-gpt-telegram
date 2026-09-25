@@ -481,6 +481,17 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Brawler: Nita", detail)
         self.assertIn("Risultato: Risultato non disponibile", detail)
 
+    def test_telegraph_brawler_links_with_unicode_slugs_render_as_links(self):
+        obj = self.make_features()
+        url = "https://telegra.ph/Progressione-TAƬσρσᵍⁱᵍⁱᵒ--OGGI-09-25"
+        nodes = obj._telegraph_nodes(["PROGRESSIONE ABUSIVA — TA", "DETTAGLIO BRAWLER", f"[[URL:{url}|Apri]]"])
+        self.assertTrue(any(node.get("tag") == "p" and any(
+            isinstance(child, dict) and child.get("tag") == "a" and child.get("attrs", {}).get("href") == url
+            for child in node.get("children", [])
+        ) for node in nodes))
+        self.assertNotIn("[[URL:", str(nodes))
+        self.assertEqual(obj._telegram_fallback_links(f"[[URL:{url}|Apri]]"), f"📖 Apri il Telegraph: {url}")
+
     def test_progressione_oggi_includes_localized_team_solo_loss_and_bonus(self):
         obj = self.make_features()
         now = datetime.now(timezone.utc).isoformat()

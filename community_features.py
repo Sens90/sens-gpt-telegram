@@ -1563,7 +1563,7 @@ class CommunityFeatures:
                 }]})
                 continue
             guide_link = value[len("[[GUIDE:"):-2].split("|", 1) if value.startswith("[[GUIDE:") and value.endswith("]]") else None
-            if guide_link and len(guide_link) == 2 and re.fullmatch(r"https://telegra\.ph/[A-Za-z0-9_/-]+", guide_link[0]):
+            if guide_link and len(guide_link) == 2 and re.fullmatch(r"https://telegra\.ph/[^\s|<>\[\]]+", guide_link[0]):
                 nodes.append({"tag": "p", "children": [{
                     "tag": "a", "attrs": {"href": guide_link[0]},
                     "children": [f"📖 {guide_link[1]}"],
@@ -1573,7 +1573,7 @@ class CommunityFeatures:
                 nodes.append({"tag": "p", "children": [{"tag": "strong", "children": [value]}]})
                 continue
             dashboard_link = re.fullmatch(r"\[\[DASH:(dash_[prt]_(?:[0-9]|10)_(?:0|7|15|30))\|Apri\]\]", value)
-            direct_link = re.fullmatch(r"\[\[URL:(https://telegra\.ph/[A-Za-z0-9_/-]+)\|Apri\]\]", value)
+            direct_link = re.fullmatch(r"\[\[URL:(https://telegra\.ph/[^\s|<>\[\]]+)\|Apri\]\]", value)
             if direct_link:
                 nodes.append({"tag": "p", "children": [{
                     "tag": "a", "attrs": {"href": direct_link.group(1)},
@@ -1658,6 +1658,14 @@ class CommunityFeatures:
             "report_url": report_url,
             "fallback": "\n".join(str(x) for x in fallback_lines),
         }
+
+    @staticmethod
+    def _telegram_fallback_links(value):
+        """Keep Telegraph markers internal when a Telegram button cannot be sent."""
+        return re.sub(
+            r"\[\[URL:(https://telegra\.ph/[^\s|<>\[\]]+)\|Apri\]\]",
+            r"📖 Apri il Telegraph: \1", str(value),
+        )
 
     def admin_reset_primary_registration(self, telegram_user_id):
         rows=self._get("community_members",{"select":"*","telegram_user_id":f"eq.{int(telegram_user_id)}","limit":"1"}) or []
@@ -3803,7 +3811,7 @@ class CommunityFeatures:
             except TelegramError as exc:
                 if report_url:
                     try:
-                        await context.bot.send_message(chat_id=chat_id, text=fallback, connect_timeout=20, read_timeout=30, write_timeout=30, pool_timeout=20)
+                        await context.bot.send_message(chat_id=chat_id, text=self._telegram_fallback_links(fallback), connect_timeout=20, read_timeout=30, write_timeout=30, pool_timeout=20)
                         return True
                     except TelegramError:
                         pass
