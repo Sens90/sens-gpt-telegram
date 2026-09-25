@@ -25,8 +25,8 @@ _SKIN_BRIDGE_FAILURE_LIMIT = 3
 _SKIN_BRIDGE_BACKOFF_SECONDS = 6 * 60 * 60
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_FORMAT_REVISION = 4
-_DASHBOARD_SOURCE_MARKER = "Liste: solo valori positivi verificati · copertura dei roster indicata per club."
+_DASHBOARD_FORMAT_REVISION = 5
+_DASHBOARD_SOURCE_MARKER = "Liste: valori positivi verificati · copertura roster e periodi non misurabili indicati."
 _PROGRESSION_DETAIL_CACHE = {}
 _PROGRESSION_DETAIL_LOCK = threading.Lock()
 _PROGRESSION_DETAIL_FLIGHTS = {}
@@ -3756,7 +3756,8 @@ class CommunityFeatures:
                 sign = "+" if r["delta"] > 0 else ""
                 full.append(f"{i}. {r['name']} — {sign}{self.number_formatter(r['delta'])}")
         else:
-            full.append("Nessun giocatore con trofei guadagnati nel periodo.")
+            full.append("Nessun giocatore con crescita positiva nel periodo." if trophy_rows else
+                        "Storico Trofei non ancora sufficiente per calcolare questo periodo.")
         full.extend(["", "🔥 CLASSIFICA PROGRESSIONE"])
         if visible_progression_rows:
             for i, r in enumerate(visible_progression_rows, 1):
@@ -3793,7 +3794,8 @@ class CommunityFeatures:
             sign = "+" if r["delta"] > 0 else ""
             summary.append(f"{i}. {r['name']} — {sign}{self.number_formatter(r['delta'])}")
         if not visible_trophy_rows:
-            summary.append("Nessun giocatore con trofei guadagnati nel periodo.")
+            summary.append("Nessun giocatore con crescita positiva nel periodo." if trophy_rows else
+                           "Storico Trofei non ancora sufficiente per calcolare questo periodo.")
         summary.extend([
             "", "📋 RESOCONTO",
             f"👥 Giocatori monitorati: {len(tags)}",
@@ -3974,12 +3976,18 @@ class CommunityFeatures:
                       "📌 Il saldo usa solo i giocatori con misure reali all'inizio e alla fine del periodo.",
                       "I giocatori senza storico sufficiente non vengono contati come zero.", ""]
         ranked_clubs = sorted(club_totals.items(), key=lambda item: (item[1]["delta"], item[1]["players"]), reverse=True)
-        for position, (name, result) in enumerate((item for item in ranked_clubs if item[1]["delta"] > 0), 1):
+        measured = sum(result["players"] for result in club_totals.values())
+        roster = sum(result.get("roster", result["players"]) for result in club_totals.values())
+        club_lines.append(f"📌 Copertura Trofei: {measured}/{roster} giocatori con storico sufficiente.")
+        positive_clubs = [(name, result) for name, result in ranked_clubs if result["delta"] > 0]
+        for position, (name, result) in enumerate(positive_clubs, 1):
             delta = result["delta"]
             club_lines.append(f"{position}. {name} — {'+' if delta > 0 else ''}{self.number_formatter(delta)} "
                               f"({result['players']}/{result.get('roster', result['players'])} con storico sufficiente)")
-        if len(club_lines) == 5:
-            club_lines.append("Nessun club con crescita positiva nel periodo.")
+        if not positive_clubs:
+            club_lines.append("Nessun club con crescita positiva nel periodo." if measured else
+                              "Storico Trofei non ancora sufficiente per calcolare questo periodo. "
+                              "I roster continuano a essere censiti.")
         links[f"dash_t_1_{days}"] = self._publish_telegraph(f"Classifica 4 Club — {label}", club_lines)
         trophy_start = report_lines.index("🏆 CLASSIFICA TROFEI")
         trophy_end = report_lines.index("🔥 CLASSIFICA PROGRESSIONE", trophy_start)
