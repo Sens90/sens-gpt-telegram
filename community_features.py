@@ -3660,6 +3660,12 @@ class CommunityFeatures:
             if cached and cached[0] > time.monotonic():
                 return cached[1]
         if days is None:
+            published = self._latest_published_dashboard()
+            if published:
+                with _DASHBOARD_CACHE_LOCK:
+                    _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 900, published)
+                return published
+        if days is None:
             title = "Classifiche — TITANI ABUSIVI"
             now = datetime.now(ROME)
             lines = [title.upper(), f"Aggiornato: {now:%d/%m/%Y %H:%M}", "",
@@ -3684,6 +3690,74 @@ class CommunityFeatures:
             with _DASHBOARD_CACHE_LOCK:
                 _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 900, payload)
         return payload or "Dashboard Classifiche & Report temporaneamente non disponibile."
+
+    def _latest_published_dashboard(self):
+        """Read the latest complete index without recomputing four periods."""
+        token = os.getenv("TELEGRAPH_ACCESS_TOKEN", "").strip()
+        if not token:
+            return None
+        try:
+            for offset in range(0, 600, 200):
+                response = requests.post(
+                    "https://api.telegra.ph/getPageList",
+                    data={"access_token": token, "offset": offset, "limit": 200}, timeout=8,
+                )
+                response.raise_for_status()
+                result = response.json()
+                if not result.get("ok"):
+                    return None
+                pages = result.get("result", {}).get("pages") or []
+                for page in pages:
+                    if str(page.get("title") or "").casefold() != "classifiche — titani abusivi":
+                        continue
+                    url = str(page.get("url") or "")
+                    if not re.fullmatch(r"https://telegra\.ph/[^\s|<>\[\]]+", url):
+                        continue
+                    path = url[len("https://telegra.ph/"):]
+                    detail = requests.get(
+                        "https://api.telegra.ph/getPage/" + path,
+                        params={"return_content": "true"}, timeout=8,
+                    )
+                    detail.raise_for_status()
+                    page_result = detail.json()
+                    if not page_result.get("ok"):
+                        continue
+                    nodes = page_result.get("result", {}).get("content") or []
+                    values = []
+                    hrefs = []
+                    def visit(node):
+                        if isinstance(node, str):
+                            values.append(node)
+                        elif isinstance(node, dict):
+                            if node.get("tag") == "a":
+                                hrefs.append(str((node.get("attrs") or {}).get("href") or ""))
+                            for child in node.get("children") or []:
+                                visit(child)
+                    for node in nodes:
+                        visit(node)
+                    if len(hrefs) != 12 or any(not re.fullmatch(r"https://telegra\.ph/[^\s|<>\[\]]+", href) for href in hrefs):
+                        continue
+                    if not all(period in values for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")):
+                        continue
+                    updated = next((value for value in values if value.startswith("Aggiornato: ")), "")
+                    try:
+                        published_at = datetime.strptime(updated, "Aggiornato: %d/%m/%Y %H:%M").replace(tzinfo=ROME)
+                    except ValueError:
+                        continue
+                    age = (datetime.now(ROME) - published_at).total_seconds()
+                    if not 0 <= age <= 24 * 3600:
+                        continue
+                    LOG.info("CLASSIFICHE DASHBOARD REUSED: url=%s age_seconds=%s", url, int(age))
+                    return self._telegraph_reply(
+                        ["📊 CLASSIFICHE — TITANI ABUSIVI", updated, "", "🏆 OGGI · 7 · 15 · 30 GIORNI",
+                         "Apri l'indice per le classifiche pubblicate dei quattro periodi."],
+                        url, ["CLASSIFICHE — TITANI ABUSIVI", updated, url],
+                    )
+                if len(pages) < 200:
+                    break
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            LOG.warning("CLASSIFICHE DASHBOARD LOOKUP FAILED: %s", type(exc).__name__)
+        return None
 
     def scheduled_dashboard_snapshot(self, chat_id, days, window):
         """Freeze every report page before publishing a dashboard with direct Telegraph links."""
