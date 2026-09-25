@@ -168,6 +168,9 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AutomaticPeriodicReportTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        app._AUTO_PERIODIC_IN_FLIGHT.clear()
+
     def test_calendar_windows(self):
         rome = app.ROME
         weekly = app._scheduled_period_window(datetime(2026, 9, 28, 6, tzinfo=rome), 7)
@@ -198,6 +201,27 @@ class AutomaticPeriodicReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(checkpoint.call_args.args[1]["payload"], dashboard)
         self.assertEqual(ranking_send.await_count, 1)
         self.assertEqual(ranking_send.await_args.args[1:], (-100123, dashboard))
+        complete.assert_called_once()
+        self.assertFalse(app._AUTO_PERIODIC_IN_FLIGHT)
+
+    async def test_periodic_retry_uses_saved_page_without_regeneration(self):
+        fake_datetime = Mock()
+        fake_datetime.now.return_value = datetime(2026, 9, 28, 6, 10, tzinfo=app.ROME)
+        dashboard = {"text": "FROZEN", "report_url": "https://telegra.ph/frozen"}
+        with (
+            patch.object(app, "datetime", fake_datetime),
+            patch.object(app.community, "_get", side_effect=[[{"chat_id": -100123}],
+                                                           [{"payload": dashboard, "sent_at": None}]]),
+            patch.object(app.community, "scheduled_dashboard_snapshot") as rebuild,
+            patch.object(app.community, "_post") as checkpoint,
+            patch.object(app.community, "_patch") as complete,
+            patch.object(app.community, "_send_ranking_message", new=AsyncMock(return_value=True)) as send,
+        ):
+            await app.automatic_periodic_report_catchup_job(SimpleNamespace(bot=SimpleNamespace()))
+        rebuild.assert_not_called()
+        checkpoint.assert_not_called()
+        send.assert_awaited_once()
+        self.assertEqual(send.await_args.args[2], dashboard)
         complete.assert_called_once()
 
 
