@@ -4,6 +4,8 @@ import re
 import logging
 import io
 import asyncio
+import threading
+import time
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -20,6 +22,8 @@ _SKIN_BRIDGE_FAILURES = 0
 _SKIN_BRIDGE_OPEN_UNTIL = 0.0
 _SKIN_BRIDGE_FAILURE_LIMIT = 3
 _SKIN_BRIDGE_BACKOFF_SECONDS = 6 * 60 * 60
+_DASHBOARD_CACHE = {}
+_DASHBOARD_CACHE_LOCK = threading.Lock()
 
 PROGRESSION_MODE_NAMES_IT = {
     "gemgrab": "Arraffagemme",
@@ -1409,6 +1413,13 @@ class CommunityFeatures:
                     "tag": "a",
                     "attrs": {"href": f"https://t.me/SensGPT_TitaniAbusiviBot?start={payload}"},
                     "children": [f"▶️ {label}"],
+                }]})
+                continue
+            dashboard_link = re.fullmatch(r"\[\[LINK:(https://telegra\.ph/[^|\]]+)\|(.+?)\]\]", value)
+            if dashboard_link:
+                url, label = dashboard_link.groups()
+                nodes.append({"tag": "p", "children": [{
+                    "tag": "a", "attrs": {"href": url}, "children": [label],
                 }]})
                 continue
             ranking = re.match(r"^(\d+)\.\s*(.+)$", value)
@@ -3321,7 +3332,19 @@ class CommunityFeatures:
         return "\n".join(summary)
 
     def rankings_dashboard_text(self, chat_id):
-        """Create one Telegraph index for every ranking/report family without flooding Telegram."""
+        """Reuse a dashboard within a group for 15 minutes, including concurrent requests."""
+        key = int(chat_id)
+        with _DASHBOARD_CACHE_LOCK:
+            cached = _DASHBOARD_CACHE.get(key)
+            if cached and cached[0] > time.monotonic():
+                return cached[1]
+            payload = self._build_rankings_dashboard_text(key)
+            if isinstance(payload, dict) and payload.get("report_url"):
+                _DASHBOARD_CACHE[key] = (time.monotonic() + 900, payload)
+            return payload
+
+    def _build_rankings_dashboard_text(self, chat_id):
+        """Create the index, reusing pages that ranking renderers already published."""
         now = datetime.now(ROME)
         periods = [(0, "OGGI"), (7, "7 GIORNI"), (15, "15 GIORNI"), (30, "30 GIORNI")]
         families = [
@@ -3352,7 +3375,7 @@ class CommunityFeatures:
                 lines.extend([
                     f"🏆 Classifica Community — {label}",
                     "Andamento trofei di tutti gli utenti registrati della community.",
-                    f"📖 Apri: {trophy_url}" if trophy_url else "📖 Pagina temporaneamente non disponibile.",
+                    f"[[LINK:{trophy_url}|📖 Apri]]" if trophy_url else "📖 Pagina temporaneamente non disponibile.",
                     "",
                 ])
                 club_text = self.club_trophy_ranking_text(chat_id, days)
@@ -3360,20 +3383,22 @@ class CommunityFeatures:
                 lines.extend([
                     f"🏆 Classifica Club — {label}",
                     "Confronta i quattro club ABUSIVI sommando l'andamento trofei dei membri registrati.",
-                    f"📖 Apri: {club_url}" if club_url else "📖 Pagina temporaneamente non disponibile.",
+                    f"[[LINK:{club_url}|📖 Apri]]" if club_url else "📖 Pagina temporaneamente non disponibile.",
                     "",
                 ])
             for name, scope, description in families:
                 try:
                     ranking = self.coefficient_ranking_text(chat_id, scope, days)
-                    url = self._publish_telegraph(f"{name} — {label}", ranking.splitlines())
+                    url = ranking.get("report_url") if isinstance(ranking, dict) else None
+                    if not url and isinstance(ranking, str):
+                        url = self._publish_telegraph(f"{name} — {label}", ranking.splitlines())
                 except Exception as exc:
                     LOG.error("TELEGRAPH DASHBOARD FAMILY ERROR: family=%s days=%s error=%r", name, days, exc)
                     url = None
                 lines.extend([
                     f"🔥 {name} — {label}",
                     description + " Progressione calcolata battaglia per battaglia e Brawler per Brawler.",
-                    f"📖 Apri: {url}" if url else "📖 Pagina temporaneamente non disponibile.",
+                    f"[[LINK:{url}|📖 Apri]]" if url else "📖 Pagina temporaneamente non disponibile.",
                     "",
                 ])
             # Combined reports already supported by the report engine.
@@ -3382,10 +3407,17 @@ class CommunityFeatures:
                     ("Report Community", "community", "Trofei, Progressione e resoconto degli utenti registrati."),
                     ("Report Club", "community_club", "Trofei, Progressione e resoconto dei registrati nei quattro club ABUSIVI."),
                     ("Report Globale Club", "global_clubs", "Trofei, Progressione e resoconto dei roster completi dei quattro club."),
+                    *[(f"Report {club.upper()}", club, f"Utenti registrati dei {club.upper()} ABUSIVI.") for club in ("titani", "tamarri", "tornadi", "talenti")],
+                    *[(f"Report Club Globale {club.upper()}", f"global_single:{club}", f"Roster completo {club.upper()} ABUSIVI, registrati e non registrati.") for club in ("titani", "tamarri", "tornadi", "talenti")],
                 ]:
                     try:
                         report = self.periodic_report_text(chat_id, scope, days)
-                        lines.extend([f"📊 {report_name} — {label}", description, report, ""])
+                        match = re.search(r"📊 REPORT COMPLETO: (https://telegra\.ph/\S+)", report)
+                        url = match.group(1) if match else None
+                        lines.extend([
+                            f"📊 {report_name} — {label}", description,
+                            f"[[LINK:{url}|📖 Apri]]" if url else "📖 Pagina temporaneamente non disponibile.", "",
+                        ])
                     except Exception as exc:
                         LOG.error("TELEGRAPH DASHBOARD REPORT ERROR: report=%s days=%s error=%r", report_name, days, exc)
         dashboard_url = self._publish_telegraph("Classifiche & Report — TITANI ABUSIVI", lines)
