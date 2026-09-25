@@ -2250,7 +2250,7 @@ class CommunityFeatures:
                     f"Extra osservato: +{int(extra)} ({self._progression_bonus_it(row.get('bonus_type'))})"
                 )
             if isinstance(team, list) and team:
-                lines.append("Squadra: giocatori ordinati per trofei del Brawler")
+                lines.extend(["", "SQUADRA", "Giocatori ordinati per trofei del Brawler:"])
                 for member in sorted(team, key=lambda item: int(item.get("brawler_trophies") or 0), reverse=True):
                     member_trophies = member.get("brawler_trophies")
                     crown = (
@@ -2265,9 +2265,9 @@ class CommunityFeatures:
                 if max_trophies is not None:
                     lines.append(f"Team Value: {int(max_trophies)} 🏆")
             elif mode_key in {"soloshowdown", "solo"}:
-                lines.append("Squadra: Modalità Solo")
+                lines.extend(["", "SQUADRA", "Modalità Solo"])
             else:
-                lines.append("Squadra: non disponibile nel battle log.")
+                lines.extend(["", "SQUADRA", "Non disponibile nel battle log."])
             if row.get("current_win_streak") is not None:
                 lines.append(f"Serie di vittorie osservata: {int(row['current_win_streak'])}")
             battle_sections.setdefault(str(row.get("brawler_name") or "Brawler"), []).extend(lines[battle_start:])
