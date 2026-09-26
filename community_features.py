@@ -1277,7 +1277,7 @@ class CommunityFeatures:
         catalog, offset = [], 0
         while True:
             page = self._get("skins_catalog", {
-                "select": "external_id,brawler_id,brawler_name,name_en,name_it,rarity,source_payload,price_gems,price_coins,acquisition_type,acquisition_note",
+                "select": "external_id,brawler_id,brawler_name,name_en,name_it,rarity,source_payload,price_gems,price_coins,acquisition_type,acquisition_note,image_url,image_verified",
                 "verification_status": "eq.structured_verified",
                 "external_id": "not.in.(29001472,29001473,29001831,29001832,29001833,29001834,29001835,29001836)",
                 "order": "external_id.asc", "limit": "1000", "offset": str(offset),
@@ -1319,7 +1319,13 @@ class CommunityFeatures:
                         label = str(skin.get("name_it") or skin.get("name_en") or "Skin")
                         gems = skin.get("price_gems")
                         price = f" · 💎 {gems} gemme" if skin.get("acquisition_type") == "gems" and gems is not None else ""
-                        lines.append(f"🎨 {label}{price}")
+                        photo = str(skin.get("image_url") or "")
+                        if skin.get("image_verified") is True and re.fullmatch(
+                            r"https://cdn\.bsinfox\.com/brawlers/skins/\d+\.(?:webp|png)", photo
+                        ):
+                            lines.append(f"[[SKINPHOTO:{photo}|🎨 {label}{price} · 📷 Foto]]")
+                        else:
+                            lines.append(f"🎨 {label}{price}")
                 url = self._publish_telegraph(f"Skin {category}", lines)
                 if url:
                     urls[category] = url
@@ -1766,6 +1772,14 @@ class CommunityFeatures:
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h4", "children": [{
                     "tag": "a", "attrs": {"href": skin_link.group(1)}, "children": [skin_link.group(2)],
                 }]}])
+                continue
+            skin_photo = re.fullmatch(
+                r"\[\[SKINPHOTO:(https://cdn\.bsinfox\.com/brawlers/skins/\d+\.(?:webp|png))\|(.+?)\]\]",
+                value,
+            )
+            if skin_photo:
+                nodes.append({"tag": "p", "children": [{"tag": "a", "attrs": {"href": skin_photo.group(1)},
+                                                       "children": [skin_photo.group(2)]}]})
                 continue
             if command_name:
                 command_text = command_name.group(1)
