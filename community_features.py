@@ -23,6 +23,7 @@ _SKIN_BRIDGE_FAILURES = 0
 _SKIN_BRIDGE_OPEN_UNTIL = 0.0
 _SKIN_BRIDGE_FAILURE_LIMIT = 3
 _SKIN_BRIDGE_BACKOFF_SECONDS = 6 * 60 * 60
+_SKIN_DIRECT_OPEN_UNTIL = 0.0
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
 _DASHBOARD_FORMAT_REVISION = 8
@@ -1010,6 +1011,66 @@ class CommunityFeatures:
         print("BSINFO OWNED SKINS:",tag,"names=",len(names),"mapped=",len(owned),"ambiguous=",ambiguous,"unmatched=",unmatched,flush=True)
         return owned
 
+    def _direct_owned_skin_ids(self, player_tag, catalog):
+        """Use BSInfo's documented public player collection without the Netsons bridge.
+
+        Only accept a full owned/notOwned partition of the verified catalog.
+        Incomplete collections must never turn unknown skins into missing skins.
+        """
+        global _SKIN_DIRECT_OPEN_UNTIL
+        tag = str(player_tag or "").strip().lstrip("#").upper()
+        if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
+            raise RuntimeError("Invalid player tag for skin collection")
+        if time.monotonic() < _SKIN_DIRECT_OPEN_UNTIL:
+            raise SkinBridgeBackoff("Direct skin collection temporarily paused")
+        try:
+            response = requests.get(
+                f"https://api.bsinfox.com/skins/{tag}",
+                params={"lang": "en"},
+                headers={"Accept": "application/json", "User-Agent": "SensGPT-TitaniAbusivi/1.0"},
+                timeout=15,
+            )
+            if not response.ok:
+                LOG.warning("SKIN DIRECT SOURCE UNAVAILABLE: status=%s", response.status_code)
+                response.raise_for_status()
+            payload = response.json()
+            entries = payload.get("brawlers") if isinstance(payload, dict) else None
+            if isinstance(entries, dict):
+                entries = list(entries.values())
+            if not isinstance(entries, list) or not entries:
+                raise RuntimeError("Direct source did not return player brawlers")
+            owned, missing = set(), set()
+            for entry in entries:
+                if not isinstance(entry, dict) or not all(isinstance(entry.get(key), list) for key in ("owned", "notOwned")):
+                    raise RuntimeError("Direct source lacks ownership flags")
+                for key, target in (("owned", owned), ("notOwned", missing)):
+                    for skin in entry[key]:
+                        if isinstance(skin, dict) and str(skin.get("id") or "").isdigit():
+                            target.add(int(skin["id"]))
+            catalog_ids = {int(row["external_id"]) for row in catalog
+                           if str(row.get("external_id") or "").isdigit()}
+            if not catalog_ids or catalog_ids - (owned | missing) or owned & missing:
+                raise RuntimeError("Direct collection does not cover verified catalog")
+            owned &= catalog_ids
+            saved = self._get("skin_stats_latest", {
+                "select": "skins_owned", "player_tag": f"eq.{tag}", "limit": "1",
+            }) or []
+            if saved and saved[0].get("skins_owned") is not None and len(owned) != int(saved[0]["skins_owned"]):
+                LOG.warning("SKIN DIRECT COUNT MISMATCH: owned=%s stats=%s", len(owned), saved[0]["skins_owned"])
+                raise RuntimeError("Direct collection differs from Stats count")
+            self._post("skin_owned_ids_latest", {
+                "player_tag": tag, "owned_skin_ids": sorted(owned),
+                "observed_at": datetime.now(timezone.utc).isoformat(),
+            }, params={"on_conflict": "player_tag"}, prefer="resolution=merge-duplicates,return=minimal")
+            _SKIN_DIRECT_OPEN_UNTIL = 0.0
+            LOG.info("SKIN DIRECT COLLECTION VERIFIED: owned=%s catalog=%s", len(owned), len(catalog_ids))
+            return owned
+        except (requests.RequestException, ValueError, RuntimeError) as exc:
+            # Avoid repeated expensive requests if the public API is unavailable.
+            _SKIN_DIRECT_OPEN_UNTIL = time.monotonic() + 30 * 60
+            LOG.warning("SKIN DIRECT SOURCE FAILED: reason=%s", type(exc).__name__)
+            raise
+
     @staticmethod
     def _skin_category_label(row):
         """Italian display category without inventing a rarity missing from game data."""
@@ -1251,14 +1312,19 @@ class CommunityFeatures:
                 owned_ids = self._official_owned_skin_ids(registered_user["player_tag"])
             except (SkinBridgeBackoff, requests.RequestException, RuntimeError):
                 tag = str(registered_user["player_tag"]).strip().lstrip("#").upper()
-                saved = self._get("skin_owned_ids_latest", {
-                    "select": "owned_skin_ids,observed_at", "player_tag": f"eq.{tag}", "limit": "1",
-                }) or []
-                if not saved or not isinstance(saved[0].get("owned_skin_ids"), list) or not saved[0]["owned_skin_ids"]:
-                    raise
-                owned_ids = {int(sid) for sid in saved[0]["owned_skin_ids"] if str(sid).isdigit()}
-                observed = str(saved[0].get("observed_at") or "")
-                ownership_note = f"📅 Ultima collezione verificata: {observed[:16].replace('T', ' ')} UTC (non aggiornata)"
+                try:
+                    owned_ids = self._direct_owned_skin_ids(tag, catalog)
+                except (SkinBridgeBackoff, requests.RequestException, RuntimeError):
+                    owned_ids = None
+                if owned_ids is None:
+                    saved = self._get("skin_owned_ids_latest", {
+                        "select": "owned_skin_ids,observed_at", "player_tag": f"eq.{tag}", "limit": "1",
+                    }) or []
+                    if not saved or not isinstance(saved[0].get("owned_skin_ids"), list) or not saved[0]["owned_skin_ids"]:
+                        raise
+                    owned_ids = {int(sid) for sid in saved[0]["owned_skin_ids"] if str(sid).isdigit()}
+                    observed = str(saved[0].get("observed_at") or "")
+                    ownership_note = f"📅 Ultima collezione verificata: {observed[:16].replace('T', ' ')} UTC (non aggiornata)"
             for r in rows:
                 r["_owned"] = r.get("external_id") is not None and int(r["external_id"]) in owned_ids
             owned = [r for r in rows if r["_owned"]]
