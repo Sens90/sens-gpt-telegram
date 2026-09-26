@@ -1289,6 +1289,22 @@ class CommunityFeatures:
                         lines.append(f"📅 Collezione identificata: {observed[:16].replace('T', ' ')} UTC")
         except (TypeError, ValueError, requests.RequestException) as exc:
             LOG.warning("SKIN IDENTIFIED COUNT UNAVAILABLE: %s", type(exc).__name__)
+        # Each observed unlocked Brawler provides its own default appearance.
+        # Keep this independent from the external Stats total: its definition
+        # can differ from the catalog's individually addressable skin IDs.
+        try:
+            tag = str(player_tag or "").strip().lstrip("#").upper()
+            histories = self._get("coefficient_history", {
+                "select": "brawler_trophy_values,recorded_at",
+                "player_tag": f"eq.{tag}",
+                "brawler_trophy_values": "not.is.null",
+                "order": "recorded_at.desc", "limit": "1",
+            }) or []
+            values = histories[0].get("brawler_trophy_values") if histories else None
+            if isinstance(values, list) and values:
+                lines.append(f"🎮 Aspetti base dei Brawler rilevati: {len(values)}")
+        except (TypeError, ValueError, requests.RequestException) as exc:
+            LOG.warning("SKIN BASE BRAWLER COUNT UNAVAILABLE: %s", type(exc).__name__)
         if snapshot_note:
             lines.extend(["", snapshot_note])
         lines.extend(["", "📊 PER RARITÀ"])
