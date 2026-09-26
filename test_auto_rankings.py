@@ -351,18 +351,61 @@ class DeterministicCommandNormalizationTests(unittest.TestCase):
         normalize = app.normalize_deterministic_command
         self.assertEqual(normalize("Stats", "SensGPT_TitaniAbusiviBot"), "Stats")
         self.assertEqual(normalize("@ stats", "SensGPT_TitaniAbusiviBot"), "stats")
-        self.assertEqual(
-            normalize("@SensGPT_TitaniAbusiviBot Stats", "SensGPT_TitaniAbusiviBot"),
-            "Stats",
-        )
+        self.assertEqual(normalize("@SensGPT_TitaniAbusiviBot Stats", "SensGPT_TitaniAbusiviBot"), "Stats")
 
     def test_other_user_mentions_are_preserved(self):
         command = app.normalize_deterministic_command(
-            "registra utente @GiorgioBs111111 #2LVRCLV8LV",
-            "SensGPT_TitaniAbusiviBot",
+            "registra utente @GiorgioBs111111 #2LVRCLV8LV", "SensGPT_TitaniAbusiviBot",
         )
         self.assertIn("@GiorgioBs111111", command)
 
+
+class GroupVoiceExceptionsTests(unittest.IsolatedAsyncioTestCase):
+    def message(self, text, selected):
+        return SimpleNamespace(
+            text=text, chat_id=-100123, message_id=42,
+            chat=SimpleNamespace(type="supergroup"),
+            from_user=SimpleNamespace(id=456), reply_to_message=selected,
+            reply_text=AsyncMock(),
+        )
+
+    def context(self):
+        return SimpleNamespace(
+            bot=SimpleNamespace(username="SensGPT_TitaniAbusiviBot", id=123,
+                                send_message=AsyncMock(), send_voice=AsyncMock()),
+            user_data={},
+        )
+
+    async def test_leggi_selected_group_message_stays_in_group(self):
+        selected = SimpleNamespace(text="Messaggio da leggere", caption=None,
+                                   from_user=SimpleNamespace(id=789))
+        message = self.message("@SensGPT_TitaniAbusiviBot leggi", selected)
+        context = self.context()
+        with (patch.object(app, "_private_group_command", new=AsyncMock()) as private,
+              patch.object(app, "send_voice_reply", new=AsyncMock(return_value=True)) as voice):
+            await app.answer(SimpleNamespace(effective_message=message), context)
+        private.assert_not_awaited()
+        voice.assert_awaited_once_with(context, -100123, "Messaggio da leggere")
+
+    async def test_rispondi_a_voce_selected_group_message_is_not_private(self):
+        selected = SimpleNamespace(text="Cosa ne pensi?", caption=None,
+                                   from_user=SimpleNamespace(id=789))
+        message = self.message("Rispondi a voce", selected)
+        context = self.context()
+        with (patch.object(app, "_private_group_command", new=AsyncMock()) as private,
+              patch.object(app.community, "handle_command", new=AsyncMock(return_value=True)) as route):
+            await app.answer(SimpleNamespace(effective_message=message), context)
+        private.assert_not_awaited()
+        route.assert_awaited_once_with(message, context, "Rispondi a voce")
+
+    async def test_explicit_voice_answer_uses_group_destination(self):
+        message = self.message("Rispondi a voce", None)
+        context = self.context()
+        context.user_data["_request_voice_mode"] = "voice"
+        with patch.object(app, "send_voice_reply", new=AsyncMock(return_value=True)) as voice:
+            await app.send_mode_aware_text(message, context, "Risposta")
+        voice.assert_awaited_once_with(context, -100123, "Risposta")
+        context.bot.send_message.assert_not_awaited()
 
 if __name__ == "__main__":
     unittest.main()
