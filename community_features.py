@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+from urllib.parse import quote
 
 import requests
 
@@ -1313,8 +1314,13 @@ class CommunityFeatures:
                 lines = [f"SKIN — {category.upper()}", "", f"🎨 Skin nel catalogo: {len(rows)}",
                          f"🦸 Brawler: {len(grouped)}", "",
                          "I totali posseduti del tuo account sono nel riepilogo Skin."]
+                lines.extend(["", "🧭 SCEGLI UN BRAWLER"])
                 for name, skins in sorted(grouped.items(), key=lambda pair: pair[0].casefold()):
-                    lines.extend(["", f"🦸 {name.upper()} — {len(skins)} skin"])
+                    heading = name.upper()
+                    fragment = quote(heading.replace(" ", "-"), safe="-")
+                    lines.append(f"[[SKINJUMP:{fragment}|🦸 {heading} · {len(skins)} skin]]")
+                for name, skins in sorted(grouped.items(), key=lambda pair: pair[0].casefold()):
+                    lines.extend(["", f"[[SKINBRAWLER:{name.upper()}]]", f"🎨 {len(skins)} skin"])
                     for skin in sorted(skins, key=lambda row: str(row.get("name_it") or row.get("name_en") or "").casefold()):
                         label = str(skin.get("name_it") or skin.get("name_en") or "Skin")
                         gems = skin.get("price_gems")
@@ -1780,6 +1786,16 @@ class CommunityFeatures:
             if skin_photo:
                 nodes.append({"tag": "p", "children": [{"tag": "a", "attrs": {"href": skin_photo.group(1)},
                                                        "children": [skin_photo.group(2)]}]})
+                continue
+            skin_jump = re.fullmatch(r"\[\[SKINJUMP:([A-Za-z0-9%_-]+)\|(.+?)\]\]", value)
+            if is_skin_catalog and skin_jump:
+                nodes.append({"tag": "p", "children": [{"tag": "a", "attrs": {"href": "#" + skin_jump.group(1)},
+                                                       "children": [skin_jump.group(2)]}]})
+                continue
+            skin_brawler = re.fullmatch(r"\[\[SKINBRAWLER:([^<>\[\]]+)\]\]", value)
+            if is_skin_catalog and skin_brawler:
+                nodes.extend([{"tag": "p", "children": ["\u00a0"]},
+                              {"tag": "h4", "children": [skin_brawler.group(1)]}])
                 continue
             if command_name:
                 command_text = command_name.group(1)
