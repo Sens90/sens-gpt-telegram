@@ -1175,6 +1175,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             obj._direct_owned_skin_ids("2V2VY0PJ8", catalog)
         obj._post.assert_called_once()
         community_features._SKIN_DIRECT_OPEN_UNTIL = 0.0
+        get.return_value.json.return_value = {"brawlers": [
+            {"owned": [{"id": 101}, {"id": 999}], "notOwned": [{"id": 102}]},
+        ]}
+        self.assertEqual(obj._direct_owned_skin_ids("2V2VY0PJ8", catalog), {101})
+        self.assertEqual(obj._post.call_args.args[1]["owned_skin_ids"], [101])
 
     @patch("player_tracking._brawlytix_progression", return_value={})
     def test_skin_account_does_not_invent_ownership_when_stats_unavailable(self, progression):
