@@ -1087,6 +1087,21 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._get.assert_any_call("skins_catalog", unittest.mock.ANY)
         self.assertEqual(progression.call_count, 2)
 
+    @patch("player_tracking._brawlytix_progression")
+    def test_skin_account_reconciles_stats_total_with_only_verified_named_ids(self, progression):
+        progression.return_value = {"skins_owned": 5, "skin_rarity_counts": {"rare": 2}}
+        catalog = [{"external_id": "1", "rarity": "RARE"},
+                   {"external_id": "2", "rarity": "RARE"},
+                   {"external_id": "3", "rarity": "EPIC"}]
+        obj = self.make_features()
+        obj._get = Mock(side_effect=lambda table, _: catalog if table == "skins_catalog" else
+                        [{"owned_skin_ids": [1, 2, 999], "observed_at": "2026-09-26T17:52:00Z"}])
+        answer = obj.skin_account_text({"player_tag": "2V2VY0PJ8"})
+        self.assertIn("🎨 Totale rilevato da Stats: 5/3", answer)
+        self.assertIn("✅ Identificate per nome nel catalogo: 2", answer)
+        self.assertIn("❔ Senza ID verificato: 3", answer)
+        self.assertNotIn("Mancanti: 3", answer)
+
     def test_skin_catalog_categories_keep_regular_pass_separate_from_pro(self):
         obj = self.make_features()
         self.assertEqual(obj._skin_category_label({"rarity": "EPIC", "acquisition_type": "brawl_pass"}), "Brawl Pass")
