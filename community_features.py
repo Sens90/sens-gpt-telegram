@@ -1283,7 +1283,7 @@ class CommunityFeatures:
                 if 0 < identified <= int(owned):
                     lines.extend(["", f"✅ Identificate per nome nel catalogo: {identified}"])
                     if int(owned) > identified:
-                        lines.append(f"❔ Senza ID verificato: {int(owned) - identified}")
+                        lines.append(f"❔ Scarto fra totale Stats e ID identificati: {int(owned) - identified}")
                     observed = str(snapshots[0].get("observed_at") or "")
                     if observed:
                         lines.append(f"📅 Collezione identificata: {observed[:16].replace('T', ' ')} UTC")
