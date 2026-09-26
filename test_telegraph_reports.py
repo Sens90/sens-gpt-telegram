@@ -1285,6 +1285,35 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             for node in nodes for child in node.get("children", []) if isinstance(child, dict)])
         self.assertIn({"tag": "h4", "children": [heading]}, nodes)
 
+    @patch.dict(os.environ, {"TELEGRAPH_ACCESS_TOKEN": "test-token"})
+    @patch("community_features.requests.post")
+    def test_split_skin_category_links_to_correct_part_and_keeps_brawler_whole(self, post):
+        import json
+        pages = []
+        def publish(url, data, timeout):
+            pages.append((data["title"], json.loads(data["content"])))
+            return SimpleNamespace(status_code=200, raise_for_status=Mock(),
+                                   json=lambda: {"ok": True, "result": {
+                                       "url": f"https://telegra.ph/part-{len(pages)}"}})
+        post.side_effect = publish
+        skin_lines = ["SKIN — EPICHE", "🧭 SCEGLI UN BRAWLER",
+                      "[[SKINJUMP:MOE|🦸 MOE]]", "[[SKINJUMP:8-BIT|🦸 8-BIT]]",
+                      "[[SKINBRAWLER:MOE]]"]
+        skin_lines.extend(["🎨 Skin di Moe " + "x" * 90] * 300)
+        skin_lines.append("[[SKINBRAWLER:8-BIT]]")
+        skin_lines.extend(["🎨 Skin di 8-BIT " + "x" * 90] * 300)
+        obj = self.make_features()
+        self.assertEqual(obj._publish_telegraph("Skin Epiche", skin_lines), "https://telegra.ph/part-3")
+        self.assertEqual(len(pages), 3)
+        index = pages[-1][1]
+        links = [child["attrs"]["href"] for node in index for child in node.get("children", [])
+                 if isinstance(child, dict) and child.get("tag") == "a"]
+        self.assertIn("https://telegra.ph/part-1#MOE", links)
+        self.assertIn("https://telegra.ph/part-2#8-BIT", links)
+        self.assertFalse(any(link.startswith("#") for link in links))
+        self.assertTrue(any(node.get("tag") == "h4" and node.get("children") == ["8-BIT"]
+                            for node in pages[1][1]))
+
     @patch.dict(os.environ, {"TELEGRAM_TOKEN": "000000:test-token", "GEMINI_API_KEY": "test-key"})
     def test_explicit_stats_send_uses_private_destination_for_group(self):
         from app import _manual_command_reply_chat_id
