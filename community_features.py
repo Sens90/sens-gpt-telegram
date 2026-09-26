@@ -17,6 +17,7 @@ import requests
 
 from trophy_coefficient import calculate_trophy_coefficient
 from coefficient_guide import coefficient_guide_lines
+from skin_pass_provenance import is_verified_brawl_pass_skin
 
 ROME = ZoneInfo("Europe/Rome")
 LOG = logging.getLogger(__name__)
@@ -1096,7 +1097,7 @@ class CommunityFeatures:
             return "Argento"
         if "Skin Overdrive Pass Pro" in acquisition_note:
             return "Skin Overdrive Pass Pro"
-        if acquisition_type == "brawl_pass":
+        if acquisition_type == "brawl_pass" or is_verified_brawl_pass_skin(row):
             return "Brawl Pass"
         labels = {
             "RARE": "Rare", "SUPER_RARE": "Super rare", "EPIC": "Epiche",
@@ -1111,6 +1112,19 @@ class CommunityFeatures:
         if tid in ("TID_UNDERTAKER_HAT_SKIN", "TID_ROCKET_GIRL_ORIGINAL"):
             return "Base (varianti)"
         return "Senza rarità"
+
+    @staticmethod
+    def _skin_category_labels(row):
+        """A Pass skin also retains its real rarity in the Stats denominator."""
+        primary = CommunityFeatures._skin_category_label(row)
+        rarity = str(row.get("rarity") or "").upper()
+        rarity_labels = {
+            "RARE": "Rare", "SUPER_RARE": "Super rare", "EPIC": "Epiche",
+            "MYTHIC": "Mitiche", "LEGENDARY": "Leggendarie",
+            "HYPERCHARGE": "Skin Overdrive",
+        }
+        secondary = rarity_labels.get(rarity) if primary == "Brawl Pass" else None
+        return (primary, secondary) if secondary else (primary,)
 
     def _resolve_skin_brawler_name(self, value):
         wanted = self._skin_key(value)
@@ -1214,7 +1228,7 @@ class CommunityFeatures:
         catalog, offset = [], 0
         while True:
             page = self._get("skins_catalog", {
-                "select": "external_id,rarity,source_payload,price_coins,acquisition_type,acquisition_note",
+                "select": "external_id,name_en,rarity,source_payload,price_coins,acquisition_type,acquisition_note",
                 "verification_status": "eq.structured_verified",
                 "external_id": "not.in.(29001472,29001473,29001831,29001832,29001833,29001834,29001835,29001836)",
                 "order": "external_id.asc", "limit": "1000", "offset": str(offset),
@@ -1225,8 +1239,8 @@ class CommunityFeatures:
             offset += 1000
         totals = {}
         for row in catalog:
-            label = self._skin_category_label(row)
-            totals[label] = totals.get(label, 0) + 1
+            for label in self._skin_category_labels(row):
+                totals[label] = totals.get(label, 0) + 1
         labels = (
             ("rare", "🟢", "Rare", "Rare"), ("super rare", "🔵", "Super rare", "Super rare"),
             ("epic", "🟣", "Epiche", "Epiche"), ("mythic", "🔴", "Mitiche", "Mitiche"),
@@ -1253,6 +1267,8 @@ class CommunityFeatures:
         for name, emoji in (("Brawl Pass", "🎟️"), ("Base (varianti)", "🎮")):
             if name in totals:
                 lines.extend(["", f"{emoji} {name}", f"n.d./{totals[name]}"])
+                if name == "Brawl Pass":
+                    lines.append("Provenienza verificata: queste skin compaiono anche nella rispettiva rarità. Stagioni precedenti in verifica.")
         # The 1131 catalog entries already define the global denominator.
         # Brawler defaults are not catalog skin IDs; counting them here would
         # inflate the total and misrepresent ownership in Stats.
@@ -1299,7 +1315,8 @@ class CommunityFeatures:
             urls = _SKIN_CATEGORY_URLS.setdefault(fingerprint, {})
             categories = {}
             for row in catalog:
-                categories.setdefault(self._skin_category_label(row), []).append(row)
+                for label in self._skin_category_labels(row):
+                    categories.setdefault(label, []).append(row)
             brawlers = self._get("brawlers_catalog", {"select": "brawler_id,name_it,name_en"}) or []
             names = {str(row.get("brawler_id")): str(row.get("name_it") or row.get("name_en") or "")
                      for row in brawlers}
@@ -1314,6 +1331,8 @@ class CommunityFeatures:
                 lines = [f"SKIN — {category.upper()}", "", f"🎨 Skin nel catalogo: {len(rows)}",
                          f"🦸 Brawler: {len(grouped)}", "",
                          "I totali posseduti del tuo account sono nel riepilogo Skin."]
+                if category == "Brawl Pass":
+                    lines.extend(["", "🎟️ Provenienza verificata: ogni skin compare anche nella sua rarità. Stagioni più vecchie in verifica."])
                 lines.extend(["", "🧭 SCEGLI UN BRAWLER"])
                 for name, skins in sorted(grouped.items(), key=lambda pair: pair[0].casefold()):
                     heading = name.upper()
@@ -1391,7 +1410,8 @@ class CommunityFeatures:
                 rows = [r for r in rows if self._skin_key(r.get("rarity")) == wanted]
             if category:
                 wanted = self._skin_key(category)
-                rows = [r for r in rows if self._skin_key(self._skin_category_label(r)) == wanted]
+                rows = [r for r in rows if any(self._skin_key(label) == wanted
+                                                for label in self._skin_category_labels(r))]
             if not rows:
                 return f"Non risultano skin in questa categoria{' per '+brawler_name if brawler_name else ''}."
             ownership_note = None
