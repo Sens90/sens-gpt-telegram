@@ -1212,6 +1212,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_skin_output_is_read_from_private_telegraph_button(self):
         obj = self.make_features()
+        obj._get = Mock(return_value=[])
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/skin-possedute")
         obj._send_ranking_message = AsyncMock(return_value=True)
         await obj.send_skin_telegraph(SimpleNamespace(), 456, "SKIN POSSEDUTE — ACCOUNT\n🔴 Mitiche\nPossedute: 28")
@@ -1220,6 +1221,40 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["report_url"], "https://telegra.ph/skin-possedute")
         self.assertNotIn("Possedute: 28", payload["text"])
         self.assertIn("Possedute: 28", "\n".join(obj._publish_telegraph.call_args.args[1]))
+
+    async def test_skin_categories_link_directly_to_reused_telegraph_pages(self):
+        import community_features
+        community_features._SKIN_CATEGORY_URLS.clear()
+        obj = self.make_features()
+        catalog = [
+            {"external_id": "101", "brawler_id": 1, "brawler_name": "MOE", "name_en": "Monterey Moe",
+             "rarity": "RARE", "price_gems": 29, "acquisition_type": "gems"},
+            {"external_id": "102", "brawler_id": 2, "brawler_name": "SHELLY", "name_en": "Star Shelly",
+             "rarity": "EPIC", "price_gems": None, "acquisition_type": "event"},
+        ]
+        obj._get = Mock(side_effect=lambda table, *_: catalog if table == "skins_catalog" else [
+            {"brawler_id": 1, "name_it": "Moe"}, {"brawler_id": 2, "name_it": "Shelly"},
+        ])
+        published = []
+        def publish(title, lines):
+            published.append((title, lines))
+            return "https://telegra.ph/test-" + str(len(published))
+        obj._publish_telegraph = Mock(side_effect=publish)
+        obj._send_ranking_message = AsyncMock(return_value=True)
+        answer = "SKIN POSSEDUTE — ACCOUNT\n📊 PER RARITÀ\n🟢 Rare\n1/1\n🟣 Epiche\n0/1"
+        try:
+            await obj.send_skin_telegraph(SimpleNamespace(), 456, answer)
+            root = obj._telegraph_nodes(published[-1][1])
+            links = [node["attrs"]["href"] for parent in root for node in parent.get("children", [])
+                     if isinstance(node, dict) and node.get("tag") == "a"]
+            self.assertEqual(len(links), 2)
+            self.assertTrue(all(link.startswith("https://telegra.ph/test-") for link in links))
+            self.assertIn("🦸 MOE — 1 skin", published[1][1])
+            self.assertIn("🎨 Monterey Moe · 💎 29 gemme", published[1][1])
+            await obj.send_skin_telegraph(SimpleNamespace(), 456, answer)
+            self.assertEqual(len(published), 4)  # two reusable categories, two private account pages
+        finally:
+            community_features._SKIN_CATEGORY_URLS.clear()
 
     @patch.dict(os.environ, {"TELEGRAM_TOKEN": "000000:test-token", "GEMINI_API_KEY": "test-key"})
     def test_explicit_stats_send_uses_private_destination_for_group(self):
