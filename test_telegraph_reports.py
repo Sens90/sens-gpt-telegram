@@ -1116,6 +1116,21 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("non sono disponibili", result)
         self.assertNotIn("CATALOGO", result)
 
+    @patch("player_tracking._brawlytix_progression", return_value={})
+    def test_skin_account_uses_dated_history_if_live_stats_fail(self, progression):
+        obj = self.make_features()
+        obj._get = Mock(return_value=[
+            {"snapshot_date": "2026-09-22", "category": "Totale", "owned_count": 387, "total_count": 1100},
+            {"snapshot_date": "2026-09-22", "category": "Brawl Pass", "owned_count": 4, "total_count": 6},
+            {"snapshot_date": "2026-09-21", "category": "Totale", "owned_count": 382, "total_count": 1090},
+        ])
+        result = obj.skin_account_text({"player_tag": "2GU9UV2RG"})
+        self.assertIn("Ultima rilevazione: 2026-09-22 (non aggiornata)", result)
+        self.assertIn("🎨 Totale: 387/1100", result)
+        self.assertIn("🎟️ Brawl Pass\n4/6", result)
+        self.assertNotIn("382", result)
+        obj._get.assert_called_once_with("skin_account_history", unittest.mock.ANY)
+
     def test_skin_telegraph_has_spacing_and_category_headings(self):
         obj = self.make_features()
         nodes = obj._telegraph_nodes([
