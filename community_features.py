@@ -25,8 +25,8 @@ _SKIN_BRIDGE_FAILURE_LIMIT = 3
 _SKIN_BRIDGE_BACKOFF_SECONDS = 6 * 60 * 60
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_FORMAT_REVISION = 6
-_DASHBOARD_SOURCE_MARKER = "Liste: valori positivi verificati · copertura roster e storico a fine classifica."
+_DASHBOARD_FORMAT_REVISION = 7
+_DASHBOARD_SOURCE_MARKER = "Liste: valori positivi verificati · copertura dei club in fondo alla classifica."
 _PROGRESSION_DETAIL_CACHE = {}
 _PROGRESSION_DETAIL_LOCK = threading.Lock()
 _PROGRESSION_DETAIL_FLIGHTS = {}
@@ -3984,15 +3984,12 @@ class CommunityFeatures:
         positive_clubs = [(name, result) for name, result in ranked_clubs if result["delta"] > 0]
         for position, (name, result) in enumerate(positive_clubs, 1):
             delta = result["delta"]
-            club_lines.append(f"{position}. {name} — {'+' if delta > 0 else ''}{self.number_formatter(delta)} "
-                              f"({result['players']}/{result.get('roster', result['players'])} con storico sufficiente)")
+            club_lines.append(f"{position}. {name} — +{self.number_formatter(delta)}")
         if not positive_clubs:
             club_lines.append("Nessun club con crescita positiva nel periodo." if measured else
                               "Storico Trofei non ancora sufficiente per calcolare questo periodo. "
                               "I roster continuano a essere censiti.")
-        club_lines.extend(["", f"📌 Copertura Trofei: {measured}/{roster} giocatori con storico sufficiente.",
-                           "Il saldo usa solo misure reali all'inizio e alla fine del periodo.",
-                           "I giocatori senza storico sufficiente non vengono contati come zero."])
+        club_lines.extend(["", f"📌 Storico Trofei: {measured}/{roster} giocatori misurabili nel periodo."])
         links[f"dash_t_1_{days}"] = self._publish_telegraph(f"Classifica 4 Club — {label}", club_lines)
         trophy_start = report_lines.index("🏆 CLASSIFICA TROFEI")
         trophy_end = report_lines.index("🔥 CLASSIFICA PROGRESSIONE", trophy_start)
