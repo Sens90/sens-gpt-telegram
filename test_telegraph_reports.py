@@ -1264,8 +1264,10 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             root = obj._telegraph_nodes(published[-1][1])
             links = [node["attrs"]["href"] for parent in root for node in parent.get("children", [])
                      if isinstance(node, dict) and node.get("tag") == "a"]
-            self.assertEqual(len(links), 2)
+            self.assertEqual(len(links), 3)
             self.assertTrue(all(link.startswith("https://telegra.ph/test-") for link in links))
+            self.assertIn("[[SKINLINK:https://telegra.ph/test-3|🗂️ Catalogo completo per rarità e Brawler]]", published[-1][1])
+            self.assertIn("[[SKINLINK:https://telegra.ph/test-2|🎨 Rare · 1 skin]]", published[2][1])
             self.assertIn("[[SKINJUMP:MOE|🦸 MOE · 1 skin]]", published[1][1])
             self.assertIn("[[SKINBRAWLER:MOE]]", published[1][1])
             rarity_nodes = obj._telegraph_nodes(published[1][1])
@@ -1280,7 +1282,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                            if isinstance(child, dict) and child.get("tag") == "a"]
             self.assertIn("https://cdn.bsinfox.com/brawlers/skins/101.webp", photo_links)
             await obj.send_skin_telegraph(SimpleNamespace(), 456, answer)
-            self.assertEqual(len(published), 4)  # two reusable categories, two private account pages
+            self.assertEqual(len(published), 5)  # categories and catalog reused, account page refreshed
         finally:
             community_features._SKIN_CATEGORY_URLS.clear()
 
