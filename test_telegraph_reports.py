@@ -1102,6 +1102,23 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("❔ Scarto fra totale Stats e ID identificati: 3", answer)
         self.assertNotIn("Mancanti: 3", answer)
 
+    @patch("player_tracking._brawlytix_progression")
+    def test_skin_account_shows_base_appearances_from_observed_brawlers(self, progression):
+        progression.return_value = {"skins_owned": 5, "skin_rarity_counts": {"rare": 2}}
+        obj = self.make_features()
+        def rows(table, _):
+            if table == "skins_catalog":
+                return [{"external_id": "1", "rarity": "RARE"}]
+            if table == "skin_owned_ids_latest":
+                return [{"owned_skin_ids": [1], "observed_at": "2026-09-26T17:52:00Z"}]
+            if table == "coefficient_history":
+                return [{"brawler_trophy_values": [0, 120, 20]}]
+            return []
+        obj._get = Mock(side_effect=rows)
+        answer = obj.skin_account_text({"player_tag": "2V2VY0PJ8"})
+        self.assertIn("🎮 Aspetti base dei Brawler rilevati: 3", answer)
+        self.assertIn("❔ Scarto fra totale Stats e ID identificati: 4", answer)
+
     def test_skin_catalog_categories_keep_regular_pass_separate_from_pro(self):
         obj = self.make_features()
         self.assertEqual(obj._skin_category_label({"rarity": "EPIC", "acquisition_type": "brawl_pass"}), "Brawl Pass")
