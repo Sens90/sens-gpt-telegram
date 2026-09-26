@@ -25,8 +25,8 @@ _SKIN_BRIDGE_FAILURE_LIMIT = 3
 _SKIN_BRIDGE_BACKOFF_SECONDS = 6 * 60 * 60
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_FORMAT_REVISION = 5
-_DASHBOARD_SOURCE_MARKER = "Liste: valori positivi verificati · copertura roster e periodi non misurabili indicati."
+_DASHBOARD_FORMAT_REVISION = 6
+_DASHBOARD_SOURCE_MARKER = "Liste: valori positivi verificati · copertura roster e storico a fine classifica."
 _PROGRESSION_DETAIL_CACHE = {}
 _PROGRESSION_DETAIL_LOCK = threading.Lock()
 _PROGRESSION_DETAIL_FLIGHTS = {}
@@ -171,7 +171,7 @@ Mostra Resoconto e classifiche cliccabili dei 15 giorni.
 Mostra Resoconto e classifiche cliccabili dei 30 giorni.
 
 Sono accettate anche le forme Classifica 7, Classifica 15 e Classifica 30. Gli invii automatici pubblicano Resoconto e indice con link Telegraph diretti alle 06:00, 12:00, 18:00 e 23:59 per oggi; ogni lunedì alle 06:00 per la settimana conclusa; il 16 alle 06:00 per i giorni 1–15; l'ultimo giorno del mese alle 23:59 per i giorni 16–fine mese; il 1° alle 06:00 per il mese solare precedente.
-Per le classifiche Trofei dei 4 Club il roster comprende anche i non registrati: la crescita del periodo si calcola solo quando esistono misure reali prima dell'inizio e alla fine. Ogni club indica quanti giocatori hanno uno storico sufficiente rispetto al roster completo. Nelle liste compaiono solo crescite positive.
+Per le classifiche Trofei dei 4 Club si usa il roster completo: la crescita del periodo si calcola solo quando esistono misure reali prima dell'inizio e alla fine. Ogni club indica quanti giocatori hanno uno storico sufficiente rispetto al roster completo. Nelle liste compaiono solo crescite positive.
 
 ⚡ COMANDI DIRETTI DI OGGI
 [[CMDNAME:classifica oggi]]
@@ -324,7 +324,7 @@ Report degli utenti registrati appartenenti ai quattro club ABUSIVI.
 [[CMDNAME:report globale club 7]]
 [[CMDNAME:report globale club 15]]
 [[CMDNAME:report globale club 30]]
-Report del roster completo dei quattro club: registrati + non registrati.
+Report del roster completo dei quattro club.
 
 [[CMDNAME:report titani 7]]
 [[CMDNAME:report titani 15]]
@@ -334,7 +334,7 @@ Report dei registrati di TITANI ABUSIVI. Gli stessi comandi sono disponibili sos
 [[CMDNAME:report club globale titani 7]]
 [[CMDNAME:report club globale titani 15]]
 [[CMDNAME:report club globale titani 30]]
-Report del roster completo TITANI, registrati + non registrati. Gli stessi comandi sono disponibili per tamarri, tornadi e talenti.
+Report del roster completo TITANI. Gli stessi comandi sono disponibili per tamarri, tornadi e talenti.
 
 [[CMDNAME:report oggi]]
 Mostra il resoconto operativo giornaliero. Per il report di classifiche e Progressione della community usa Report Community oggi; per gli altri ambiti usa Report Club oggi, Report Globale Club oggi o Report Titani/Tamarri/Tornadi/Talenti oggi.
@@ -1533,7 +1533,11 @@ class CommunityFeatures:
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h3", "children": [value.strip("═ ")]}])
                 continue
             if is_dashboard and re.match(r"^(?:🏆|🔥|📊) (?:Classifica|Progressione|Report)\b", value, re.I):
-                nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h4", "children": [value]}])
+                prominence = "h3" if value.casefold().startswith("🏆 classifica trofei") else "h4"
+                nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": prominence, "children": [value]}])
+                continue
+            if index > 0 and value == "🏆 CLASSIFICA TROFEI":
+                nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h3", "children": [value]}])
                 continue
             if first_value.upper().startswith("PROGRESSIONE") and value.startswith("🦸 "):
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h4", "children": [value]}])
@@ -3594,8 +3598,8 @@ class CommunityFeatures:
                         if tag and tag not in seen:
                             seen.add(tag); members.append(m)
                 scope_label = f"CLUB GLOBALE — {club_name}" if club_name else "GLOBALE CLUB"
-                scope_note = ("roster completo del club, registrati + non registrati" if club_name
-                              else "roster completo dei 4 club ABUSIVI, registrati + non registrati")
+                scope_note = (f"roster completo di {club_name}" if club_name
+                              else "roster completo dei 4 club ABUSIVI")
             elif club_name:
                 members = self._get("community_members", {
                     "select": "player_tag,player_name,display_name,club_name",
@@ -3748,9 +3752,6 @@ class CommunityFeatures:
         title = f"🔥 REPORT {scope_label} — {'OGGI' if days == 0 else f'{days} GIORNI'}"
         full = [title, f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}", "", f"👥 Ambito: {scope_note}", ""]
         full.append("🏆 CLASSIFICA TROFEI")
-        if scope_key == "global_clubs":
-            full.append(f"📌 Storico trofei disponibile: {len(trophy_rows)} su {len(tags)} giocatori del roster."
-                        " Sono elencati solo quelli con crescita positiva verificabile.")
         if visible_trophy_rows:
             for i, r in enumerate(visible_trophy_rows, 1):
                 sign = "+" if r["delta"] > 0 else ""
@@ -3758,6 +3759,8 @@ class CommunityFeatures:
         else:
             full.append("Nessun giocatore con crescita positiva nel periodo." if trophy_rows else
                         "Storico Trofei non ancora sufficiente per calcolare questo periodo.")
+        if scope_key == "global_clubs":
+            full.extend(["", f"📌 Storico Trofei disponibile: {len(trophy_rows)} su {len(tags)} giocatori del roster."])
         full.extend(["", "🔥 CLASSIFICA PROGRESSIONE"])
         if visible_progression_rows:
             for i, r in enumerate(visible_progression_rows, 1):
@@ -3974,13 +3977,10 @@ class CommunityFeatures:
             chat_id, "global_clubs", days, window=window, return_full=True, publish=False,
         )
         club_lines = [f"CLASSIFICA 4 CLUB — {label}",
-                      "Roster completi dei quattro club: registrati e non registrati.",
-                      "📌 Il saldo usa solo i giocatori con misure reali all'inizio e alla fine del periodo.",
-                      "I giocatori senza storico sufficiente non vengono contati come zero.", ""]
+                      "Roster completi dei quattro club ABUSIVI.", ""]
         ranked_clubs = sorted(club_totals.items(), key=lambda item: (item[1]["delta"], item[1]["players"]), reverse=True)
         measured = sum(result["players"] for result in club_totals.values())
         roster = sum(result.get("roster", result["players"]) for result in club_totals.values())
-        club_lines.append(f"📌 Copertura Trofei: {measured}/{roster} giocatori con storico sufficiente.")
         positive_clubs = [(name, result) for name, result in ranked_clubs if result["delta"] > 0]
         for position, (name, result) in enumerate(positive_clubs, 1):
             delta = result["delta"]
@@ -3990,6 +3990,9 @@ class CommunityFeatures:
             club_lines.append("Nessun club con crescita positiva nel periodo." if measured else
                               "Storico Trofei non ancora sufficiente per calcolare questo periodo. "
                               "I roster continuano a essere censiti.")
+        club_lines.extend(["", f"📌 Copertura Trofei: {measured}/{roster} giocatori con storico sufficiente.",
+                           "Il saldo usa solo misure reali all'inizio e alla fine del periodo.",
+                           "I giocatori senza storico sufficiente non vengono contati come zero."])
         links[f"dash_t_1_{days}"] = self._publish_telegraph(f"Classifica 4 Club — {label}", club_lines)
         trophy_start = report_lines.index("🏆 CLASSIFICA TROFEI")
         trophy_end = report_lines.index("🔥 CLASSIFICA PROGRESSIONE", trophy_start)
@@ -4025,19 +4028,19 @@ class CommunityFeatures:
             title.upper(),
             f"Aggiornato: {now:%d/%m/%Y %H:%M}",
             "",
-            "Tre classifiche per periodo: Trofei globali, Progressione Globale Club e 4 Club. I roster includono registrati e non registrati. Il Resoconto è nel messaggio Telegram.",
+            "Tre classifiche per periodo: Trofei globali, Progressione Globale Club e 4 Club. Si usano i roster completi. Il Resoconto è nel messaggio Telegram.",
         ]
         for days, label in periods:
             lines.extend(["", f"══ {label} ══", ""])
             lines.extend([
                 f"🏆 Classifica Trofei Globale Club — {label}",
-                "Tutti i giocatori dei quattro club, registrati e non registrati.",
+                "Classifica Trofei dei roster completi dei quattro club ABUSIVI.",
                 f"[[DASH:dash_t_2_{days}|Apri]]", "",
                 f"🔥 Progressione Globale Club — {label}",
                 "Tutti i giocatori dei quattro club; Progressione calcolata battaglia per battaglia.",
                 f"[[DASH:dash_p_2_{days}|Apri]]", "",
                 f"🏆 Classifica dei 4 Club — {label}",
-                "Confronto fra TITANI, TAMARRI, TORNADI e TALENTI; roster completi, registrati e non registrati.",
+                "Confronto fra TITANI, TAMARRI, TORNADI e TALENTI con i roster completi.",
                 f"[[DASH:dash_t_1_{days}|Apri]]", "",
             ])
         if not publish:
