@@ -1109,6 +1109,8 @@ class CommunityFeatures:
             return "Argento"
         if "Skin Overdrive Pass Pro" in acquisition_note:
             return "Skin Overdrive Pass Pro"
+        if tid == "TID_BARLEY_WIZARD_SKIN" and "Supercell ID" in acquisition_note:
+            return "Supercell ID"
         if acquisition_type == "brawl_pass" or is_verified_brawl_pass_skin(row):
             return "Brawl Pass"
         labels = {
@@ -1297,7 +1299,7 @@ class CommunityFeatures:
                 lines.extend(["", f"{emoji} {name}", f"{numerator}/{denominator}"])
         # Stats reports rarity aggregates only: it does not identify ownership
         # of individual base or Brawl Pass skins. Preserve unknown numerators.
-        for name, emoji in (("Brawl Pass", "🎟️"), ("Base (varianti)", "🎮")):
+        for name, emoji in (("Brawl Pass", "🎟️"), ("Base (varianti)", "🎮"), ("Supercell ID", "🆔")):
             if name in totals:
                 lines.extend(["", f"{emoji} {name}", f"n.d./{totals[name]}"])
                 if name == "Brawl Pass":
