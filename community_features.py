@@ -1054,19 +1054,25 @@ class CommunityFeatures:
                            if str(row.get("external_id") or "").isdigit()}
             if not catalog_ids or catalog_ids - (owned | missing) or owned & missing:
                 raise RuntimeError("Direct collection does not cover verified catalog")
+            # The source may include owned IDs outside the verified catalog.
+            # Compare Stats against the complete source response, then persist
+            # only verified catalog IDs for the per-Brawler split.
+            source_owned_count = len(owned)
             owned &= catalog_ids
             saved = self._get("skin_stats_latest", {
                 "select": "skins_owned", "player_tag": f"eq.{tag}", "limit": "1",
             }) or []
-            if saved and saved[0].get("skins_owned") is not None and len(owned) != int(saved[0]["skins_owned"]):
-                LOG.warning("SKIN DIRECT COUNT MISMATCH: owned=%s stats=%s", len(owned), saved[0]["skins_owned"])
+            if saved and saved[0].get("skins_owned") is not None and source_owned_count != int(saved[0]["skins_owned"]):
+                LOG.warning("SKIN DIRECT COUNT MISMATCH: source=%s catalog=%s stats=%s",
+                            source_owned_count, len(owned), saved[0]["skins_owned"])
                 raise RuntimeError("Direct collection differs from Stats count")
             self._post("skin_owned_ids_latest", {
                 "player_tag": tag, "owned_skin_ids": sorted(owned),
                 "observed_at": datetime.now(timezone.utc).isoformat(),
             }, params={"on_conflict": "player_tag"}, prefer="resolution=merge-duplicates,return=minimal")
             _SKIN_DIRECT_OPEN_UNTIL = 0.0
-            LOG.info("SKIN DIRECT COLLECTION VERIFIED: owned=%s catalog=%s", len(owned), len(catalog_ids))
+            LOG.info("SKIN DIRECT COLLECTION VERIFIED: source=%s owned_in_catalog=%s catalog=%s",
+                     source_owned_count, len(owned), len(catalog_ids))
             return owned
         except (requests.RequestException, ValueError, RuntimeError) as exc:
             # Avoid repeated expensive requests if the public API is unavailable.
