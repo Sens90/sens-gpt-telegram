@@ -338,6 +338,15 @@ class RegisteredBattleMonitorTests(unittest.TestCase):
 
 
 class DeterministicCommandNormalizationTests(unittest.TestCase):
+    def test_group_chat_recognizes_only_full_bot_mention(self):
+        username = "SensGPT_TitaniAbusiviBot"
+        self.assertTrue(app.is_explicit_bot_mention(
+            "@SensGPT_TitaniAbusiviBot cosa ne pensi del gruppo community inattivo", username
+        ))
+        self.assertTrue(app.is_explicit_bot_mention("Ciao @sensgpt_titaniabusivibot!", username))
+        self.assertFalse(app.is_explicit_bot_mention("@SensGPT_TitaniAbusiviBotFake ciao", username))
+        self.assertFalse(app.is_explicit_bot_mention("Ciao gruppo", username))
+
     def test_stats_variants_normalize_to_same_command(self):
         normalize = app.normalize_deterministic_command
         self.assertEqual(normalize("Stats", "SensGPT_TitaniAbusiviBot"), "Stats")
