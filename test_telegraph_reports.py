@@ -1118,6 +1118,9 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         answer = obj.skin_account_text({"player_tag": "2V2VY0PJ8"})
         self.assertIn("🎮 Aspetti base dei Brawler rilevati: 3", answer)
         self.assertIn("❔ Scarto fra totale Stats e ID identificati: 4", answer)
+        self.assertIn("❔ Totale Stats fuori dalle rarità: 3", answer)
+        self.assertIn("Il dato può comprendere aspetti base e varianti; non identifica altre skin per nome.", answer)
+        self.assertNotIn("Altre categorie non suddivise: 3 skin possedute", answer)
 
     def test_skin_catalog_categories_keep_regular_pass_separate_from_pro(self):
         obj = self.make_features()
