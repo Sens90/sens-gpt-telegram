@@ -3533,7 +3533,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("GROUP FREE CHAT SILENT MEMORY: stored without reply", flush=True)
         return
 
-    if (_deterministic_group_command or _voice_group_exception) and not (
+    if _deterministic_group_command and not _voice_group_exception and not (
         _is_group_chat and _is_public_group_command(_raw_command)
     ):
         message = await _private_group_command(message, context, _raw_command)
@@ -3624,7 +3624,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Il messaggio selezionato non contiene testo da leggere."
             )
             return
-        ok = await send_voice_reply(context, _manual_command_reply_chat_id(message), selected_text)
+        ok = await send_voice_reply(context, message.chat_id, selected_text)
         if not ok:
             await message.reply_text(
                 "Non riesco a generare il vocale in questo momento. Riprova tra poco."
@@ -3864,8 +3864,15 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_private_chat = getattr(message.chat, "type", None) == "private"
     # Active registered members may talk to Sens GPT normally in private chat.
     # Groups keep the existing mention/reply requirement.
-    if not is_private_chat and not mentioned and not is_reply and not is_voice_input:
+    if not is_private_chat and not mentioned and not is_reply and not is_voice_input and not (
+        _voice_group_exception and message.reply_to_message
+    ):
         return
+
+    # A voice reply to a selected group message keeps that message as context,
+    # even when the selected message was written by another member.
+    if _voice_group_exception and message.reply_to_message:
+        is_reply = True
 
     question = message.text
     question = re.sub(
@@ -3928,7 +3935,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Il messaggio selezionato non contiene testo da leggere."
             )
             return
-        ok = await send_voice_reply(context, _manual_command_reply_chat_id(message), selected_text)
+        ok = await send_voice_reply(context, message.chat_id, selected_text)
         if not ok:
             await message.reply_text(
                 "Non riesco a generare il vocale in questo momento. Riprova tra poco."
