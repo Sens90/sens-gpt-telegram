@@ -1080,6 +1080,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("STAR SHELLY", result)
         self.assertNotIn("Fonte:", result)
         self.assertNotIn("Altre skin senza rarità", result)
+        self.assertNotIn("🎮 Skin base\n", result)
         obj._official_owned_skin_ids.assert_not_called()
         fallback = obj._cached_skin_account_text("2GU9UV2RG")
         self.assertEqual(fallback, result)
