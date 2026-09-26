@@ -1120,7 +1120,7 @@ class CommunityFeatures:
         owned = stats.get("skins_owned")
         raw_counts = stats.get("skin_rarity_counts") or {}
         if owned is None and not raw_counts:
-            return "I dati delle skin possedute non sono disponibili in questo momento. Riprova più tardi."
+            return self._last_skin_snapshot_text(player_tag)
         catalog, offset = [], 0
         while True:
             page = self._get("skins_catalog", {
@@ -1172,6 +1172,40 @@ class CommunityFeatures:
         elif owned is not None and sum(counts.values()) < int(owned):
             lines.extend(["", f"Altre categorie non suddivise: {int(owned) - sum(counts.values())} skin possedute"])
         return "\n".join(lines)
+
+    def _last_skin_snapshot_text(self, player_tag):
+        """Show the last measured collection when the live Stats bridge fails."""
+        try:
+            tag = str(player_tag or "").strip().lstrip("#").upper()
+            if not tag:
+                return "I dati delle skin possedute non sono disponibili in questo momento. Riprova più tardi."
+            history = self._get("skin_account_history", {
+                "select": "snapshot_date,category,owned_count,total_count",
+                "player_tag": f"eq.{tag}", "order": "snapshot_date.desc",
+                "limit": "100",
+            }) or []
+            latest = next((str(row.get("snapshot_date")) for row in history
+                           if row.get("category") == "Totale" and row.get("snapshot_date")), None)
+            if latest:
+                measured = [row for row in history if str(row.get("snapshot_date")) == latest]
+                total = next(row for row in measured if row.get("category") == "Totale")
+                lines = ["SKIN POSSEDUTE — ACCOUNT", "",
+                         f"📅 Ultima rilevazione: {latest} (non aggiornata)", "",
+                         f"🎨 Totale: {int(total['owned_count'])}/{int(total['total_count'])}",
+                         "", "📊 PER RARITÀ"]
+                icons = {"Rare": "🟢", "Super rare": "🔵", "Epiche": "🟣",
+                         "Mitiche": "🔴", "Leggendarie": "🟡", "Skin Overdrive": "🔥",
+                         "Pass Pro": "🏅", "Brawl Pass": "🎟️", "Argento": "🥈",
+                         "Oro 24 carati": "🥇", "Collezione": "🎨"}
+                for row in measured:
+                    category = str(row.get("category") or "")
+                    if category in icons:
+                        lines.extend(["", f"{icons[category]} {category}",
+                                      f"{int(row['owned_count'])}/{int(row['total_count'])}"])
+                return "\n".join(lines)
+        except Exception as exc:
+            LOG.warning("SKIN HISTORY FALLBACK ERROR: %s", type(exc).__name__)
+        return "I dati delle skin possedute non sono disponibili in questo momento. Riprova più tardi."
 
     def _cached_skin_account_text(self, player_tag, detailed=False):
         """Exact collection unavailable: use the Stats account ownership data."""
