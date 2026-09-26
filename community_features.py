@@ -1,5 +1,6 @@
 import os
 import base64
+import hashlib
 import re
 import logging
 import io
@@ -24,6 +25,8 @@ _SKIN_BRIDGE_OPEN_UNTIL = 0.0
 _SKIN_BRIDGE_FAILURE_LIMIT = 3
 _SKIN_BRIDGE_BACKOFF_SECONDS = 6 * 60 * 60
 _SKIN_DIRECT_OPEN_UNTIL = 0.0
+_SKIN_CATEGORY_URLS = {}
+_SKIN_CATEGORY_URLS_LOCK = threading.Lock()
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
 _DASHBOARD_FORMAT_REVISION = 8
@@ -1259,13 +1262,79 @@ class CommunityFeatures:
         """Exact collection unavailable: use the Stats account ownership data."""
         return self._owned_skin_stats_text(player_tag)
 
+    def _skin_category_telegraph_urls(self):
+        """Publish public catalog category indexes once per catalog revision.
+
+        These pages contain catalog entries, never unverified account ownership.
+        A failed Telegraph page is retried on the next request.
+        """
+        catalog, offset = [], 0
+        while True:
+            page = self._get("skins_catalog", {
+                "select": "external_id,brawler_id,brawler_name,name_en,name_it,rarity,source_payload,price_gems,price_coins,acquisition_type,acquisition_note",
+                "verification_status": "eq.structured_verified",
+                "external_id": "not.in.(29001472,29001473,29001831,29001832,29001833,29001834,29001835,29001836)",
+                "order": "external_id.asc", "limit": "1000", "offset": str(offset),
+            }) or []
+            catalog.extend(page)
+            if len(page) < 1000:
+                break
+            offset += 1000
+        if not catalog:
+            return {}
+        fingerprint = hashlib.sha256(repr(sorted((
+            str(r.get("external_id")), str(r.get("brawler_id")), str(r.get("name_it")),
+            str(r.get("rarity")), str(r.get("price_gems")), str(r.get("price_coins")),
+            str(r.get("acquisition_type")), str(r.get("acquisition_note")),
+            repr(r.get("source_payload")),
+        ) for r in catalog)).encode("utf-8")).hexdigest()
+        with _SKIN_CATEGORY_URLS_LOCK:
+            urls = _SKIN_CATEGORY_URLS.setdefault(fingerprint, {})
+            categories = {}
+            for row in catalog:
+                categories.setdefault(self._skin_category_label(row), []).append(row)
+            brawlers = self._get("brawlers_catalog", {"select": "brawler_id,name_it,name_en"}) or []
+            names = {str(row.get("brawler_id")): str(row.get("name_it") or row.get("name_en") or "")
+                     for row in brawlers}
+            for category, rows in sorted(categories.items()):
+                if category in urls:
+                    continue
+                grouped = {}
+                for row in rows:
+                    bid = str(row.get("brawler_id") or "")
+                    name = names.get(bid) or str(row.get("brawler_name") or "Brawler")
+                    grouped.setdefault(name, []).append(row)
+                lines = [f"SKIN — {category.upper()}", "", f"🎨 Skin nel catalogo: {len(rows)}",
+                         f"🦸 Brawler: {len(grouped)}", "",
+                         "I totali posseduti del tuo account sono nel riepilogo Skin."]
+                for name, skins in sorted(grouped.items(), key=lambda pair: pair[0].casefold()):
+                    lines.extend(["", f"🦸 {name.upper()} — {len(skins)} skin"])
+                    for skin in sorted(skins, key=lambda row: str(row.get("name_it") or row.get("name_en") or "").casefold()):
+                        label = str(skin.get("name_it") or skin.get("name_en") or "Skin")
+                        gems = skin.get("price_gems")
+                        price = f" · 💎 {gems} gemme" if skin.get("acquisition_type") == "gems" and gems is not None else ""
+                        lines.append(f"🎨 {label}{price}")
+                url = self._publish_telegraph(f"Skin {category}", lines)
+                if url:
+                    urls[category] = url
+            return dict(urls)
+
     async def send_skin_telegraph(self, context, chat_id, answer):
         """Read Skin output on Telegraph; keep Telegram limited to the access button."""
         if not isinstance(answer, str) or "\n" not in answer:
             await self._send_ranking_message(context, chat_id, answer)
             return
         title = answer.splitlines()[0]
-        url = await asyncio.to_thread(self._publish_telegraph, title, answer.splitlines())
+        lines = answer.splitlines()
+        if title == "SKIN POSSEDUTE — ACCOUNT":
+            try:
+                urls = await asyncio.to_thread(self._skin_category_telegraph_urls)
+                lines = [f"[[SKINLINK:{urls[label]}|{line}]]" if label in urls else line
+                         for line in lines
+                         for label in [re.sub(r"^[^\w]+\s*", "", line).strip()]]
+            except Exception as exc:
+                LOG.warning("SKIN CATEGORY INDEX UNAVAILABLE: reason=%s", type(exc).__name__)
+        url = await asyncio.to_thread(self._publish_telegraph, title, lines)
         if url:
             await self._send_ranking_message(context, chat_id, self._telegraph_reply(
                 [title, "Apri la pagina per leggere i dati Skin."], url,
@@ -1591,6 +1660,7 @@ class CommunityFeatures:
         first_value = next((str(item or "").strip() for item in lines if str(item or "").strip()), "")
         is_ranking_report = first_value.upper().startswith("CLASSIFICA")
         is_skin_account = first_value.upper().startswith("SKIN POSSEDUTE — ACCOUNT") or first_value.upper().endswith(" — SKIN")
+        is_skin_catalog = first_value.upper().startswith("SKIN — ")
         is_command_guide = first_value.upper().startswith(("COMANDI SENS GPT", "GUIDA COMANDI"))
         is_dashboard = first_value.upper().startswith("CLASSIFICHE")
         # A detailed ranking has continuation/stat lines between numbered players.
@@ -1664,6 +1734,9 @@ class CommunityFeatures:
             if first_value.upper().startswith("PROGRESSIONE") and value.startswith("🦸 "):
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h4", "children": [value]}])
                 continue
+            if is_skin_catalog and value.startswith("🦸 "):
+                nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h4", "children": [value]}])
+                continue
             if is_skin_account and value in ("📊 PER RARITÀ", "📊 PER CATEGORIA"):
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h3", "children": [value]}])
                 continue
@@ -1682,6 +1755,12 @@ class CommunityFeatures:
                     nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h3", "children": [value]}])
                     continue
             command_name = re.fullmatch(r"\[\[CMDNAME:(.+?)\]\]", value)
+            skin_link = re.fullmatch(r"\[\[SKINLINK:(https://telegra\.ph/[^\s|<>\[\]]+)\|(.+?)\]\]", value)
+            if skin_link:
+                nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h4", "children": [{
+                    "tag": "a", "attrs": {"href": skin_link.group(1)}, "children": [skin_link.group(2)],
+                }]}])
+                continue
             if command_name:
                 command_text = command_name.group(1)
                 if is_command_guide:
