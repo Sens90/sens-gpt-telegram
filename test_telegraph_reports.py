@@ -1090,6 +1090,17 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
     def test_skin_catalog_categories_keep_regular_pass_separate_from_pro(self):
         obj = self.make_features()
         self.assertEqual(obj._skin_category_label({"rarity": "EPIC", "acquisition_type": "brawl_pass"}), "Brawl Pass")
+        self.assertEqual(obj._skin_category_label({"external_id": "29001606", "name_en": "STARR PATROL SPIKE",
+                                                   "rarity": "EPIC", "acquisition_type": "gems"}), "Brawl Pass")
+        self.assertEqual(obj._skin_category_labels({"external_id": "29001606", "name_en": "STARR PATROL SPIKE",
+                                                    "rarity": "EPIC", "acquisition_type": "gems"}),
+                         ("Brawl Pass", "Epiche"))
+        self.assertEqual(obj._skin_category_label({"external_id": "29001548", "name_en": "BRIGHT FAERIE\\nBONNIE",
+                                                   "rarity": "EPIC", "acquisition_type": "gems"}), "Brawl Pass")
+        self.assertEqual(obj._skin_category_label({"external_id": "29000993", "name_en": "AMAZING MAISIE",
+                                                   "rarity": "EPIC", "acquisition_type": "gems"}), "Brawl Pass")
+        self.assertEqual(obj._skin_category_label({"external_id": "29001616", "name_en": "STARR PATROL BEA",
+                                                   "rarity": "EPIC", "acquisition_type": "gems"}), "Epiche")
         self.assertEqual(obj._skin_category_label({"rarity": "RANKED_PASS", "acquisition_type": "pass"}), "Pass Pro")
         self.assertEqual(obj._skin_category_label({"source_payload": {"tid": "TID_BROCK_PROPASS_PROGRESSION_SKIN_1"}}), "Pass Pro")
         self.assertEqual(obj._skin_category_label({"source_payload": {"tid": "TID_UNDERTAKER_HAT_SKIN"}}), "Base (varianti)")
@@ -1270,6 +1281,31 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("https://cdn.bsinfox.com/brawlers/skins/101.webp", photo_links)
             await obj.send_skin_telegraph(SimpleNamespace(), 456, answer)
             self.assertEqual(len(published), 4)  # two reusable categories, two private account pages
+        finally:
+            community_features._SKIN_CATEGORY_URLS.clear()
+
+    def test_brawl_pass_index_keeps_epic_rarity_and_verified_total(self):
+        import community_features
+        community_features._SKIN_CATEGORY_URLS.clear()
+        obj = self.make_features()
+        rows = [
+            {"external_id": "29001606", "brawler_id": 1, "brawler_name": "SPIKE",
+             "name_en": "STARR PATROL SPIKE", "rarity": "EPIC", "acquisition_type": "gems"},
+            {"external_id": "29001607", "brawler_id": 1, "brawler_name": "SPIKE",
+             "name_en": "STARR PATROL BEA", "rarity": "EPIC", "acquisition_type": "gems"},
+        ]
+        obj._get = Mock(side_effect=lambda table, *_: rows if table == "skins_catalog" else [
+            {"brawler_id": 1, "name_en": "Spike"},
+        ])
+        published = {}
+        obj._publish_telegraph = Mock(side_effect=lambda title, lines: published.setdefault(title, lines) and
+                                      "https://telegra.ph/test")
+        try:
+            urls = obj._skin_category_telegraph_urls()
+            self.assertIn("Brawl Pass", urls)
+            self.assertIn("Epiche", urls)
+            self.assertIn("🎨 Skin nel catalogo: 1", published["Skin Brawl Pass"])
+            self.assertIn("🎨 Skin nel catalogo: 2", published["Skin Epiche"])
         finally:
             community_features._SKIN_CATEGORY_URLS.clear()
 
