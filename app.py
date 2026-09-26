@@ -3311,6 +3311,12 @@ def normalize_deterministic_command(raw_text, bot_username=None):
     return re.sub(r"\s+", " ", command).strip()
 
 
+def is_explicit_bot_mention(text, bot_username):
+    """Match the bot's complete Telegram username in group conversation."""
+    username = str(bot_username or "").lstrip("@")
+    return bool(username and re.search(r"@" + re.escape(username) + r"\b", str(text or ""), re.I))
+
+
 def _is_manual_deterministic_command(command):
     """Classify maintained manual command families before any AI path."""
     value = str(command or "").strip()
@@ -3502,10 +3508,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Deterministic commands do not require a mention.
     _is_group_chat = getattr(message.chat, "type", None) in {"group", "supergroup"}
     _bot_username = (getattr(context.bot, "username", None) or "").lstrip("@")
-    _explicit_bot_mention = bool(
-        _bot_username
-        and re.search(r"@" + re.escape(_bot_username) + r"\\b", message.text or "", re.I)
-    )
+    _explicit_bot_mention = is_explicit_bot_mention(message.text, _bot_username)
     _reply_to_bot = bool(
         message.reply_to_message
         and getattr(message.reply_to_message, "from_user", None)
@@ -3849,9 +3852,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not bot_username:
         return
 
-    mentioned = (
-        f"@{bot_username.lower()}" in message.text.lower()
-    )
+    mentioned = is_explicit_bot_mention(message.text, bot_username)
 
     is_reply = (
         message.reply_to_message is not None
