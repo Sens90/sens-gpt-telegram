@@ -1266,6 +1266,27 @@ class CommunityFeatures:
                   if value is not None and str(value).strip().isdigit()}
         total_display = f"{int(owned) if owned is not None else 'n.d.'}/{len(catalog) if catalog else 'n.d.'}"
         lines = ["SKIN POSSEDUTE — ACCOUNT", "", f"🎨 Totale rilevato da Stats: {total_display}"]
+        # The Stats total and the named collection have different coverage.
+        # Report both without inventing IDs for the difference or lowering the
+        # user's total when the collection source is incomplete.
+        try:
+            tag = str(player_tag or "").strip().lstrip("#").upper()
+            snapshots = self._get("skin_owned_ids_latest", {
+                "select": "owned_skin_ids,observed_at", "player_tag": f"eq.{tag}", "limit": "1",
+            }) or []
+            ids = snapshots[0].get("owned_skin_ids") if snapshots else None
+            if isinstance(ids, list) and owned is not None:
+                catalog_ids = {str(row.get("external_id")) for row in catalog}
+                identified = len({str(sid) for sid in ids if str(sid) in catalog_ids})
+                if 0 < identified <= int(owned):
+                    lines.extend(["", f"✅ Identificate per nome nel catalogo: {identified}"])
+                    if int(owned) > identified:
+                        lines.append(f"❔ Senza ID verificato: {int(owned) - identified}")
+                    observed = str(snapshots[0].get("observed_at") or "")
+                    if observed:
+                        lines.append(f"📅 Collezione identificata: {observed[:16].replace('T', ' ')} UTC")
+        except (TypeError, ValueError, requests.RequestException) as exc:
+            LOG.warning("SKIN IDENTIFIED COUNT UNAVAILABLE: %s", type(exc).__name__)
         if snapshot_note:
             lines.extend(["", snapshot_note])
         lines.extend(["", "📊 PER RARITÀ"])
