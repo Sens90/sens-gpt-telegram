@@ -1329,7 +1329,10 @@ class CommunityFeatures:
         if not counts:
             lines.extend(["", "La suddivisione delle skin possedute non è disponibile."])
         elif owned is not None and sum(counts.values()) < int(owned):
-            lines.extend(["", f"Altre categorie non suddivise: {int(owned) - sum(counts.values())} skin possedute"])
+            # The difference may include defaults or variants. It is not a
+            # count of additional individually identified owned skin IDs.
+            lines.extend(["", f"❔ Totale Stats fuori dalle rarità: {int(owned) - sum(counts.values())}",
+                          "Il dato può comprendere aspetti base e varianti; non identifica altre skin per nome."])
         return "\n".join(lines)
 
     def _cached_skin_account_text(self, player_tag, detailed=False):
