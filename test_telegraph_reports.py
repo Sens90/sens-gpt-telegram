@@ -1,4 +1,5 @@
 import os
+import requests
 import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -1067,14 +1068,14 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                    + [{"external_id": str(200 + i), "rarity": "RARE"} for i in range(122)]
                    + [{"external_id": "500", "name_en": "STAR SHELLY"},
                       {"external_id": "501", "name_en": "WIZARD BARLEY"}])
-        obj._get = Mock(return_value=catalog)
+        obj._get = Mock(side_effect=lambda table, *_: catalog if table == "skins_catalog" else [])
         obj._official_owned_skin_ids = Mock()
         result = obj.skin_account_text({"player_tag": "2GU9UV2RG"})
         self.assertIn("SKIN POSSEDUTE — ACCOUNT", result)
         self.assertIn("🎨 Totale: 477/268", result)
-        self.assertIn("🔴 Mitiche\nPossedute / totali: 28/85", result)
-        self.assertIn("🟡 Leggendarie\nPossedute / totali: 10/59", result)
-        self.assertIn("🥈 Argento\nPossedute / totali: 0/n.d.", result)
+        self.assertIn("🔴 Mitiche\n28/85", result)
+        self.assertIn("🟡 Leggendarie\n10/59", result)
+        self.assertIn("🥈 Argento\n0/n.d.", result)
         self.assertNotIn("⚪ Senza rarità", result)
         self.assertNotIn("STAR SHELLY", result)
         self.assertNotIn("Fonte:", result)
@@ -1084,6 +1085,30 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fallback, result)
         obj._get.assert_any_call("skins_catalog", unittest.mock.ANY)
         self.assertEqual(progression.call_count, 2)
+
+    def test_skin_catalog_categories_keep_regular_pass_separate_from_pro(self):
+        obj = self.make_features()
+        self.assertEqual(obj._skin_category_label({"rarity": "EPIC", "acquisition_type": "brawl_pass"}), "Brawl Pass")
+        self.assertEqual(obj._skin_category_label({"rarity": "RANKED_PASS", "acquisition_type": "pass"}), "Pass Pro")
+        self.assertEqual(obj._skin_category_label({"source_payload": {"tid": "TID_BROCK_PROPASS_PROGRESSION_SKIN_1"}}), "Pass Pro")
+        self.assertEqual(obj._skin_category_label({"source_payload": {"tid": "TID_UNDERTAKER_HAT_SKIN"}}), "Base (varianti)")
+
+    def test_skin_brawler_groups_owned_and_missing_without_account_fallback(self):
+        obj = self.make_features()
+        catalog = [
+            {"external_id": "1", "brawler_id": 1, "brawler_name": "MOE", "name_en": "Moe One", "rarity": "RARE"},
+            {"external_id": "2", "brawler_id": 1, "brawler_name": "MOE", "name_en": "Moe Two", "rarity": "RARE"},
+        ]
+        obj._get = Mock(side_effect=lambda table, *_: catalog if table == "skins_catalog" else [{"name_it": "Moe"}])
+        obj._official_owned_skin_ids = Mock(return_value={1})
+        result = obj.skin_account_text({"player_tag": "ABC"}, brawler_name="Moe", mode="full")
+        self.assertIn("🎨 Rare — 1/2", result)
+        self.assertIn("✅ Possedute: Moe One", result)
+        self.assertIn("❌ Mancanti: Moe Two", result)
+        obj._official_owned_skin_ids.side_effect = requests.RequestException("bridge down")
+        unavailable = obj.skin_account_text({"player_tag": "ABC"}, brawler_name="Moe", mode="full")
+        self.assertIn("fonte dei nomi", unavailable)
+        self.assertNotIn("SKIN POSSEDUTE — ACCOUNT", unavailable)
 
     @patch("player_tracking._brawlytix_progression", return_value={})
     def test_skin_account_does_not_invent_ownership_when_stats_unavailable(self, progression):

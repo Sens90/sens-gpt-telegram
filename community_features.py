@@ -124,7 +124,10 @@ Mostra le variazioni Ranked registrate nel tempo.
 
 🎨 SKIN ACCOUNT
 [[CMDNAME:skin / quante skin ho]]
-Apre in privato il Telegraph con il totale delle Skin possedute dall'account e il dettaglio possedute/totali per le rarità disponibili.
+Apre in privato il Telegraph con il totale delle Skin possedute e le categorie disponibili. Dove Stats non distingue le skin, il conteggio posseduto è indicato come n.d.
+
+[[CMDNAME:skin NOME_BRAWLER]]
+Mostra per categoria le Skin possedute e mancanti del Brawler indicato, con i nomi delle Skin.
 
 [[CMDNAME:skin account NOME_BRAWLER]]
 Mostra la situazione Skin completa del Brawler indicato.
@@ -1025,7 +1028,9 @@ class CommunityFeatures:
         if rarity:
             return labels.get(rarity, rarity.replace("_", " ").title())
         if "PROPASS_PROGRESSION" in tid:
-            return "Brawl Pass"
+            return "Pass Pro"
+        if tid in ("TID_UNDERTAKER_HAT_SKIN", "TID_ROCKET_GIRL_ORIGINAL"):
+            return "Base (varianti)"
         return "Senza rarità"
 
     def _resolve_skin_brawler_name(self, value):
@@ -1137,7 +1142,7 @@ class CommunityFeatures:
             ("epic", "🟣", "Epiche", "Epiche"), ("mythic", "🔴", "Mitiche", "Mitiche"),
             ("legendary", "🟡", "Leggendarie", "Leggendarie"),
             ("hypercharge", "🔥", "Skin Overdrive", "Skin Overdrive"),
-            ("ranked", "🏅", "Ranked / Pass Pro", "Pass Pro"),
+            ("ranked", "🏅", "Pass Pro", "Pass Pro"),
             ("true silver", "🥈", "Argento", "Argento"),
             ("true gold", "🥇", "Oro", "Oro"),
         )
@@ -1150,10 +1155,18 @@ class CommunityFeatures:
             if key in counts or catalog_label in totals:
                 numerator = str(counts[key]) if key in counts else "n.d."
                 denominator = str(totals[catalog_label]) if catalog_label in totals else "n.d."
-                lines.extend(["", f"{emoji} {name}", f"Possedute / totali: {numerator}/{denominator}"])
+                lines.extend(["", f"{emoji} {name}", f"{numerator}/{denominator}"])
+        # Stats reports rarity aggregates only: it does not identify ownership
+        # of individual base or Brawl Pass skins. Preserve unknown numerators.
+        for name, emoji in (("Brawl Pass", "🎟️"), ("Base (varianti)", "🎮")):
+            if name in totals:
+                lines.extend(["", f"{emoji} {name}", f"n.d./{totals[name]}"])
+        brawlers = self._get("brawlers_catalog", {"select": "brawler_id"}) or []
+        if brawlers:
+            lines.extend(["", "🎮 Skin base", f"n.d./{len({str(b['brawler_id']) for b in brawlers if b.get('brawler_id') is not None})}"])
         known = {key for key, _, _, _ in labels}
         for key in sorted(counts.keys() - known):
-            lines.extend(["", f"🎨 {key.replace('_', ' ').title()}", f"Possedute / totali: {counts[key]}/n.d."])
+            lines.extend(["", f"🎨 {key.replace('_', ' ').title()}", f"{counts[key]}/n.d."])
         if not counts:
             lines.extend(["", "La suddivisione delle skin possedute non è disponibile."])
         elif owned is not None and sum(counts.values()) < int(owned):
@@ -1198,7 +1211,6 @@ class CommunityFeatures:
                 offset += 1000
             if not catalog:
                 return "Il catalogo skin non è disponibile in questo momento."
-            owned_ids = self._official_owned_skin_ids(registered_user["player_tag"])
             rows = list(catalog)
             if brawler_name:
                 canonical = self._resolve_skin_brawler_name(brawler_name)
@@ -1213,6 +1225,7 @@ class CommunityFeatures:
                 rows = [r for r in rows if self._skin_key(self._skin_category_label(r)) == wanted]
             if not rows:
                 return f"Non risultano skin in questa categoria{' per '+brawler_name if brawler_name else ''}."
+            owned_ids = self._official_owned_skin_ids(registered_user["player_tag"])
             for r in rows:
                 r["_owned"] = r.get("external_id") is not None and int(r["external_id"]) in owned_ids
             owned = [r for r in rows if r["_owned"]]
@@ -1306,13 +1319,18 @@ class CommunityFeatures:
 
             groups={}
             for r in rows: groups.setdefault(self._skin_category_label(r),[]).append(r)
-            lines=[f"{title} — SKIN", f"Possedute: {len(owned)}/{len(rows)}", f"Mancanti: {len(missing)}", f"Completamento: {len(owned)*100.0/len(rows):.1f}%", "", "PER RARITÀ"]
+            lines=[f"{title} — SKIN", f"🎨 Totale: {len(owned)}/{len(rows)}", "", "📊 PER CATEGORIA"]
             for key,group in sorted(groups.items(), key=lambda x:(order.get(x[0],500),x[0])):
-                lines.append(f"{key}: {sum(1 for r in group if r['_owned'])}/{len(group)}")
-            add_values(lines, owned, "POSSEDUTE"); add_values(lines, missing, "MANCANTI")
+                have = [skin_name(r) for r in group if r["_owned"]]
+                absent = [skin_name(r) for r in group if not r["_owned"]]
+                lines.extend(["", f"🎨 {key} — {len(have)}/{len(group)}",
+                              "✅ Possedute: " + (", ".join(have) if have else "Nessuna"),
+                              "❌ Mancanti: " + (", ".join(absent) if absent else "Nessuna")])
             return "\n".join(lines)
         except Exception as exc:
             print("ERRORE SKIN ACCOUNT:", repr(exc), flush=True)
+            if brawler_name or rarity or category or mode != "summary":
+                return "La fonte dei nomi delle Skin possedute non è disponibile in questo momento. Non posso distinguere le Skin possedute dalle mancanti: riprova più tardi."
             if isinstance(exc, (SkinBridgeBackoff, requests.RequestException)):
                 try:
                     cached = self._cached_skin_account_text(
@@ -1469,7 +1487,7 @@ class CommunityFeatures:
         nodes = []
         first_value = next((str(item or "").strip() for item in lines if str(item or "").strip()), "")
         is_ranking_report = first_value.upper().startswith("CLASSIFICA")
-        is_skin_account = first_value.upper().startswith("SKIN POSSEDUTE — ACCOUNT")
+        is_skin_account = first_value.upper().startswith("SKIN POSSEDUTE — ACCOUNT") or first_value.upper().endswith(" — SKIN")
         is_command_guide = first_value.upper().startswith(("COMANDI SENS GPT", "GUIDA COMANDI"))
         is_dashboard = first_value.upper().startswith("CLASSIFICHE")
         # A detailed ranking has continuation/stat lines between numbered players.
@@ -1543,10 +1561,10 @@ class CommunityFeatures:
             if first_value.upper().startswith("PROGRESSIONE") and value.startswith("🦸 "):
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h4", "children": [value]}])
                 continue
-            if is_skin_account and value == "📊 PER RARITÀ":
+            if is_skin_account and value in ("📊 PER RARITÀ", "📊 PER CATEGORIA"):
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h3", "children": [value]}])
                 continue
-            if is_skin_account and re.match(r"^(?:🟢|🔵|🟣|🔴|🟡|🔥|🏅|🥈|🥇|🎨|⚪) .+", value):
+            if is_skin_account and re.match(r"^(?:🟢|🔵|🟣|🔴|🟡|🔥|🏅|🥈|🥇|🎨|🎮|🎟️|⚪) .+", value):
                 if ":" not in value:
                     nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h4", "children": [value]}])
                     continue
@@ -4426,6 +4444,8 @@ class CommunityFeatures:
                 scoped_brawler = owned_brawler_q.group(1).strip()
             elif account_brawler_q:
                 scoped_brawler = account_brawler_q.group(1).strip()
+            elif simple_skin_brawler_q and self._skin_key(simple_skin_brawler_q.group(1)) != "account":
+                scoped_brawler = simple_skin_brawler_q.group(1).strip()
             elif skin_brawler_count_q:
                 scoped_brawler = skin_brawler_count_q.group(1).strip()
             if scoped_brawler:
