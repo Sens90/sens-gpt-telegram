@@ -25,8 +25,8 @@ _SKIN_BRIDGE_FAILURE_LIMIT = 3
 _SKIN_BRIDGE_BACKOFF_SECONDS = 6 * 60 * 60
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_FORMAT_REVISION = 7
-_DASHBOARD_SOURCE_MARKER = "Liste: valori positivi verificati · copertura dei club in fondo alla classifica."
+_DASHBOARD_FORMAT_REVISION = 8
+_DASHBOARD_SOURCE_MARKER = "Liste: valori positivi verificati · copertura club e coefficiente medio nel Resoconto."
 _PROGRESSION_DETAIL_CACHE = {}
 _PROGRESSION_DETAIL_LOCK = threading.Lock()
 _PROGRESSION_DETAIL_FLIGHTS = {}
@@ -171,6 +171,7 @@ Mostra Resoconto e classifiche cliccabili dei 15 giorni.
 Mostra Resoconto e classifiche cliccabili dei 30 giorni.
 
 Sono accettate anche le forme Classifica 7, Classifica 15 e Classifica 30. Gli invii automatici pubblicano Resoconto e indice con link Telegraph diretti alle 06:00, 12:00, 18:00 e 23:59 per oggi; ogni lunedì alle 06:00 per la settimana conclusa; il 16 alle 06:00 per i giorni 1–15; l'ultimo giorno del mese alle 23:59 per i giorni 16–fine mese; il 1° alle 06:00 per il mese solare precedente.
+Il Coeff. medio Progressione nel Resoconto è Progressione complessiva divisa per Coppe positive dello stesso periodo e ambito; senza coppe positive non è calcolabile.
 Per le classifiche Trofei dei 4 Club si usa il roster completo: la crescita del periodo si calcola solo quando esistono misure reali prima dell'inizio e alla fine. Ogni club indica quanti giocatori hanno uno storico sufficiente rispetto al roster completo. Nelle liste compaiono solo crescite positive.
 
 ⚡ COMANDI DIRETTI DI OGGI
@@ -3781,6 +3782,9 @@ class CommunityFeatures:
         total_real_trophies = sum(current_trophies_by_tag.values())
         total_cups = sum(r["_cups"] for r in progression_rows)
         total_progression = sum(r["_value"] for r in progression_rows)
+        average_coefficient = (f"{total_progression / total_cups:.4f}".replace(".", ",")
+                               if total_cups > 0 else "n.d.")
+        coefficient_line = f"🧮 Coeff. medio Progressione: {average_coefficient}"
         full.extend([
             "📊 RESOCONTO",
             f"👥 Giocatori monitorati: {len(tags)}",
@@ -3789,6 +3793,7 @@ class CommunityFeatures:
             f"🏆 Coppe positive: +{self.number_formatter(total_cups)}",
             f"⚡ Bonus Progressione: +{self.number_formatter(total_progression-total_cups)}",
             f"🔥 Progressione complessiva: +{self.number_formatter(total_progression)}",
+            coefficient_line,
         ])
 
         report_url = self._publish_telegraph(title, full) if publish else None
@@ -3804,6 +3809,7 @@ class CommunityFeatures:
             f"👥 Giocatori monitorati: {len(tags)}",
             f"🏆 Coppe totali reali: {self.number_formatter(total_real_trophies)}",
             f"🎮 Battaglie analizzate: {total_battles}",
+            coefficient_line,
         ])
         if report_url:
             summary.extend(["", f"📊 REPORT COMPLETO: {report_url}"])
@@ -3984,7 +3990,8 @@ class CommunityFeatures:
         positive_clubs = [(name, result) for name, result in ranked_clubs if result["delta"] > 0]
         for position, (name, result) in enumerate(positive_clubs, 1):
             delta = result["delta"]
-            club_lines.append(f"{position}. {name} — +{self.number_formatter(delta)}")
+            club_lines.append(f"{position}. {name} — +{self.number_formatter(delta)} "
+                              f"({result['players']}/{result.get('roster', result['players'])} giocatori)")
         if not positive_clubs:
             club_lines.append("Nessun club con crescita positiva nel periodo." if measured else
                               "Storico Trofei non ancora sufficiente per calcolare questo periodo. "
