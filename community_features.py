@@ -124,7 +124,7 @@ Mostra le variazioni Ranked registrate nel tempo.
 
 🎨 SKIN ACCOUNT
 [[CMDNAME:skin / quante skin ho]]
-Apre in privato il Telegraph con il conteggio rilevato da Stats e le categorie disponibili. Se Stats non risponde, l'eventuale ultima collezione verificata è mostrata con la sua data. Dove Stats non distingue le skin, il conteggio posseduto è indicato come n.d.
+Apre in privato il Telegraph con il conteggio rilevato da Stats e le categorie disponibili. Se Stats non risponde, viene mostrato l'ultimo conteggio Stats salvato con la sua data. Dove Stats non distingue le skin, il conteggio posseduto è indicato come n.d.
 
 [[CMDNAME:skin NOME_BRAWLER]]
 Mostra per categoria le Skin possedute e mancanti del Brawler indicato, con i nomi delle Skin.
@@ -999,6 +999,14 @@ class CommunityFeatures:
             raise RuntimeError("Bridge skins could not be mapped to catalog IDs")
         _SKIN_BRIDGE_FAILURES = 0
         _SKIN_BRIDGE_OPEN_UNTIL = 0.0
+        try:
+            self._post("skin_owned_ids_latest", {
+                "player_tag": tag, "owned_skin_ids": sorted(owned),
+                "observed_at": datetime.now(timezone.utc).isoformat(),
+            }, params={"on_conflict": "player_tag"},
+                prefer="resolution=merge-duplicates,return=minimal")
+        except Exception as exc:
+            LOG.warning("SKIN OWNED IDS CACHE WRITE FAILED: %s", type(exc).__name__)
         print("BSINFO OWNED SKINS:",tag,"names=",len(names),"mapped=",len(owned),"ambiguous=",ambiguous,"unmatched=",unmatched,flush=True)
         return owned
 
@@ -1119,8 +1127,19 @@ class CommunityFeatures:
         stats = _brawlytix_progression(player_tag) or {}
         owned = stats.get("skins_owned")
         raw_counts = stats.get("skin_rarity_counts") or {}
+        snapshot_note = None
         if owned is None and not raw_counts:
-            return self._last_skin_snapshot_text(player_tag)
+            tag = str(player_tag or "").strip().lstrip("#").upper()
+            cached = self._get("skin_stats_latest", {
+                "select": "skins_owned,skin_rarity_counts,observed_at",
+                "player_tag": f"eq.{tag}", "limit": "1",
+            }) or []
+            if not cached:
+                return "Stats non risponde e non è ancora disponibile un conteggio Stats salvato per questo account. Riprova più tardi."
+            owned = cached[0].get("skins_owned")
+            raw_counts = cached[0].get("skin_rarity_counts") or {}
+            observed = str(cached[0].get("observed_at") or "")
+            snapshot_note = f"📅 Ultimo Stats salvato: {observed[:16].replace('T', ' ')} UTC (non aggiornato)"
         catalog, offset = [], 0
         while True:
             page = self._get("skins_catalog", {
@@ -1149,8 +1168,10 @@ class CommunityFeatures:
         counts = {str(key).strip().casefold(): int(value) for key, value in raw_counts.items()
                   if value is not None and str(value).strip().isdigit()}
         total_display = f"{int(owned) if owned is not None else 'n.d.'}/{len(catalog) if catalog else 'n.d.'}"
-        lines = ["SKIN POSSEDUTE — ACCOUNT", "", f"🎨 Totale rilevato da Stats: {total_display}",
-                 "", "📊 PER RARITÀ"]
+        lines = ["SKIN POSSEDUTE — ACCOUNT", "", f"🎨 Totale rilevato da Stats: {total_display}"]
+        if snapshot_note:
+            lines.extend(["", snapshot_note])
+        lines.extend(["", "📊 PER RARITÀ"])
         for key, emoji, name, catalog_label in labels:
             if key in counts or catalog_label in totals:
                 numerator = str(counts[key]) if key in counts else "n.d."
@@ -1172,41 +1193,6 @@ class CommunityFeatures:
         elif owned is not None and sum(counts.values()) < int(owned):
             lines.extend(["", f"Altre categorie non suddivise: {int(owned) - sum(counts.values())} skin possedute"])
         return "\n".join(lines)
-
-    def _last_skin_snapshot_text(self, player_tag):
-        """Show the last measured collection when the live Stats bridge fails."""
-        try:
-            tag = str(player_tag or "").strip().lstrip("#").upper()
-            if not tag:
-                return "I dati delle skin possedute non sono disponibili in questo momento. Riprova più tardi."
-            history = self._get("skin_account_history", {
-                "select": "snapshot_date,category,owned_count,total_count",
-                "player_tag": f"eq.{tag}", "order": "snapshot_date.desc",
-                "limit": "100",
-            }) or []
-            latest = next((str(row.get("snapshot_date")) for row in history
-                           if row.get("category") == "Totale" and row.get("snapshot_date")), None)
-            if latest:
-                measured = [row for row in history if str(row.get("snapshot_date")) == latest]
-                total = next(row for row in measured if row.get("category") == "Totale")
-                lines = ["SKIN POSSEDUTE — ACCOUNT", "",
-                         "⚠️ Stats non disponibile: il dato attuale non è verificabile.",
-                         f"📅 Ultima collezione verificata: {latest} (dato storico)", "",
-                         f"📚 Skin registrate allora: {int(total['owned_count'])}/{int(total['total_count'])}",
-                         "", "📊 PER RARITÀ"]
-                icons = {"Rare": "🟢", "Super rare": "🔵", "Epiche": "🟣",
-                         "Mitiche": "🔴", "Leggendarie": "🟡", "Skin Overdrive": "🔥",
-                         "Pass Pro": "🏅", "Brawl Pass": "🎟️", "Argento": "🥈",
-                         "Oro 24 carati": "🥇", "Collezione": "🎨"}
-                for row in measured:
-                    category = str(row.get("category") or "")
-                    if category in icons:
-                        lines.extend(["", f"{icons[category]} {category}",
-                                      f"{int(row['owned_count'])}/{int(row['total_count'])}"])
-                return "\n".join(lines)
-        except Exception as exc:
-            LOG.warning("SKIN HISTORY FALLBACK ERROR: %s", type(exc).__name__)
-        return "I dati delle skin possedute non sono disponibili in questo momento. Riprova più tardi."
 
     def _cached_skin_account_text(self, player_tag, detailed=False):
         """Exact collection unavailable: use the Stats account ownership data."""
@@ -1260,7 +1246,19 @@ class CommunityFeatures:
                 rows = [r for r in rows if self._skin_key(self._skin_category_label(r)) == wanted]
             if not rows:
                 return f"Non risultano skin in questa categoria{' per '+brawler_name if brawler_name else ''}."
-            owned_ids = self._official_owned_skin_ids(registered_user["player_tag"])
+            ownership_note = None
+            try:
+                owned_ids = self._official_owned_skin_ids(registered_user["player_tag"])
+            except (SkinBridgeBackoff, requests.RequestException, RuntimeError):
+                tag = str(registered_user["player_tag"]).strip().lstrip("#").upper()
+                saved = self._get("skin_owned_ids_latest", {
+                    "select": "owned_skin_ids,observed_at", "player_tag": f"eq.{tag}", "limit": "1",
+                }) or []
+                if not saved or not isinstance(saved[0].get("owned_skin_ids"), list) or not saved[0]["owned_skin_ids"]:
+                    raise
+                owned_ids = {int(sid) for sid in saved[0]["owned_skin_ids"] if str(sid).isdigit()}
+                observed = str(saved[0].get("observed_at") or "")
+                ownership_note = f"📅 Ultima collezione verificata: {observed[:16].replace('T', ' ')} UTC (non aggiornata)"
             for r in rows:
                 r["_owned"] = r.get("external_id") is not None and int(r["external_id"]) in owned_ids
             owned = [r for r in rows if r["_owned"]]
@@ -1306,12 +1304,14 @@ class CommunityFeatures:
                 else:
                     lines += ["", "Nessuna." if mode == "owned" else "Nessuna: le possiedi tutte."]
                 add_values(lines, selected, label)
+                if ownership_note: lines.insert(1, ownership_note)
                 return "\n".join(lines)
 
             if not brawler_name and (rarity or category):
                 label = category or rarity.title()
                 lines = [f"SKIN ACCOUNT — {label}", f"Possedute: {len(owned)}/{len(rows)}", f"Mancanti: {len(missing)}", "", "NOMI POSSEDUTI", ", ".join(skin_name(r) for r in owned) if owned else "Nessuna.", "", "NOMI MANCANTI", ", ".join(skin_name(r) for r in missing) if missing else "Nessuna: le possiedi tutte."]
                 add_values(lines, owned, "POSSEDUTE"); add_values(lines, missing, "MANCANTI")
+                if ownership_note: lines.insert(1, ownership_note)
                 return "\n".join(lines)
 
             if not brawler_name:
@@ -1350,6 +1350,7 @@ class CommunityFeatures:
                     pct = have * 100.0 / total if total else 0.0
                     lines.append(f"{name}: {have}/{total} — {pct:.1f}%")
                 add_values(lines, owned, "POSSEDUTE"); add_values(lines, missing, "MANCANTI")
+                if ownership_note: lines.insert(1, ownership_note)
                 return "\n".join(lines)
 
             groups={}
@@ -1361,6 +1362,7 @@ class CommunityFeatures:
                 lines.extend(["", f"🎨 {key} — {len(have)}/{len(group)}",
                               "✅ Possedute: " + (", ".join(have) if have else "Nessuna"),
                               "❌ Mancanti: " + (", ".join(absent) if absent else "Nessuna")])
+            if ownership_note: lines.insert(1, ownership_note)
             return "\n".join(lines)
         except Exception as exc:
             print("ERRORE SKIN ACCOUNT:", repr(exc), flush=True)

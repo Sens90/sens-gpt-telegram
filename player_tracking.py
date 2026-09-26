@@ -1,6 +1,8 @@
 import html
 import os
 import re
+import time
+from datetime import datetime, timezone
 
 import requests
 
@@ -361,6 +363,38 @@ def _brawltime_progression(player_tag, timeout=15):
 
 
 _PROGRESSION_CACHE = {}
+_SKIN_STATS_PERSISTED = {}
+
+def _persist_skin_stats(tag, result):
+    """Persist only successful Stats measurements, never a proxy error fallback."""
+    owned = result.get("skins_owned")
+    if owned is None:
+        return
+    base = (os.environ.get("SUPABASE_URL") or "").rstrip("/")
+    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or ""
+    if not base or not key:
+        return
+    counts = result.get("skin_rarity_counts") or {}
+    signature = (int(owned), tuple(sorted(counts.items())))
+    now = time.monotonic()
+    previous = _SKIN_STATS_PERSISTED.get(tag)
+    if previous and previous[0] == signature and now - previous[1] < 21600:
+        return
+    try:
+        response = requests.post(
+            f"{base}/rest/v1/skin_stats_latest",
+            params={"on_conflict": "player_tag"},
+            headers={"apikey": key, "Authorization": f"Bearer {key}",
+                     "Content-Type": "application/json",
+                     "Prefer": "resolution=merge-duplicates,return=minimal"},
+            json={"player_tag": tag, "observed_at": datetime.now(timezone.utc).isoformat(),
+                "skins_owned": int(owned), "skin_rarity_counts": counts},
+            timeout=5,
+        )
+        response.raise_for_status()
+        _SKIN_STATS_PERSISTED[tag] = (signature, now)
+    except requests.RequestException as exc:
+        print("SKIN STATS CACHE WRITE FAILED:", tag, type(exc).__name__, flush=True)
 
 def _merge_progression_cache(tag, result):
     """Keep the last valid optional progression fields for transient source gaps."""
@@ -512,6 +546,7 @@ def _brawlytix_progression(player_tag, timeout=8, retry_missing=True):
             retry_result = _brawlytix_progression(tag, timeout=timeout, retry_missing=False)
             if retry_result.get("skins_owned") is not None:
                 result["skins_owned"] = retry_result["skins_owned"]
+        _persist_skin_stats(tag, result)
         result = _merge_progression_cache(tag, result)
         print("BRAWLYTIX PROGRESSION PROXY:", tag, result, flush=True)
         return result
