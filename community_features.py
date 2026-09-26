@@ -1161,9 +1161,9 @@ class CommunityFeatures:
         for name, emoji in (("Brawl Pass", "🎟️"), ("Base (varianti)", "🎮")):
             if name in totals:
                 lines.extend(["", f"{emoji} {name}", f"n.d./{totals[name]}"])
-        brawlers = self._get("brawlers_catalog", {"select": "brawler_id"}) or []
-        if brawlers:
-            lines.extend(["", "🎮 Skin base", f"n.d./{len({str(b['brawler_id']) for b in brawlers if b.get('brawler_id') is not None})}"])
+        # The 1131 catalog entries already define the global denominator.
+        # Brawler defaults are not catalog skin IDs; counting them here would
+        # inflate the total and misrepresent ownership in Stats.
         known = {key for key, _, _, _ in labels}
         for key in sorted(counts.keys() - known):
             lines.extend(["", f"🎨 {key.replace('_', ' ').title()}", f"{counts[key]}/n.d."])
