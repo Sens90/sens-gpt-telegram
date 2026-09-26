@@ -1149,6 +1149,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             if table == "skins_catalog": return catalog
             if table == "skin_owned_ids_latest":
                 return [{"owned_skin_ids": [1], "observed_at": "2026-09-22T10:30:00Z"}]
+            if table == "skin_stats_latest": return [{"skins_owned": 1}]
             return [{"name_it": "Moe"}]
         obj._get = Mock(side_effect=get)
         obj._official_owned_skin_ids = Mock(side_effect=SkinBridgeBackoff("bridge unavailable"))
@@ -1157,6 +1158,33 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Moe One", result)
         self.assertIn("❌ Mancanti: Moe Two", result)
         self.assertIn("Ultima collezione verificata: 2026-09-22 10:30 UTC", result)
+
+    def test_partial_skin_snapshot_shows_known_owned_without_inventing_missing(self):
+        obj = self.make_features()
+        catalog = [
+            {"external_id": "1", "brawler_id": 1, "brawler_name": "MOE", "name_en": "Moe One", "rarity": "RARE"},
+            {"external_id": "2", "brawler_id": 1, "brawler_name": "MOE", "name_en": "Moe Two", "rarity": "RARE"},
+        ]
+        def get(table, params):
+            if table == "skins_catalog": return catalog
+            if table == "skin_owned_ids_latest":
+                return [{"owned_skin_ids": [1], "observed_at": "2026-09-26T17:52:00Z"}]
+            if table == "skin_stats_latest": return [{"skins_owned": 3}]
+            return [{"name_it": "Moe"}]
+        obj._get = Mock(side_effect=get)
+        obj._official_owned_skin_ids = Mock(side_effect=SkinBridgeBackoff("bridge unavailable"))
+        obj._direct_owned_skin_ids = Mock(side_effect=SkinBridgeBackoff("source unavailable"))
+        account = {"player_tag": "2V2VY0PJ8"}
+        full = obj.skin_account_text(account, brawler_name="Moe", mode="full")
+        self.assertIn("✅ Possedute: Moe One", full)
+        self.assertIn("❔ Da verificare: Moe Two", full)
+        self.assertNotIn("❌ Mancanti", full)
+        self.assertIn("collezione parziale", full)
+        missing = obj.skin_account_text(account, brawler_name="Moe", mode="missing")
+        self.assertIn("Non posso stabilire quali skin ti mancano", missing)
+        owned = obj.skin_account_text(account, brawler_name="Moe", mode="owned")
+        self.assertIn("SKIN POSSEDUTE IDENTIFICATE", owned)
+        self.assertNotIn("Moe Two", owned)
 
     @patch("community_features.requests.get")
     def test_direct_skin_collection_only_accepts_complete_stats_matched_ids(self, get):
@@ -1184,13 +1212,34 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         ]}
         with self.assertRaisesRegex(RuntimeError, "differs from Stats"):
             obj._direct_owned_skin_ids("2V2VY0PJ8", catalog)
-        obj._post.assert_called_once()
+        self.assertEqual(obj._post.call_count, 2)
+        self.assertEqual(obj._post.call_args.args[1]["owned_skin_ids"], [101])
         community_features._SKIN_DIRECT_OPEN_UNTIL = 0.0
         get.return_value.json.return_value = {"brawlers": [
             {"owned": [{"id": 101}, {"id": 999}], "notOwned": [{"id": 102}]},
         ]}
         self.assertEqual(obj._direct_owned_skin_ids("2V2VY0PJ8", catalog), {101})
         self.assertEqual(obj._post.call_args.args[1]["owned_skin_ids"], [101])
+
+    @patch("community_features.requests.get")
+    def test_direct_skin_partial_snapshot_retains_previous_confirmed_ids(self, get):
+        import community_features
+        obj = self.make_features()
+        catalog = [{"external_id": "101"}, {"external_id": "102"}, {"external_id": "103"}]
+        def get_saved(table, _):
+            if table == "skin_stats_latest": return [{"skins_owned": 3}]
+            if table == "skin_owned_ids_latest": return [{"owned_skin_ids": [101]}]
+            return []
+        obj._get = Mock(side_effect=get_saved)
+        obj._post = Mock()
+        get.return_value.ok = True
+        get.return_value.json.return_value = {"brawlers": [
+            {"owned": [{"id": 102}], "notOwned": [{"id": 101}, {"id": 103}]},
+        ]}
+        community_features._SKIN_DIRECT_OPEN_UNTIL = 0.0
+        with self.assertRaisesRegex(RuntimeError, "differs from Stats"):
+            obj._direct_owned_skin_ids("2V2VY0PJ8", catalog)
+        self.assertEqual(obj._post.call_args.args[1]["owned_skin_ids"], [101, 102])
 
     @patch("player_tracking._brawlytix_progression", return_value={})
     def test_skin_account_does_not_invent_ownership_when_stats_unavailable(self, progression):
