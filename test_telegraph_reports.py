@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
-from community_features import CommunityFeatures
+from community_features import CommunityFeatures, SkinBridgeBackoff
 from coefficient_guide import coefficient_guide_lines
 
 
@@ -1094,6 +1094,22 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(obj._skin_category_label({"source_payload": {"tid": "TID_BROCK_PROPASS_PROGRESSION_SKIN_1"}}), "Pass Pro")
         self.assertEqual(obj._skin_category_label({"source_payload": {"tid": "TID_UNDERTAKER_HAT_SKIN"}}), "Base (varianti)")
 
+    @patch.dict(os.environ, {"SUPABASE_URL": "https://example.supabase.co", "SUPABASE_SERVICE_ROLE_KEY": "test-secret"})
+    @patch("player_tracking.requests.post")
+    def test_successful_stats_skin_count_is_persisted_for_all_player_tags(self, post):
+        from player_tracking import _persist_skin_stats, _SKIN_STATS_PERSISTED
+        for tag in ("2GU9UV2RG", "2V2VY0PJ8"):
+            _SKIN_STATS_PERSISTED.pop(tag, None)
+            _persist_skin_stats(tag, {"skins_owned": 580, "skin_rarity_counts": {"rare": 103}})
+        self.assertEqual(post.call_count, 2)
+        self.assertTrue(all(call.kwargs["json"]["skins_owned"] == 580 for call in post.call_args_list))
+        self.assertEqual({call.kwargs["json"]["player_tag"] for call in post.call_args_list},
+                         {"2GU9UV2RG", "2V2VY0PJ8"})
+        _persist_skin_stats("2V2VY0PJ8", {"skins_owned": 580, "skin_rarity_counts": {"rare": 103}})
+        self.assertEqual(post.call_count, 2)
+        for tag in ("2GU9UV2RG", "2V2VY0PJ8"):
+            _SKIN_STATS_PERSISTED.pop(tag, None)
+
     def test_skin_brawler_groups_owned_and_missing_without_account_fallback(self):
         obj = self.make_features()
         catalog = [
@@ -1111,28 +1127,46 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("fonte dei nomi", unavailable)
         self.assertNotIn("SKIN POSSEDUTE — ACCOUNT", unavailable)
 
+    def test_skin_brawler_uses_dated_owned_ids_when_bridge_is_down(self):
+        obj = self.make_features()
+        catalog = [
+            {"external_id": "1", "brawler_id": 1, "brawler_name": "MOE", "name_en": "Moe One", "rarity": "RARE"},
+            {"external_id": "2", "brawler_id": 1, "brawler_name": "MOE", "name_en": "Moe Two", "rarity": "RARE"},
+        ]
+        def get(table, params):
+            if table == "skins_catalog": return catalog
+            if table == "skin_owned_ids_latest":
+                return [{"owned_skin_ids": [1], "observed_at": "2026-09-22T10:30:00Z"}]
+            return [{"name_it": "Moe"}]
+        obj._get = Mock(side_effect=get)
+        obj._official_owned_skin_ids = Mock(side_effect=SkinBridgeBackoff("bridge unavailable"))
+        result = obj.skin_account_text({"player_tag": "ABC"}, brawler_name="Moe", mode="full")
+        self.assertIn("Moe One", result)
+        self.assertIn("❌ Mancanti: Moe Two", result)
+        self.assertIn("Ultima collezione verificata: 2026-09-22 10:30 UTC", result)
+
     @patch("player_tracking._brawlytix_progression", return_value={})
     def test_skin_account_does_not_invent_ownership_when_stats_unavailable(self, progression):
-        result = self.make_features().skin_account_text({"player_tag": "2GU9UV2RG"})
-        self.assertIn("non sono disponibili", result)
+        obj = self.make_features()
+        obj._get = Mock(return_value=[])
+        result = obj.skin_account_text({"player_tag": "2GU9UV2RG"})
+        self.assertIn("non è ancora disponibile un conteggio Stats salvato", result)
         self.assertNotIn("CATALOGO", result)
 
     @patch("player_tracking._brawlytix_progression", return_value={})
-    def test_skin_account_uses_dated_history_if_live_stats_fail(self, progression):
+    def test_skin_account_prefers_saved_stats_over_old_collection_history(self, progression):
         obj = self.make_features()
-        obj._get = Mock(return_value=[
-            {"snapshot_date": "2026-09-22", "category": "Totale", "owned_count": 387, "total_count": 1100},
-            {"snapshot_date": "2026-09-22", "category": "Brawl Pass", "owned_count": 4, "total_count": 6},
-            {"snapshot_date": "2026-09-21", "category": "Totale", "owned_count": 382, "total_count": 1090},
-        ])
+        catalog = [{"external_id": str(i), "rarity": "RARE"} for i in range(1131)]
+        obj._get = Mock(side_effect=lambda table, params: [
+            {"skins_owned": 580, "skin_rarity_counts": {"rare": 103},
+             "observed_at": "2026-09-26T13:49:00Z"}
+        ] if table == "skin_stats_latest" else catalog[int(params.get("offset", 0)):][:int(params.get("limit", 1000))])
         result = obj.skin_account_text({"player_tag": "2GU9UV2RG"})
-        self.assertIn("Ultima collezione verificata: 2026-09-22 (dato storico)", result)
-        self.assertIn("Stats non disponibile: il dato attuale non è verificabile", result)
-        self.assertIn("📚 Skin registrate allora: 387/1100", result)
-        self.assertNotIn("🎨 Totale:", result)
-        self.assertIn("🎟️ Brawl Pass\n4/6", result)
-        self.assertNotIn("382", result)
-        obj._get.assert_called_once_with("skin_account_history", unittest.mock.ANY)
+        self.assertIn("🎨 Totale rilevato da Stats: 580/1131", result)
+        self.assertIn("Ultimo Stats salvato: 2026-09-26 13:49 UTC", result)
+        self.assertIn("🟢 Rare\n103/1131", result)
+        self.assertNotIn("Skin registrate allora: 477", result)
+        self.assertNotIn("skin_account_history", [entry.args[0] for entry in obj._get.call_args_list])
 
     def test_skin_telegraph_has_spacing_and_category_headings(self):
         obj = self.make_features()
