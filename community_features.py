@@ -124,7 +124,7 @@ Mostra le variazioni Ranked registrate nel tempo.
 
 🎨 SKIN ACCOUNT
 [[CMDNAME:skin / quante skin ho]]
-Apre in privato il Telegraph con il totale delle Skin possedute e le categorie disponibili. Dove Stats non distingue le skin, il conteggio posseduto è indicato come n.d.
+Apre in privato il Telegraph con il conteggio rilevato da Stats e le categorie disponibili. Se Stats non risponde, l'eventuale ultima collezione verificata è mostrata con la sua data. Dove Stats non distingue le skin, il conteggio posseduto è indicato come n.d.
 
 [[CMDNAME:skin NOME_BRAWLER]]
 Mostra per categoria le Skin possedute e mancanti del Brawler indicato, con i nomi delle Skin.
@@ -1149,7 +1149,7 @@ class CommunityFeatures:
         counts = {str(key).strip().casefold(): int(value) for key, value in raw_counts.items()
                   if value is not None and str(value).strip().isdigit()}
         total_display = f"{int(owned) if owned is not None else 'n.d.'}/{len(catalog) if catalog else 'n.d.'}"
-        lines = ["SKIN POSSEDUTE — ACCOUNT", "", f"🎨 Totale: {total_display}",
+        lines = ["SKIN POSSEDUTE — ACCOUNT", "", f"🎨 Totale rilevato da Stats: {total_display}",
                  "", "📊 PER RARITÀ"]
         for key, emoji, name, catalog_label in labels:
             if key in counts or catalog_label in totals:
@@ -1190,8 +1190,9 @@ class CommunityFeatures:
                 measured = [row for row in history if str(row.get("snapshot_date")) == latest]
                 total = next(row for row in measured if row.get("category") == "Totale")
                 lines = ["SKIN POSSEDUTE — ACCOUNT", "",
-                         f"📅 Ultima rilevazione: {latest} (non aggiornata)", "",
-                         f"🎨 Totale: {int(total['owned_count'])}/{int(total['total_count'])}",
+                         "⚠️ Stats non disponibile: il dato attuale non è verificabile.",
+                         f"📅 Ultima collezione verificata: {latest} (dato storico)", "",
+                         f"📚 Skin registrate allora: {int(total['owned_count'])}/{int(total['total_count'])}",
                          "", "📊 PER RARITÀ"]
                 icons = {"Rare": "🟢", "Super rare": "🔵", "Epiche": "🟣",
                          "Mitiche": "🔴", "Leggendarie": "🟡", "Skin Overdrive": "🔥",
