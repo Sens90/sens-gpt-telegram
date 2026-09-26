@@ -1255,7 +1255,14 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                      if isinstance(node, dict) and node.get("tag") == "a"]
             self.assertEqual(len(links), 2)
             self.assertTrue(all(link.startswith("https://telegra.ph/test-") for link in links))
-            self.assertIn("🦸 MOE — 1 skin", published[1][1])
+            self.assertIn("[[SKINJUMP:MOE|🦸 MOE · 1 skin]]", published[1][1])
+            self.assertIn("[[SKINBRAWLER:MOE]]", published[1][1])
+            rarity_nodes = obj._telegraph_nodes(published[1][1])
+            self.assertTrue(any(node.get("tag") == "h4" and node.get("children") == ["MOE"]
+                                for node in rarity_nodes))
+            self.assertTrue(any(child.get("attrs", {}).get("href") == "#MOE"
+                                for node in rarity_nodes for child in node.get("children", [])
+                                if isinstance(child, dict)))
             self.assertIn("[[SKINPHOTO:https://cdn.bsinfox.com/brawlers/skins/101.webp|🎨 Monterey Moe · 💎 29 gemme · 📷 Foto]]", published[1][1])
             photo_nodes = obj._telegraph_nodes(published[1][1])
             photo_links = [child["attrs"]["href"] for node in photo_nodes for child in node.get("children", [])
@@ -1265,6 +1272,18 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(published), 4)  # two reusable categories, two private account pages
         finally:
             community_features._SKIN_CATEGORY_URLS.clear()
+
+    def test_skin_jump_preserves_punctuation_in_brawler_anchor(self):
+        from urllib.parse import quote
+        heading = "LARRY & LAWRIE"
+        fragment = quote(heading.replace(" ", "-"), safe="-")
+        nodes = self.make_features()._telegraph_nodes([
+            "SKIN — EPICHE", f"[[SKINJUMP:{fragment}|🦸 {heading}]]",
+            f"[[SKINBRAWLER:{heading}]]",
+        ])
+        self.assertIn("#LARRY-%26-LAWRIE", [child.get("attrs", {}).get("href")
+            for node in nodes for child in node.get("children", []) if isinstance(child, dict)])
+        self.assertIn({"tag": "h4", "children": [heading]}, nodes)
 
     @patch.dict(os.environ, {"TELEGRAM_TOKEN": "000000:test-token", "GEMINI_API_KEY": "test-key"})
     def test_explicit_stats_send_uses_private_destination_for_group(self):
