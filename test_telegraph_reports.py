@@ -190,7 +190,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         from datetime import datetime as _datetime
         updated = _datetime.now(ROME).strftime("Aggiornato: %d/%m/%Y %H:%M")
         nodes = [{"tag": "p", "children": [updated]},
-                 {"tag": "p", "children": ["Liste: valori positivi verificati · copertura dei club in fondo alla classifica."]}]
+                 {"tag": "p", "children": ["Liste: valori positivi verificati · copertura club e coefficiente medio nel Resoconto."]}]
         nodes += [{"tag": "h3", "children": [period]} for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")]
         nodes += [{"tag": "a", "attrs": {"href": f"https://telegra.ph/Classifica-{i}-09-25"}, "children": ["Apri"]} for i in range(12)]
         get.return_value.json.return_value = {"ok": True, "result": {"content": nodes}}
@@ -214,7 +214,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         ]}}
         updated = (datetime.now(ROME) - timedelta(minutes=4)).strftime("Aggiornato: %d/%m/%Y %H:%M")
         nodes = [{"tag": "p", "children": [updated]},
-                 {"tag": "p", "children": ["Liste: valori positivi verificati · copertura dei club in fondo alla classifica."]}]
+                 {"tag": "p", "children": ["Liste: valori positivi verificati · copertura club e coefficiente medio nel Resoconto."]}]
         nodes += [{"tag": "h3", "children": [period]} for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")]
         nodes += [{"tag": "a", "attrs": {"href": f"https://telegra.ph/ranking-{i}"}, "children": ["Apri"]} for i in range(12)]
         get.return_value.json.return_value = {"ok": True, "result": {"content": nodes}}
@@ -230,7 +230,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         payload = {"text": "📋 RESOCONTO\n🏆 Coppe totali reali: 100", "report_url": "https://telegra.ph/periodo-7",
-                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 7}
+                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 8}
         obj._get = Mock(return_value=[{"payload": payload}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse the exact period"))
         result = obj.rankings_dashboard_text(-123, 7)
@@ -249,7 +249,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._get = Mock(return_value=[{"payload": {
             "report_url": "https://telegra.ph/periodo",
             "cached_at": (datetime.now(timezone.utc) - timedelta(seconds=119)).isoformat(),
-            "cache_revision": 7,
+            "cache_revision": 8,
         }}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse saved period"))
         with patch("community_features.time.monotonic", return_value=1000):
@@ -270,7 +270,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._direct_dashboard_snapshot = Mock(return_value=fresh)
         self.assertEqual(obj.rankings_dashboard_text(-123, 0), fresh)
         obj._direct_dashboard_snapshot.assert_called_once()
-        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 7)
+        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 8)
 
     @patch("community_features.requests.post")
     def test_global_roster_uses_observed_nonregistered_snapshots_at_period_boundary(self, post):
@@ -447,11 +447,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progression"})
         obj._direct_dashboard_snapshot(-1001, 7, None)
         clubs = next(lines for title, lines in published if title == "Classifica 4 Club — 7 GIORNI")
-        self.assertIn("1. TITANI ABUSIVI — +10", clubs)
+        self.assertIn("1. TITANI ABUSIVI — +10 (2/30 giocatori)", clubs)
         self.assertNotIn("saldo", " ".join(clubs).casefold())
         self.assertNotIn("con storico sufficiente", " ".join(clubs))
         self.assertGreater(clubs.index("📌 Storico Trofei: 2/30 giocatori misurabili nel periodo."),
-                           clubs.index("1. TITANI ABUSIVI — +10"))
+                           clubs.index("1. TITANI ABUSIVI — +10 (2/30 giocatori)"))
         trophy_page = next(lines for title, lines in published if title == "Trofei Globali 4 Club — 7 GIORNI")
         self.assertTrue(any("🏆 CLASSIFICA TROFEI" in str(node.get("children")) and node.get("tag") == "h3"
                             for node in obj._telegraph_nodes(trophy_page)))
@@ -545,8 +545,10 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("📋 RESOCONTO", summary)
                 self.assertIn("📊 REPORT COMPLETO", summary)
                 self.assertNotIn("CLASSIFICA PROGRESSIONE", summary)
-                self.assertNotIn("Coeff.", summary)
+                self.assertIn("🧮 Coeff. medio Progressione: 1,5000", summary)
+                self.assertNotIn("🧮 Coeff. Progressione:", summary)
                 self.assertIn("CLASSIFICA PROGRESSIONE", "\n".join(obj._publish_telegraph.call_args.args[1]))
+                self.assertIn("🧮 Coeff. medio Progressione: 1,5000", obj._publish_telegraph.call_args.args[1])
 
         published_before = obj._publish_telegraph.call_count
         summary, full, club_totals = obj.periodic_report_text(123, "global_clubs", 7, return_full=True, publish=False)
@@ -1015,6 +1017,16 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(obj._progression_result_it("defeat"), "Sconfitta")
         self.assertEqual(obj._progression_bonus_it("win_streak"), "Serie di vittorie")
         self.assertEqual(obj._progression_mode_it("futureTechnicalMode"), "Modalità non riconosciuta")
+
+    @patch("community_features.requests.post")
+    def test_report_coefficient_is_unavailable_without_positive_cups(self, post):
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        obj._get = Mock(return_value=[])
+        post.return_value.json.return_value = []
+        summary, full, _ = obj.periodic_report_text(123, "community", 7, return_full=True, publish=False)
+        self.assertIn("🧮 Coeff. medio Progressione: n.d.", summary)
+        self.assertIn("🧮 Coeff. medio Progressione: n.d.", full)
 
     def test_telegraph_ranking_has_uniform_rows_and_top_three_medals(self):
         nodes = self.make_features()._telegraph_nodes([
