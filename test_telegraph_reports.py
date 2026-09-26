@@ -1233,7 +1233,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         catalog = [
             {"external_id": "101", "brawler_id": 1, "brawler_name": "MOE", "name_en": "Monterey Moe",
-             "rarity": "RARE", "price_gems": 29, "acquisition_type": "gems"},
+             "rarity": "RARE", "price_gems": 29, "acquisition_type": "gems",
+             "image_verified": True, "image_url": "https://cdn.bsinfox.com/brawlers/skins/101.webp"},
             {"external_id": "102", "brawler_id": 2, "brawler_name": "SHELLY", "name_en": "Star Shelly",
              "rarity": "EPIC", "price_gems": None, "acquisition_type": "event"},
         ]
@@ -1255,7 +1256,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(links), 2)
             self.assertTrue(all(link.startswith("https://telegra.ph/test-") for link in links))
             self.assertIn("🦸 MOE — 1 skin", published[1][1])
-            self.assertIn("🎨 Monterey Moe · 💎 29 gemme", published[1][1])
+            self.assertIn("[[SKINPHOTO:https://cdn.bsinfox.com/brawlers/skins/101.webp|🎨 Monterey Moe · 💎 29 gemme · 📷 Foto]]", published[1][1])
+            photo_nodes = obj._telegraph_nodes(published[1][1])
+            photo_links = [child["attrs"]["href"] for node in photo_nodes for child in node.get("children", [])
+                           if isinstance(child, dict) and child.get("tag") == "a"]
+            self.assertIn("https://cdn.bsinfox.com/brawlers/skins/101.webp", photo_links)
             await obj.send_skin_telegraph(SimpleNamespace(), 456, answer)
             self.assertEqual(len(published), 4)  # two reusable categories, two private account pages
         finally:
