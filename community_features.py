@@ -1067,6 +1067,18 @@ class CommunityFeatures:
             if saved and saved[0].get("skins_owned") is not None and source_owned_count != int(saved[0]["skins_owned"]):
                 LOG.warning("SKIN DIRECT COUNT MISMATCH: source=%s catalog=%s stats=%s",
                             source_owned_count, len(owned), saved[0]["skins_owned"])
+                previous = self._get("skin_owned_ids_latest", {
+                    "select": "owned_skin_ids", "player_tag": f"eq.{tag}", "limit": "1",
+                }) or []
+                prior_ids = previous[0].get("owned_skin_ids") if previous else []
+                confirmed = owned | {int(sid) for sid in prior_ids if str(sid).isdigit()} if isinstance(prior_ids, list) else owned
+                # Retain positive evidence across snapshots. Incomplete
+                # source results never establish that another skin is absent.
+                if len(confirmed) <= int(saved[0]["skins_owned"]) and len(confirmed) > len(prior_ids or []):
+                    self._post("skin_owned_ids_latest", {
+                        "player_tag": tag, "owned_skin_ids": sorted(confirmed),
+                        "observed_at": datetime.now(timezone.utc).isoformat(),
+                    }, params={"on_conflict": "player_tag"}, prefer="resolution=merge-duplicates,return=minimal")
                 raise RuntimeError("Direct collection differs from Stats count")
             self._post("skin_owned_ids_latest", {
                 "player_tag": tag, "owned_skin_ids": sorted(owned),
@@ -1433,6 +1445,7 @@ class CommunityFeatures:
             if not rows:
                 return f"Non risultano skin in questa categoria{' per '+brawler_name if brawler_name else ''}."
             ownership_note = None
+            ownership_complete = True
             try:
                 owned_ids = self._official_owned_skin_ids(registered_user["player_tag"])
             except (SkinBridgeBackoff, requests.RequestException, RuntimeError):
@@ -1450,10 +1463,20 @@ class CommunityFeatures:
                     owned_ids = {int(sid) for sid in saved[0]["owned_skin_ids"] if str(sid).isdigit()}
                     observed = str(saved[0].get("observed_at") or "")
                     ownership_note = f"📅 Ultima collezione verificata: {observed[:16].replace('T', ' ')} UTC (non aggiornata)"
+                    # An observed subset is proof of ownership for its IDs,
+                    # never proof that all other catalog entries are missing.
+                    stats = self._get("skin_stats_latest", {
+                        "select": "skins_owned", "player_tag": f"eq.{tag}", "limit": "1",
+                    }) or []
+                    reported = stats[0].get("skins_owned") if stats else None
+                    ownership_complete = reported is not None and len(owned_ids) == int(reported)
+                    if not ownership_complete:
+                        ownership_note += " · collezione parziale: le altre skin non sono classificabili come mancanti"
             for r in rows:
                 r["_owned"] = r.get("external_id") is not None and int(r["external_id"]) in owned_ids
             owned = [r for r in rows if r["_owned"]]
-            missing = [r for r in rows if not r["_owned"]]
+            missing = [r for r in rows if not r["_owned"]] if ownership_complete else []
+            unknown = [r for r in rows if not r["_owned"]] if not ownership_complete else []
             skin_name = lambda r: str(r.get("name_it") or r.get("name_en") or "")
             title = None
             if brawler_name:
@@ -1480,8 +1503,10 @@ class CommunityFeatures:
                 if special: lines.append(f"🎟️ Senza prezzo diretto verificato: {special}")
 
             if mode in ("owned","missing"):
+                if mode == "missing" and not ownership_complete:
+                    return "Non posso stabilire quali skin ti mancano: la collezione salvata è parziale. " + ownership_note
                 selected = owned if mode == "owned" else missing
-                label = "POSSEDUTE" if mode == "owned" else "MANCANTI"
+                label = ("POSSEDUTE IDENTIFICATE" if not ownership_complete else "POSSEDUTE") if mode == "owned" else "MANCANTI"
                 heading = title if brawler_name else (category or rarity or "SKIN").upper()
                 lines = [f"{heading} — SKIN {label} ({len(selected)}/{len(rows)})"]
                 if selected:
@@ -1500,12 +1525,19 @@ class CommunityFeatures:
 
             if not brawler_name and (rarity or category):
                 label = category or rarity.title()
-                lines = [f"SKIN ACCOUNT — {label}", f"Possedute: {len(owned)}/{len(rows)}", f"Mancanti: {len(missing)}", "", "NOMI POSSEDUTI", ", ".join(skin_name(r) for r in owned) if owned else "Nessuna.", "", "NOMI MANCANTI", ", ".join(skin_name(r) for r in missing) if missing else "Nessuna: le possiedi tutte."]
-                add_values(lines, owned, "POSSEDUTE"); add_values(lines, missing, "MANCANTI")
+                lines = [f"SKIN ACCOUNT — {label}", f"{'Possedute identificate' if not ownership_complete else 'Possedute'}: {len(owned)}/{len(rows)}", "", "NOMI POSSEDUTI IDENTIFICATI", ", ".join(skin_name(r) for r in owned) if owned else "Nessuna."]
+                if ownership_complete:
+                    lines.extend(["", f"Mancanti: {len(missing)}", "NOMI MANCANTI", ", ".join(skin_name(r) for r in missing) if missing else "Nessuna: le possiedi tutte."])
+                else:
+                    lines.extend(["", f"Da verificare: {len(unknown)} · non sono necessariamente mancanti"])
+                add_values(lines, owned, "POSSEDUTE IDENTIFICATE" if not ownership_complete else "POSSEDUTE")
+                if ownership_complete: add_values(lines, missing, "MANCANTI")
                 if ownership_note: lines.insert(1, ownership_note)
                 return "\n".join(lines)
 
             if not brawler_name:
+                if not ownership_complete:
+                    return "La collezione salvata identifica %s skin nel catalogo, ma non permette di distinguere tutte le altre. %s" % (len(owned), ownership_note)
                 groups = {}
                 for r in rows:
                     groups.setdefault(self._skin_category_label(r), []).append(r)
@@ -1546,13 +1578,13 @@ class CommunityFeatures:
 
             groups={}
             for r in rows: groups.setdefault(self._skin_category_label(r),[]).append(r)
-            lines=[f"{title} — SKIN", f"🎨 Totale: {len(owned)}/{len(rows)}", "", "📊 PER CATEGORIA"]
+            lines=[f"{title} — SKIN", f"🎨 {'Identificate' if not ownership_complete else 'Totale'}: {len(owned)}/{len(rows)}", "", "📊 PER CATEGORIA"]
             for key,group in sorted(groups.items(), key=lambda x:(order.get(x[0],500),x[0])):
                 have = [skin_name(r) for r in group if r["_owned"]]
                 absent = [skin_name(r) for r in group if not r["_owned"]]
                 lines.extend(["", f"🎨 {key} — {len(have)}/{len(group)}",
                               "✅ Possedute: " + (", ".join(have) if have else "Nessuna"),
-                              "❌ Mancanti: " + (", ".join(absent) if absent else "Nessuna")])
+                              ("❔ Da verificare: " if not ownership_complete else "❌ Mancanti: ") + (", ".join(absent) if absent else "Nessuna")])
             if ownership_note: lines.insert(1, ownership_note)
             return "\n".join(lines)
         except Exception as exc:
