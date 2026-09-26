@@ -1354,6 +1354,22 @@ class CommunityFeatures:
                 url = self._publish_telegraph(f"Skin {category}", lines)
                 if url:
                     urls[category] = url
+            # Keep one public entry point for the verified catalog. Each
+            # category page already groups its entries by Brawler and links to
+            # the individual skin photo, including across Telegraph splits.
+            if "Catalogo" not in urls and all(category in urls for category in categories):
+                lines = ["SKIN — CATALOGO", "", f"🎨 Skin verificate: {len(catalog)}",
+                         "", "🧭 SCEGLI UNA CATEGORIA"]
+                for category in sorted(categories, key=lambda label: (
+                        {"Rare": 10, "Super rare": 20, "Epiche": 30,
+                         "Mitiche": 40, "Leggendarie": 50,
+                         "Skin Overdrive": 60, "Brawl Pass": 70,
+                         "Pass Pro": 80, "Argento": 90, "Oro": 100}.get(label, 110), label)):
+                    lines.append(f"[[SKINLINK:{urls[category]}|🎨 {category} · {len(categories[category])} skin]]")
+                lines.extend(["", "Scegli una categoria e poi un Brawler per vedere nomi, foto e prezzi verificati."])
+                catalog_url = self._publish_telegraph("Skin Catalogo", lines)
+                if catalog_url:
+                    urls["Catalogo"] = catalog_url
             return dict(urls)
 
     async def send_skin_telegraph(self, context, chat_id, answer):
@@ -1366,6 +1382,8 @@ class CommunityFeatures:
         if title == "SKIN POSSEDUTE — ACCOUNT":
             try:
                 urls = await asyncio.to_thread(self._skin_category_telegraph_urls)
+                if urls.get("Catalogo"):
+                    lines.extend(["", f"[[SKINLINK:{urls['Catalogo']}|🗂️ Catalogo completo per rarità e Brawler]]"])
                 lines = [f"[[SKINLINK:{urls[label]}|{line}]]" if label in urls else line
                          for line in lines
                          for label in [re.sub(r"^[^\w]+\s*", "", line).strip()]]
