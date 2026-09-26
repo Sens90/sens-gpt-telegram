@@ -2711,15 +2711,52 @@ class CommunityFeatures:
             if len(json_module.dumps(content, ensure_ascii=False).encode("utf-8")) <= 50000:
                 return create_page(title, content)
 
+            # In a split Skin category, an in-page #BRAWLER link cannot jump
+            # from one part to another. Move the Brawler index to the parent
+            # page and point every entry at the part holding its heading.
+            skin_jumps = []
+            if str(title).startswith("Skin "):
+                retained = []
+                for node in content:
+                    children = node.get("children", [])
+                    anchor = children[0] if len(children) == 1 and isinstance(children[0], dict) else {}
+                    href = anchor.get("attrs", {}).get("href", "")
+                    if href.startswith("#") and node.get("tag") == "p":
+                        skin_jumps.append((href[1:], anchor.get("children", [""])[0]))
+                    elif children == ["🧭 SCEGLI UN BRAWLER"]:
+                        continue
+                    else:
+                        retained.append(node)
+                if skin_jumps:
+                    content = retained
+
             chunks = []
             current = []
-            for node in content:
-                candidate = current + [node]
-                if current and len(json_module.dumps(candidate, ensure_ascii=False).encode("utf-8")) > 45000:
-                    chunks.append(current)
-                    current = [node]
-                else:
-                    current = candidate
+            if skin_jumps:
+                # Keep each Brawler's heading and skins in the same part.
+                blocks = []
+                block = []
+                for node in content:
+                    if node.get("tag") == "h4" and block:
+                        blocks.append(block)
+                        block = []
+                    block.append(node)
+                if block:
+                    blocks.append(block)
+                for block in blocks:
+                    candidate = current + block
+                    if current and len(json_module.dumps(candidate, ensure_ascii=False).encode("utf-8")) > 45000:
+                        chunks.append(current)
+                        current = []
+                    current.extend(block)
+            else:
+                for node in content:
+                    candidate = current + [node]
+                    if current and len(json_module.dumps(candidate, ensure_ascii=False).encode("utf-8")) > 45000:
+                        chunks.append(current)
+                        current = [node]
+                    else:
+                        current = candidate
             if current:
                 chunks.append(current)
 
@@ -2732,6 +2769,20 @@ class CommunityFeatures:
                 part_urls.append(part_url)
 
             index_nodes = [{"tag": "h3", "children": [f"📊 {title}"]}]
+            if skin_jumps:
+                by_heading = {
+                    quote(node["children"][0].replace(" ", "-"), safe="-"): part
+                    for part, chunk in enumerate(chunks)
+                    for node in chunk if node.get("tag") == "h4" and node.get("children")
+                    and isinstance(node["children"][0], str)
+                }
+                index_nodes.append({"tag": "h4", "children": ["🧭 SCEGLI UN BRAWLER"]})
+                for fragment, label in skin_jumps:
+                    part = by_heading.get(fragment)
+                    if part is not None:
+                        index_nodes.append({"tag": "p", "children": [{"tag": "a", "attrs": {
+                            "href": part_urls[part] + "#" + fragment,
+                        }, "children": [label]}]})
             for index, url in enumerate(part_urls, 1):
                 index_nodes.append({
                     "tag": "p",
