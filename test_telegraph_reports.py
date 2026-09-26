@@ -1099,7 +1099,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         answer = obj.skin_account_text({"player_tag": "2V2VY0PJ8"})
         self.assertIn("🎨 Totale rilevato da Stats: 5/3", answer)
         self.assertIn("✅ Identificate per nome nel catalogo: 2", answer)
-        self.assertIn("❔ Senza ID verificato: 3", answer)
+        self.assertIn("❔ Scarto fra totale Stats e ID identificati: 3", answer)
         self.assertNotIn("Mancanti: 3", answer)
 
     def test_skin_catalog_categories_keep_regular_pass_separate_from_pro(self):
