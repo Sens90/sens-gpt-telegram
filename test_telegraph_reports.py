@@ -1119,6 +1119,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(obj._skin_category_label({"rarity": "RANKED_PASS", "acquisition_type": "pass"}), "Pass Pro")
         self.assertEqual(obj._skin_category_label({"source_payload": {"tid": "TID_BROCK_PROPASS_PROGRESSION_SKIN_1"}}), "Pass Pro")
         self.assertEqual(obj._skin_category_label({"source_payload": {"tid": "TID_UNDERTAKER_HAT_SKIN"}}), "Base (varianti)")
+        self.assertEqual(obj._skin_category_label({"source_payload": {"tid": "TID_BARLEY_WIZARD_SKIN"}, "acquisition_note": "Skin Supercell ID"}), "Supercell ID")
+        self.assertEqual(obj._skin_category_label({"source_payload": {"tid": "TID_BROCK_PROPASS_PROGRESSION_SKIN_10"}, "acquisition_note": "Skin Overdrive Pass Pro — variante"}), "Skin Overdrive Pass Pro")
 
     @patch.dict(os.environ, {"SUPABASE_URL": "https://example.supabase.co", "SUPABASE_SERVICE_ROLE_KEY": "test-secret"})
     @patch("player_tracking.requests.post")
