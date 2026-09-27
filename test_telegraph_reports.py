@@ -101,8 +101,10 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             "1. Utente +10", "🔥 CLASSIFICA PROGRESSIONE", "📊 RESOCONTO",
         ], {"TITANI ABUSIVI": {"delta": 10, "players": 2}}))
         obj.coefficient_ranking_text = Mock(return_value="Progressione non disponibile")
+        result = obj._direct_dashboard_snapshot(-1001, 15, None)
+        self.assertIn("questo Resoconto è calcolato adesso", result)
         with self.assertRaisesRegex(RuntimeError, "progression page is unavailable"):
-            obj._direct_dashboard_snapshot(-1001, 15, None)
+            obj._direct_dashboard_snapshot(-1001, 15, (datetime.now(timezone.utc) - timedelta(days=15), datetime.now(timezone.utc)))
 
     @patch("community_features.requests.post")
     def test_daily_report_lists_only_positive_players_but_preserves_totals(self, post):
@@ -810,30 +812,24 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("coefficient_progression_rows_range", post.call_args.args[0])
 
     @patch("community_features.requests.post")
-    def test_large_report_fetches_independent_histories_concurrently(self, post):
-        from threading import Lock
-        import time as clock
+    def test_large_report_reads_histories_in_batches(self, post):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         members = [{"player_tag": f"TAG{i}", "player_name": f"Player {i}"} for i in range(18)]
-        obj._get = Mock(return_value=members)
-        lock = Lock()
-        active = peak = 0
-        def history(tag, days):
-            nonlocal active, peak
-            with lock:
-                active += 1
-                peak = max(peak, active)
-            clock.sleep(0.01)
-            with lock:
-                active -= 1
-            return [{"trophies": 100}]
-        obj.history_fetcher = Mock(side_effect=history)
+        def get(table, _params):
+            if table == "community_members":
+                return members
+            if table == "trophy_history":
+                return [{"player_tag": member["player_tag"], "trophies": 100,
+                         "recorded_at": datetime.now(timezone.utc).isoformat()} for member in members]
+            return []
+        obj._get = Mock(side_effect=get)
+        obj.history_fetcher = Mock(side_effect=AssertionError("per-player history must not be requested"))
         obj.change_calculator = Mock(return_value={"7d": 5})
         post.return_value.json.return_value = []
         summary, full, _ = obj.periodic_report_text(-100, "community", 7, return_full=True, publish=False)
-        self.assertGreater(peak, 1)
-        self.assertEqual(obj.history_fetcher.call_count, 18)
+        self.assertEqual(sum(call.args[0] == "trophy_history" for call in obj._get.call_args_list), 1)
+        obj.history_fetcher.assert_not_called()
         self.assertIn("🏆 Coppe totali reali: 1.800", summary)
         self.assertEqual(sum(line.startswith(tuple(f"{i}. " for i in range(1, 19))) for line in full), 18)
 
@@ -986,14 +982,18 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
     @patch.dict(os.environ, {"TELEGRAPH_ACCESS_TOKEN": "test-token"})
     @patch("community_features.time.sleep")
     @patch("community_features.requests.post")
-    def test_telegraph_respects_flood_wait_and_retries_same_page(self, post, sleep):
+    def test_telegraph_flood_wait_fails_fast_and_throttles_new_pages(self, post, sleep):
+        import community_features
+        community_features._TELEGRAPH_BACKOFF_UNTIL = 0.0
         post.side_effect = [
             SimpleNamespace(status_code=200, raise_for_status=Mock(), json=Mock(return_value={"ok": False, "error": "FLOOD_WAIT_5"})),
             SimpleNamespace(status_code=200, raise_for_status=Mock(), json=Mock(return_value={"ok": True, "result": {"url": "https://telegra.ph/report-test"}})),
         ]
-        self.assertEqual(self.make_features()._publish_telegraph("Report test", ["Dati"]), "https://telegra.ph/report-test")
-        sleep.assert_called_once_with(6)
-        self.assertEqual(post.call_count, 2)
+        self.assertIsNone(self.make_features()._publish_telegraph("Report test", ["Dati"]))
+        self.assertIsNone(self.make_features()._publish_telegraph("Report test", ["Dati"]))
+        sleep.assert_not_called()
+        self.assertEqual(post.call_count, 1)
+        community_features._TELEGRAPH_BACKOFF_UNTIL = 0.0
 
     async def test_numbered_battle_log_is_not_republished_as_ranking(self):
         obj = self.make_features()
