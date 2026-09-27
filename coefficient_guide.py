@@ -21,6 +21,7 @@ def coefficient_guide_lines():
         "COME SI CALCOLA UN BRAWLER",
         "🎯 Ogni fascia pesa soltanto le coppe che cadono al suo interno. Passare alla fascia seguente non ricalcola le coppe precedenti.",
         "📈 Il punteggio totale è la somma dei punteggi di tutti i Brawler; il coefficiente divide quel punteggio per le coppe ufficiali.",
+        "🎯 Indice relativo a 1.000 coppe = Coefficiente Abusivo ÷ 1,0562. Un Brawler a 1.000 coppe segna 1,0000; un account con 0 coppe segna 0,9468. È un confronto separato: i pesi e la Progressione non cambiano.",
         "PERCHÉ 2.000 COPPE CAMBIANO LA DIFFICOLTÀ",
         "⚡ Sotto 2.000 coppe il sistema di gioco prevede serie di vittorie fino a +10, partite con bot e sfavorito.",
         "🔒 Da 2.000 coppe questi meccanismi cessano: la difficoltà strutturale cambia e i pesi attuali aumentano.",
