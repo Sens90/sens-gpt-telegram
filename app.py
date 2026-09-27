@@ -3322,7 +3322,7 @@ def _is_manual_deterministic_command(command):
     value = str(command or "").strip()
     return bool(
         re.match(
-            r"^(?:classifica|classifiche|classiche\s+ieri|trofei\s+ieri|coppe\s+ieri|progressione|report|stats|statistiche|profilo|scheda|status|stato|"
+            r"^(?:classifica|classifiche|classiche\s+ieri|trofei\s+(?:ieri|oggi)|coppe\s+(?:ieri|oggi)|progressione|report|stats|statistiche|profilo|scheda|status|stato|"
             r"registrami|tegistrami|registra|registrati|skin|ranked|draft|counter|grafico|club|"
             r"elenco|inattivi|assenza|eventi|partecipo|reclutamento|regole|faq|sito|discord|"
             r"comandi|aiuto|help|funzioni|coefficiente|guida|generazioni|"
@@ -3331,6 +3331,7 @@ def _is_manual_deterministic_command(command):
         )
         or re.fullmatch(r"(?:quante skin (?:ho|possiedo)|quali (?:ho|mi mancano))", value, re.I)
         or re.fullmatch(r"come funziona il coefficiente abusivo", value, re.I)
+        or re.fullmatch(r"(?:(?:quant[ioe]|quanto)\s+(?:trofei|coppe)\s+(?:ho\s+)?(?:fatto|fatti|guadagnato|guadagnati|preso|presi)|(?:miei\s+)?(?:trofei|coppe)\s+(?:guadagnati|fatti)|resoconto\s+personale)(?:\s+(?:di|del))?\s+(?:ieri|oggi)\??", value, re.I)
     )
 
 
