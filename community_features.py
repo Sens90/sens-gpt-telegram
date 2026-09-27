@@ -4483,7 +4483,10 @@ class CommunityFeatures:
         else:
             # A requested period has the same linked player and club dossiers
             # as its scheduled delivery; publish only this period at a time.
-            payload = self._direct_dashboard_snapshot(chat_id, days, None, compact=False)
+            # Keep player and club dossiers on shared detail pages. Creating a
+            # separate page for each player can exhaust Telegraph's rate limit
+            # before the requested period index has been published.
+            payload = self._direct_dashboard_snapshot(chat_id, days, None, compact=True)
         if isinstance(payload, dict) and payload.get("report_url"):
             with _DASHBOARD_CACHE_LOCK:
                 _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 90, payload)
