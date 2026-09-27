@@ -153,7 +153,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("OGGI · 7 · 15 · 30", payload["text"])
         self.assertIn("📋 RESOCONTO", obj.rankings_dashboard_text(-1001, 0)["text"])
         self.assertIs(payload, obj.rankings_dashboard_text(-1001))
-        self.assertEqual(obj._publish_telegraph.call_count, 17)
+        self.assertEqual(obj._publish_telegraph.call_count, 13)
         lines = obj._publish_telegraph.call_args.args[1]
         links = [line for line in lines if line.startswith("[[URL:")]
         self.assertEqual(len(links), 12)
@@ -197,7 +197,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                 lines.extend(["🏆 Classifica", f"[[URL:https://telegra.ph/{days}-{index}|Apri]]", ""])
             return [{"payload": {"report_url": f"https://telegra.ph/period-{days}",
                                  "fallback": "\n".join(lines), "cached_at": timestamp,
-                                 "cache_revision": 11}}]
+                                 "cache_revision": 12}}]
         obj._get = Mock(side_effect=get)
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/indice")
         payload = obj.rankings_dashboard_text(-1001)
@@ -285,7 +285,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         payload = {"text": "📋 RESOCONTO\n🏆 Coppe totali reali: 100", "report_url": "https://telegra.ph/periodo-7",
-                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 11}
+                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 12}
         obj._get = Mock(return_value=[{"payload": payload}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse the exact period"))
         result = obj.rankings_dashboard_text(-123, 7)
@@ -304,7 +304,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._get = Mock(return_value=[{"payload": {
             "report_url": "https://telegra.ph/periodo",
             "cached_at": (datetime.now(timezone.utc) - timedelta(seconds=89)).isoformat(),
-            "cache_revision": 11,
+            "cache_revision": 12,
         }}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse saved period"))
         with patch("community_features.time.monotonic", return_value=1000):
@@ -324,8 +324,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         fresh = {"text": "fresh", "report_url": "https://telegra.ph/fresh", "fallback": "fresh"}
         obj._direct_dashboard_snapshot = Mock(return_value=fresh)
         self.assertEqual(obj.rankings_dashboard_text(-123, 0), fresh)
-        obj._direct_dashboard_snapshot.assert_called_once_with(-123, 0, None, compact=True)
-        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 11)
+        obj._direct_dashboard_snapshot.assert_called_once_with(-123, 0, None, compact=False)
+        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 12)
 
     @patch("community_features.requests.post")
     def test_global_roster_uses_observed_nonregistered_snapshots_at_period_boundary(self, post):
@@ -499,12 +499,39 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         detail = obj._publish_telegraph.call_args.args[1]
         self.assertIn("[[PLAYERHEADING:2GU9UV2RG|Tony]]", detail)
         self.assertTrue(any("Emz" in line for line in detail))
+        self.assertTrue(any("🎯 Fascia iniziale: 500–599 ×1,0590 (500 🏆 prima)" in line for line in detail))
         nodes = obj._telegraph_nodes(["CLASSIFICA PROGRESSIONE", "[[PLAYER:https://telegra.ph/giocatori#GIOCATORE-2GU9UV2RG|1|Tony|🔥 Progressione: +10]]"])
         self.assertTrue(any(node.get("children", [{}])[1].get("attrs", {}).get("href") == urls["2GU9UV2RG"]
                             for node in nodes if node.get("tag") == "p" and len(node.get("children", [])) > 1))
         self.assertEqual(obj._player_detail_pages([{"tag": "2GU9UV2RG", "name": "Tony"}], 0), urls)
         obj._publish_telegraph.assert_called_once()
         self.assertEqual(obj._player_link_name("TA | Tony [EU]"), "TA · Tony (EU)")
+
+    def test_player_battle_dossier_uses_pre_battle_trophy_band_at_boundaries(self):
+        from community_features import _PLAYER_DETAIL_PAGE_CACHE
+        _PLAYER_DETAIL_PAGE_CACHE.clear()
+        obj = self.make_features()
+        obj._get = Mock(return_value=[{"player_tag": "2GU9UV2RG",
+                                       "battle_time": (datetime.now(timezone.utc) - timedelta(minutes=i)).isoformat(),
+                                       "brawler_name": "Emz", "brawler_trophies_before": before,
+                                       "trophy_change": 8, "result": "victory"}
+                                      for i, before in enumerate((1999, 2000, 3000))])
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/dettagli")
+        obj._player_detail_pages([{"tag": "2GU9UV2RG", "name": "Tony"}], 0)
+        detail = "\n".join(obj._publish_telegraph.call_args.args[1])
+        self.assertIn("1999 🏆 prima", detail)
+        self.assertIn("1800–1999 ×1,2370", detail)
+        self.assertIn("2000–2199 ×1,5500", detail)
+        self.assertIn("3000+ ×1,0000", detail)
+
+    def test_dashboard_direct_link_says_apri_la_classifica(self):
+        url = "https://telegra.ph/classifica-oggi"
+        nodes = self.make_features()._telegraph_nodes(["CLASSIFICHE — OGGI", f"[[URL:{url}|Apri]]"])
+        self.assertIn("Apri la Classifica", str(nodes))
+        self.assertNotIn("Apri il Telegraph", str(nodes))
+        self.assertEqual(self.make_features()._telegram_fallback_links(
+            f"CLASSIFICHE — OGGI\n[[URL:{url}|Apri]]"),
+            f"CLASSIFICHE — OGGI\n🏆 Apri la Classifica: {url}")
 
     def test_player_detail_pages_share_battle_reads_and_keep_players_separate(self):
         from community_features import _PLAYER_DETAIL_PAGE_CACHE
@@ -724,7 +751,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             links = [line for line in lines if line.startswith("[[URL:")]
             self.assertEqual(len(links), count)
             self.assertTrue(all(line.endswith("|Apri]]") for line in links))
-            self.assertEqual(obj._publish_telegraph.call_count, 4 * ((0, 7, 15, 30).index(days) + 1))
+            self.assertEqual(obj._publish_telegraph.call_count, 3 * ((0, 7, 15, 30).index(days) + 1))
         self.assertEqual(obj.dashboard_command("dash_t_0_7"), "classifica della community 7")
 
     def test_command_guide_describes_current_period_hubs(self):
