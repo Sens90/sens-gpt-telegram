@@ -4644,7 +4644,7 @@ class CommunityFeatures:
         """Freeze every report page before publishing a dashboard with direct Telegraph links."""
         if days not in (0, 7, 15, 30) or not window or window[0] >= window[1]:
             raise ValueError("Invalid scheduled dashboard period")
-        return self._direct_dashboard_snapshot(chat_id, days, window)
+        return self._direct_dashboard_snapshot(chat_id, days, window, compact=True)
 
     def yesterday_ranking_snapshot(self, chat_id):
         """Return only the archived 23:59 delivery for yesterday in Rome."""
