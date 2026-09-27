@@ -178,7 +178,7 @@ Mostra il Resoconto di oggi in privato e nel Telegraph, nell'ordine: Trofei glob
 Ripropone in privato il messaggio e il Telegraph inviati ieri alle 23:59. Anche classifica ieri, trofei ieri e progressione ieri aprono questa chiusura. Disponibile per le chiusure archiviate dopo l'aggiornamento.
 
 [[CMDNAME:quanti trofei ho fatto ieri]]
-Mostra in privato il tuo Resoconto personale di ieri con storico trofei e battaglie osservate. Puoi chiedere anche «quanti trofei ho fatto oggi» o «resoconto personale oggi».
+Mostra in privato il tuo Resoconto personale di ieri: trofei al rilevamento finale, saldo e Progressione netta, con battaglie osservate. Puoi chiedere anche «quanti trofei avevo ieri», «quanti trofei ho fatto oggi» o «resoconto personale oggi».
 
 [[CMDNAME:classifiche 7]]
 Mostra il Resoconto dei 7 giorni in privato e le tre classifiche cliccabili nello stesso ordine.
@@ -4714,6 +4714,8 @@ class CommunityFeatures:
         positive = int(progression.get("positive_trophies") or 0)
         value = int(progression.get("progression_value") or 0)
         has_progression = bool(progression)
+        bonus = value - positive
+        net_progression = delta + bonus if delta is not None and has_progression else None
         battles = int(progression.get("battle_count") or len(rows))
         seconds = int(progression.get("play_seconds") or 0)
         coefficient = f"{value / positive:.4f}".replace(".", ",") if positive else "n.d."
@@ -4721,14 +4723,17 @@ class CommunityFeatures:
                        else "storico iniziale o finale insufficiente")
         summary = [f"👤 RESOCONTO PERSONALE — {label} — {name}",
                    f"📅 {start:%d/%m/%Y}", f"🏆 Trofei guadagnati (saldo): {trophy_line}",
+                   (f"🏆 Trofei al rilevamento finale: {self.number_formatter(ending[1])}"
+                    if ending else "🏆 Trofei al rilevamento finale: n.d."),
                    (f"🕒 Ultimo rilevamento trofei: {ending[0].astimezone(ROME):%d/%m %H:%M}"
                     if ending else "🕒 Ultimo rilevamento trofei: non disponibile"),
                    f"🎮 Partite osservate: {battles}", f"✅ Vittorie: {wins} · ❌ Sconfitte: {losses}",
                    f"⏱️ Tempo di gioco osservato: {seconds // 3600}h {(seconds % 3600) // 60:02d}m",
                    f"🦸 Brawler più usato: {most_used}",
                    (f"🏆 Coppe positive: +{self.number_formatter(positive)}" if has_progression else "🏆 Coppe positive: n.d."),
-                   (f"⚡ Bonus: +{self.number_formatter(value-positive)}" if has_progression else "⚡ Bonus: n.d."),
-                   (f"🔥 Progressione: +{self.number_formatter(value)}" if has_progression else "🔥 Progressione: n.d."),
+                   (f"⚡ Bonus: +{self.number_formatter(bonus)}" if has_progression else "⚡ Bonus: n.d."),
+                   (f"🔥 Progressione netta: {'+' if net_progression > 0 else ''}{self.number_formatter(net_progression)}"
+                    if net_progression is not None else "🔥 Progressione netta: n.d. (storico insufficiente)"),
                    f"🧮 Coeff. Progressione: {coefficient}"]
         lines = [*summary, "", "🎮 BATTAGLIE OSSERVATE"]
         for index, row in enumerate(rows, 1):

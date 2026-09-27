@@ -484,7 +484,9 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         with patch("community_features.requests.post", return_value=rpc):
             payload = obj.personal_daily_report("2GU9UV2RG", 1)
         self.assertIn("🏆 Trofei guadagnati (saldo): +10", payload["text"])
-        self.assertIn("🔥 Progressione: +15", payload["text"])
+        self.assertIn("🏆 Trofei al rilevamento finale: 110", payload["text"])
+        self.assertIn("⚡ Bonus: +3", payload["text"])
+        self.assertIn("🔥 Progressione netta: +13", payload["text"])
         self.assertNotIn("+800", payload["text"])
 
     def test_player_detail_link_opens_its_battle_section(self):
