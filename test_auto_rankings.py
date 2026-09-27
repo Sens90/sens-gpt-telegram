@@ -371,6 +371,13 @@ class DeterministicCommandNormalizationTests(unittest.TestCase):
         )
         self.assertIn("@GiorgioBs111111", command)
 
+    def test_mentioned_yesterday_question_remains_deterministic_when_username_unavailable(self):
+        command = app.normalize_deterministic_command(
+            "@SensGPT_TitaniAbusiviBot quanti trofei ho fatto ieri?", None)
+        self.assertEqual(command, "quanti trofei ho fatto ieri?")
+        self.assertTrue(app._is_manual_deterministic_command(command))
+        self.assertTrue(app._is_manual_deterministic_command("Quanti trofei avevo ieri"))
+
 
 class GroupVoiceExceptionsTests(unittest.IsolatedAsyncioTestCase):
     def message(self, text, selected):
