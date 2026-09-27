@@ -5264,7 +5264,7 @@ class CommunityFeatures:
                 _ranking_chat_id = int(_ranking_member["chat_id"])
         _ranking_reply_chat_id = int(message.from_user.id) if getattr(message.chat, "type", None) != "private" else int(message.chat_id)
         personal_day = re.fullmatch(
-            r"(?:(?:quant[ioe]|quanto)\s+(?:trofei|coppe)\s+(?:ho\s+)?(?:fatto|fatti|guadagnato|guadagnati|preso|presi)|"
+            r"(?:(?:quant[ioe]|quanto)\s+(?:trofei|coppe)\s+(?:(?:ho\s+)?(?:fatto|fatti|guadagnato|guadagnati|preso|presi)|avevo)|"
             r"(?:miei\s+)?(?:trofei|coppe)\s+(?:guadagnati|fatti)|"
             r"resoconto\s+personale)(?:\s+(?:di|del))?\s+(ieri|oggi)\??", q0l)
         if personal_day:
