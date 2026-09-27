@@ -3154,7 +3154,8 @@ class CommunityFeatures:
             return self._telegraph_reply(summary, report_url, lines)
         return "\n".join(lines)
 
-    def coefficient_ranking_text(self, chat_id, scope="community", days=None, window=None):
+    def coefficient_ranking_text(self, chat_id, scope="community", days=None, window=None,
+                                 publish_player_details=True):
         scope = str(scope or "community").strip().casefold()
         club_name = None
         registered_only = False
@@ -3268,7 +3269,8 @@ class CommunityFeatures:
             return f"{title}\n\nStorico non ancora disponibile per questo periodo."
         period = "ATTUALE" if days is None else ("OGGI" if days == 0 else f"{days} GIORNI")
         lines = [f"{title} — {period}", f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}", ""]
-        detail_urls = self._player_detail_pages(rows[:200], days, window) if days is not None else {}
+        detail_urls = (self._player_detail_pages(rows[:200], days, window)
+                       if days is not None and publish_player_details else {})
         for index, row in enumerate(rows[:200], 1):
             account_coefficient = f'{float(row["coefficient"]):.6f}'.replace(".", ",")
             value = int(row["value"])
@@ -4363,14 +4365,26 @@ class CommunityFeatures:
         return payload or "Dashboard Classifiche & Report temporaneamente non disponibile."
 
     def _index_from_published_periods(self, chat_id):
-        """Link existing Telegraph pages without regenerating any period report."""
+        """Build a current index, refreshing stale period rankings without dossiers."""
         periods = ((0, "OGGI"), (7, "7 GIORNI"), (15, "15 GIORNI"), (30, "30 GIORNI"))
         def read_period(days):
-            saved = self._get("scheduled_dashboard_delivery", {
-                "select": "payload", "chat_id": f"eq.{int(chat_id)}",
-                "slot": f"eq.manual:rolling:{days}", "limit": "1",
-            })
-            return saved[0].get("payload") if saved else None
+            choices = []
+            for slot in (f"manual:rolling:{days}", f"manual:compact:{days}"):
+                saved = self._get("scheduled_dashboard_delivery", {
+                    "select": "payload", "chat_id": f"eq.{int(chat_id)}",
+                    "slot": f"eq.{slot}", "limit": "1",
+                })
+                payload = saved[0].get("payload") if saved else None
+                if not isinstance(payload, dict) or payload.get("cache_revision") != _DASHBOARD_FORMAT_REVISION:
+                    continue
+                try:
+                    instant = datetime.fromisoformat(str(payload["cached_at"]).replace("Z", "+00:00"))
+                    age = (datetime.now(timezone.utc) - instant).total_seconds()
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if 0 <= age <= 90:
+                    choices.append((instant, payload))
+            return max(choices, default=(None, None), key=lambda entry: entry[0])[1]
         try:
             with ThreadPoolExecutor(max_workers=4) as executor:
                 saved_periods = list(executor.map(read_period, (days for days, _ in periods)))
@@ -4380,9 +4394,23 @@ class CommunityFeatures:
         now = datetime.now(ROME)
         title = "Classifiche — TITANI ABUSIVI"
         lines = [title.upper(), f"Indice creato: {now:%d/%m/%Y %H:%M}", "",
-                 _DASHBOARD_SOURCE_MARKER,
+                 "Liste: valori positivi verificati · roster completi · dati aggiornati per periodo.",
                  "Ogni periodo indica l'ora dei dati pubblicati. Apri per le tre classifiche Telegraph."]
         for (days, label), saved in zip(periods, saved_periods):
+            if saved is None:
+                LOG.info("CLASSIFICHE PERIOD LIVE REFRESH START: chat=%s days=%s", chat_id, days)
+                saved = self._direct_dashboard_snapshot(chat_id, days, None, compact=True)
+                if not isinstance(saved, dict) or not saved.get("report_url"):
+                    return saved or None
+                saved = {**saved, "cached_at": datetime.now(timezone.utc).isoformat(),
+                         "cache_revision": _DASHBOARD_FORMAT_REVISION}
+                try:
+                    self._post("scheduled_dashboard_delivery", {
+                        "chat_id": int(chat_id), "slot": f"manual:compact:{days}", "payload": saved,
+                    }, prefer="resolution=merge-duplicates,return=minimal")
+                except requests.RequestException as exc:
+                    LOG.warning("CLASSIFICHE COMPACT CACHE WRITE FAILED: %s", type(exc).__name__)
+                LOG.info("CLASSIFICHE PERIOD LIVE REFRESH DONE: chat=%s days=%s", chat_id, days)
             if not isinstance(saved, dict) or not re.fullmatch(
                     r"https://telegra\.ph/[^\s|<>\[\]]+", str(saved.get("report_url") or "")):
                 LOG.warning("CLASSIFICHE INDEX PERIOD MISSING: days=%s", days)
@@ -4403,7 +4431,7 @@ class CommunityFeatures:
         url = self._publish_telegraph(title, lines)
         if not url:
             return None
-        LOG.info("CLASSIFICHE INDEX REUSED FOUR PERIODS: chat=%s url=%s", chat_id, url)
+        LOG.info("CLASSIFICHE INDEX CURRENT FOUR PERIODS: chat=%s url=%s", chat_id, url)
         return self._telegraph_reply(
             ["📊 CLASSIFICHE — TITANI ABUSIVI", lines[1], "", "🏆 OGGI · 7 · 15 · 30 GIORNI",
              "L'ora dei dati di ogni periodo è indicata nell'indice."], url, lines,
@@ -4809,14 +4837,15 @@ class CommunityFeatures:
                 links[club] = url
         return links
 
-    def _direct_dashboard_snapshot(self, chat_id, days, window):
+    def _direct_dashboard_snapshot(self, chat_id, days, window, compact=False):
         """Create direct detail links for one period; optional fixed scheduler window."""
         label = "OGGI" if days == 0 else f"{days} GIORNI"
         title = f"Classifiche — {label}"
         lines = self._build_rankings_dashboard_text(days, publish=False, include_today_reports=True)
         links = {}
         _report, report_lines, club_totals = self.periodic_report_text(
-            chat_id, "global_clubs", days, window=window, return_full=True, publish=False, link_players=True,
+            chat_id, "global_clubs", days, window=window, return_full=True, publish=False,
+            link_players=not compact,
         )
         club_lines = [f"CLASSIFICA 4 CLUB — {label}",
                       "Roster completi dei quattro club ABUSIVI.", ""]
@@ -4824,7 +4853,7 @@ class CommunityFeatures:
         measured = sum(result["players"] for result in club_totals.values())
         roster = sum(result.get("roster", result["players"]) for result in club_totals.values())
         positive_clubs = [(name, result) for name, result in ranked_clubs if result["delta"] > 0]
-        club_detail_links = self._club_battle_detail_links(club_totals, days, window)
+        club_detail_links = {} if compact else self._club_battle_detail_links(club_totals, days, window)
         for position, (name, result) in enumerate(positive_clubs, 1):
             delta = result["delta"]
             score = (f"+{self.number_formatter(delta)} "
@@ -4843,7 +4872,8 @@ class CommunityFeatures:
         trophy_lines = [f"CLASSIFICA TROFEI GLOBALE CLUB — {label}", report_lines[3], "",
                         *report_lines[trophy_start:trophy_end]]
         links[f"dash_t_2_{days}"] = self._publish_telegraph(f"Trofei Globali 4 Club — {label}", trophy_lines)
-        progression = self.coefficient_ranking_text(chat_id, "global_clubs", days, window=window)
+        progression = self.coefficient_ranking_text(
+            chat_id, "global_clubs", days, window=window, publish_player_details=not compact)
         links[f"dash_p_2_{days}"] = progression.get("report_url") if isinstance(progression, dict) else None
         if not links[f"dash_p_2_{days}"]:
             LOG.warning("CLASSIFICHE LIVE TELEGRAPH UNAVAILABLE: days=%s stage=progression", days)
