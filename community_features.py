@@ -170,6 +170,9 @@ Sinonimo di Classifica: apre lo stesso indice generale.
 [[CMDNAME:classifiche oggi]]
 Mostra il Resoconto di oggi in privato e nel Telegraph, nell'ordine: Trofei globali, Progressione Globale Club, 4 Club.
 
+[[CMDNAME:classifiche ieri]]
+Ripropone in privato il messaggio e il Telegraph inviati ieri alle 23:59. Anche classifica ieri, trofei ieri e progressione ieri aprono questa chiusura. Disponibile per le chiusure archiviate dopo l'aggiornamento.
+
 [[CMDNAME:classifiche 7]]
 Mostra il Resoconto dei 7 giorni in privato e le tre classifiche cliccabili nello stesso ordine.
 
@@ -4372,6 +4375,19 @@ class CommunityFeatures:
             raise ValueError("Invalid scheduled dashboard period")
         return self._direct_dashboard_snapshot(chat_id, days, window)
 
+    def yesterday_ranking_snapshot(self, chat_id):
+        """Return only the archived 23:59 delivery for yesterday in Rome."""
+        yesterday = (datetime.now(ROME).date() - timedelta(days=1)).isoformat()
+        saved = self._get("scheduled_dashboard_delivery", {
+            "select": "payload", "chat_id": f"eq.{int(chat_id)}",
+            "slot": f"eq.daily:2359:{yesterday}", "limit": "1",
+        })
+        payload = saved[0].get("payload") if saved else None
+        if isinstance(payload, dict) and payload.get("report_url") and payload.get("text"):
+            return payload
+        return (f"La chiusura delle 23:59 del {yesterday[8:10]}/{yesterday[5:7]}/{yesterday[:4]} "
+                "non è disponibile nell'archivio. Non posso ricostruire il messaggio inviato.")
+
     def _direct_dashboard_snapshot(self, chat_id, days, window):
         """Create direct detail links for one period; optional fixed scheduler window."""
         label = "OGGI" if days == 0 else f"{days} GIORNI"
@@ -4542,6 +4558,10 @@ class CommunityFeatures:
             if _ranking_member and _ranking_member.get("chat_id") is not None:
                 _ranking_chat_id = int(_ranking_member["chat_id"])
         _ranking_reply_chat_id = int(message.from_user.id) if getattr(message.chat, "type", None) != "private" else int(message.chat_id)
+        if re.fullmatch(r"(?:classifica|classifiche|classiche|trofei|coppe|progressione|report)(?:\s+(?:di|dei))?\s+ieri", q0l):
+            payload = await asyncio.to_thread(self.yesterday_ranking_snapshot, _ranking_chat_id)
+            await self._send_ranking_message(context, _ranking_reply_chat_id, payload)
+            return True
         if q0l == "report":
             LOG.info("MANUAL REPORT FAST ROUTE chat=%s", message.chat_id)
             try:
