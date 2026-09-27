@@ -460,6 +460,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         ctx = SimpleNamespace(user_data={"_registered_user": {"player_tag": "2GU9UV2RG"}})
         for question, offset in (("Quanto trofei ho fatto ieri?", 1),
                                  ("Quanti trofei ho fatto oggi", 0),
+                                 ("Quanti trofei avevo ieri", 1),
                                  ("Resoconto personale ieri", 1)):
             self.assertTrue(await obj.handle_command(msg, ctx, question))
             obj.personal_daily_report.assert_called_with("2GU9UV2RG", offset)
