@@ -153,7 +153,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("OGGI · 7 · 15 · 30", payload["text"])
         self.assertIn("📋 RESOCONTO", obj.rankings_dashboard_text(-1001, 0)["text"])
         self.assertIs(payload, obj.rankings_dashboard_text(-1001))
-        self.assertEqual(obj._publish_telegraph.call_count, 13)
+        self.assertEqual(obj._publish_telegraph.call_count, 17)
         lines = obj._publish_telegraph.call_args.args[1]
         links = [line for line in lines if line.startswith("[[URL:")]
         self.assertEqual(len(links), 12)
@@ -324,7 +324,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         fresh = {"text": "fresh", "report_url": "https://telegra.ph/fresh", "fallback": "fresh"}
         obj._direct_dashboard_snapshot = Mock(return_value=fresh)
         self.assertEqual(obj.rankings_dashboard_text(-123, 0), fresh)
-        obj._direct_dashboard_snapshot.assert_called_once_with(-123, 0, None, compact=False)
+        obj._direct_dashboard_snapshot.assert_called_once_with(-123, 0, None, compact=True)
         self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 15)
 
     @patch("community_features.requests.post")
@@ -840,7 +840,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             links = [line for line in lines if line.startswith("[[URL:")]
             self.assertEqual(len(links), count)
             self.assertTrue(all(line.endswith("|Apri]]") for line in links))
-            self.assertEqual(obj._publish_telegraph.call_count, 3 * ((0, 7, 15, 30).index(days) + 1))
+            self.assertEqual(obj._publish_telegraph.call_count, 4 * ((0, 7, 15, 30).index(days) + 1))
         self.assertEqual(obj.dashboard_command("dash_t_0_7"), "classifica della community 7")
 
     def test_command_guide_describes_current_period_hubs(self):
