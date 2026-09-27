@@ -191,7 +191,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         from datetime import datetime as _datetime
         updated = _datetime.now(ROME).strftime("Aggiornato: %d/%m/%Y %H:%M")
         nodes = [{"tag": "p", "children": [updated]},
-                 {"tag": "p", "children": ["Liste: valori positivi verificati · copertura club e coefficiente medio nel Resoconto."]}]
+                 {"tag": "p", "children": ["Liste: valori positivi verificati · copertura club, coefficiente medio e schede giocatori cliccabili."]}]
         nodes += [{"tag": "h3", "children": [period]} for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")]
         nodes += [{"tag": "a", "attrs": {"href": f"https://telegra.ph/Classifica-{i}-09-25"}, "children": ["Apri"]} for i in range(12)]
         get.return_value.json.return_value = {"ok": True, "result": {"content": nodes}}
@@ -215,7 +215,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         ]}}
         updated = (datetime.now(ROME) - timedelta(minutes=4)).strftime("Aggiornato: %d/%m/%Y %H:%M")
         nodes = [{"tag": "p", "children": [updated]},
-                 {"tag": "p", "children": ["Liste: valori positivi verificati · copertura club e coefficiente medio nel Resoconto."]}]
+                 {"tag": "p", "children": ["Liste: valori positivi verificati · copertura club, coefficiente medio e schede giocatori cliccabili."]}]
         nodes += [{"tag": "h3", "children": [period]} for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")]
         nodes += [{"tag": "a", "attrs": {"href": f"https://telegra.ph/ranking-{i}"}, "children": ["Apri"]} for i in range(12)]
         get.return_value.json.return_value = {"ok": True, "result": {"content": nodes}}
@@ -231,7 +231,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         payload = {"text": "📋 RESOCONTO\n🏆 Coppe totali reali: 100", "report_url": "https://telegra.ph/periodo-7",
-                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 8}
+                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 9}
         obj._get = Mock(return_value=[{"payload": payload}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse the exact period"))
         result = obj.rankings_dashboard_text(-123, 7)
@@ -250,7 +250,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._get = Mock(return_value=[{"payload": {
             "report_url": "https://telegra.ph/periodo",
             "cached_at": (datetime.now(timezone.utc) - timedelta(seconds=119)).isoformat(),
-            "cache_revision": 8,
+            "cache_revision": 9,
         }}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse saved period"))
         with patch("community_features.time.monotonic", return_value=1000):
@@ -271,7 +271,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._direct_dashboard_snapshot = Mock(return_value=fresh)
         self.assertEqual(obj.rankings_dashboard_text(-123, 0), fresh)
         obj._direct_dashboard_snapshot.assert_called_once()
-        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 8)
+        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 9)
 
     @patch("community_features.requests.post")
     def test_global_roster_uses_observed_nonregistered_snapshots_at_period_boundary(self, post):
@@ -395,6 +395,110 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("non è disponibile nell'archivio", result)
         self.assertEqual(obj._get.call_args.args[0], "scheduled_dashboard_delivery")
         self.assertTrue(obj._get.call_args.args[1]["slot"].startswith("eq.daily:2359:"))
+
+    async def test_personal_day_questions_use_requester_tag_and_stay_private(self):
+        obj = self.make_features()
+        obj.personal_daily_report = Mock(return_value={"text": "PERSONALE", "report_url": "https://telegra.ph/personale"})
+        obj._send_ranking_message = AsyncMock(return_value=True)
+        msg = SimpleNamespace(chat_id=-1001, chat=SimpleNamespace(type="group"),
+                              from_user=SimpleNamespace(id=456))
+        ctx = SimpleNamespace(user_data={"_registered_user": {"player_tag": "2GU9UV2RG"}})
+        for question, offset in (("Quanto trofei ho fatto ieri?", 1),
+                                 ("Quanti trofei ho fatto oggi", 0),
+                                 ("Resoconto personale ieri", 1)):
+            self.assertTrue(await obj.handle_command(msg, ctx, question))
+            obj.personal_daily_report.assert_called_with("2GU9UV2RG", offset)
+            self.assertEqual(obj._send_ranking_message.await_args.args[1], 456)
+
+    def test_personal_yesterday_uses_only_snapshots_before_midnight(self):
+        from community_features import ROME
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        midnight = (datetime.now(ROME) - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        obj.history_fetcher = Mock(return_value=[
+            {"recorded_at": (midnight - timedelta(minutes=1)).isoformat(), "trophies": 100},
+            {"recorded_at": (midnight + timedelta(hours=23, minutes=59)).isoformat(), "trophies": 110},
+            {"recorded_at": (midnight + timedelta(days=1, hours=1)).isoformat(), "trophies": 900},
+        ])
+        obj._get = Mock(return_value=[])
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/personale")
+        rpc = Mock()
+        rpc.json.return_value = [{"player_name": "Test", "positive_trophies": 12,
+                                  "progression_value": 15, "battle_count": 2, "play_seconds": 600}]
+        with patch("community_features.requests.post", return_value=rpc):
+            payload = obj.personal_daily_report("2GU9UV2RG", 1)
+        self.assertIn("🏆 Trofei guadagnati (saldo): +10", payload["text"])
+        self.assertIn("🔥 Progressione: +15", payload["text"])
+        self.assertNotIn("+800", payload["text"])
+
+    def test_player_detail_link_opens_its_battle_section(self):
+        from community_features import _PLAYER_DETAIL_PAGE_CACHE
+        _PLAYER_DETAIL_PAGE_CACHE.clear()
+        obj = self.make_features()
+        obj._get = Mock(return_value=[{"battle_time": datetime.now(timezone.utc).isoformat(),
+                                       "brawler_name": "Emz", "brawler_trophies_before": 500,
+                                       "trophy_change": 8, "result": "victory", "placement": 1}])
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/giocatori")
+        urls = obj._player_detail_pages([{"tag": "2GU9UV2RG", "name": "Tony", "value": 10,
+                                          "positive_trophies": 8}], 0)
+        self.assertEqual(urls["2GU9UV2RG"], "https://telegra.ph/giocatori#GIOCATORE-2GU9UV2RG")
+        detail = obj._publish_telegraph.call_args.args[1]
+        self.assertIn("[[PLAYERHEADING:2GU9UV2RG|Tony]]", detail)
+        self.assertTrue(any("Emz" in line for line in detail))
+        nodes = obj._telegraph_nodes(["CLASSIFICA PROGRESSIONE", "[[PLAYER:https://telegra.ph/giocatori#GIOCATORE-2GU9UV2RG|1|Tony|🔥 Progressione: +10]]"])
+        self.assertTrue(any(node.get("children", [{}])[1].get("attrs", {}).get("href") == urls["2GU9UV2RG"]
+                            for node in nodes if node.get("tag") == "p" and len(node.get("children", [])) > 1))
+        self.assertEqual(obj._player_detail_pages([{"tag": "2GU9UV2RG", "name": "Tony"}], 0), urls)
+        obj._publish_telegraph.assert_called_once()
+        self.assertEqual(obj._player_link_name("TA | Tony [EU]"), "TA · Tony (EU)")
+
+    @patch("community_features.requests.post")
+    def test_progression_ranking_is_one_line_per_player_and_links_to_stats(self, post):
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        obj._get = Mock(return_value=[{"player_tag": "2GU9UV2RG", "player_name": "Tony"}])
+        obj._player_detail_pages = Mock(return_value={"2GU9UV2RG": "https://telegra.ph/player#GIOCATORE-2GU9UV2RG"})
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/ranking")
+        post.return_value.json.return_value = [{"player_tag": "2GU9UV2RG", "progression_value": 15,
+                                                 "positive_trophies": 12, "battle_count": 2, "coefficient": 1}]
+        payload = obj.coefficient_ranking_text(123, "community", 0)
+        lines = obj._publish_telegraph.call_args.args[1]
+        self.assertEqual(len([line for line in lines if "Tony" in line]), 1)
+        self.assertIn("[[PLAYER:https://telegra.ph/player#GIOCATORE-2GU9UV2RG|1|Tony|🔥 Progressione: +15]]", lines)
+        self.assertIn("Tony — +15", payload["text"])
+        self.assertNotIn("[[PLAYER:", payload["text"])
+
+    def test_direct_trophy_ranking_links_names_without_showing_marker_in_telegram(self):
+        obj = self.make_features()
+        obj.ranking = Mock(return_value=[{"tag": "2GU9UV2RG", "name": "TA | Tony",
+                                           "current": 1200, "delta": 12}])
+        obj._player_detail_pages = Mock(return_value={"2GU9UV2RG": "https://telegra.ph/player#GIOCATORE-2GU9UV2RG"})
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/classifica")
+        payload = obj.ranking_text(-1001, 0)
+        published = obj._publish_telegraph.call_args.args[1]
+        self.assertIn("[[PLAYER:https://telegra.ph/player#GIOCATORE-2GU9UV2RG|1|TA · Tony|1.200 (+12)]]", published)
+        self.assertIn("TA | Tony", payload["text"])
+        self.assertNotIn("[[PLAYER:", payload["text"])
+
+    @patch("community_features.requests.post")
+    def test_report_reuses_one_player_link_for_trophies_and_progression(self, post):
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        obj._get = Mock(return_value=[{"player_tag": "2GU9UV2RG", "player_name": "TA | Tony"}])
+        obj.history_fetcher = Mock(return_value=[{"trophies": 120}])
+        obj.change_calculator = Mock(return_value={"today": 10})
+        obj._player_detail_pages = Mock(return_value={"2GU9UV2RG": "https://telegra.ph/player#GIOCATORE-2GU9UV2RG"})
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/report")
+        post.return_value.json.return_value = [{"player_tag": "2GU9UV2RG", "player_name": "TA | Tony",
+                                                 "progression_value": 15, "positive_trophies": 12,
+                                                 "battle_count": 2}]
+        summary, lines, _clubs = obj.periodic_report_text(123, "community", 0, return_full=True)
+        links = [line for line in lines if line.startswith("[[PLAYER:")]
+        self.assertEqual(len(links), 2)
+        self.assertTrue(all("https://telegra.ph/player#GIOCATORE-2GU9UV2RG" in line for line in links))
+        self.assertTrue(all("TA · Tony" in line for line in links))
+        self.assertIn("🔥 Progressione: +15", links[1])
+        self.assertNotIn("[[PLAYER:", summary)
 
     def test_each_period_index_contains_only_its_own_reports(self):
         from community_features import _DASHBOARD_CACHE

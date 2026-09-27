@@ -31,11 +31,13 @@ _SKIN_CATEGORY_URLS = {}
 _SKIN_CATEGORY_URLS_LOCK = threading.Lock()
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_FORMAT_REVISION = 8
-_DASHBOARD_SOURCE_MARKER = "Liste: valori positivi verificati · copertura club e coefficiente medio nel Resoconto."
+_DASHBOARD_FORMAT_REVISION = 9
+_DASHBOARD_SOURCE_MARKER = "Liste: valori positivi verificati · copertura club, coefficiente medio e schede giocatori cliccabili."
 _PROGRESSION_DETAIL_CACHE = {}
 _PROGRESSION_DETAIL_LOCK = threading.Lock()
 _PROGRESSION_DETAIL_FLIGHTS = {}
+_PLAYER_DETAIL_PAGE_CACHE = {}
+_PLAYER_DETAIL_PAGE_LOCK = threading.Lock()
 _TELEGRAPH_PAGE_LOCK = threading.Lock()
 
 PROGRESSION_MODE_NAMES_IT = {
@@ -167,11 +169,15 @@ Apre l'indice Telegraph generale di OGGI, 7, 15 e 30 giorni. Il messaggio resta 
 Sinonimo di Classifica: apre lo stesso indice generale.
 
 📅 ACCESSI RAPIDI PER PERIODO
+Nelle classifiche Trofei e Progressione tocca il nome del giocatore per aprire il Telegraph con Resoconto, Brawler più usato e tutte le battaglie osservate del periodo.
 [[CMDNAME:classifiche oggi]]
 Mostra il Resoconto di oggi in privato e nel Telegraph, nell'ordine: Trofei globali, Progressione Globale Club, 4 Club.
 
 [[CMDNAME:classifiche ieri]]
 Ripropone in privato il messaggio e il Telegraph inviati ieri alle 23:59. Anche classifica ieri, trofei ieri e progressione ieri aprono questa chiusura. Disponibile per le chiusure archiviate dopo l'aggiornamento.
+
+[[CMDNAME:quanti trofei ho fatto ieri]]
+Mostra in privato il tuo Resoconto personale di ieri con storico trofei e battaglie osservate. Puoi chiedere anche «quanti trofei ho fatto oggi» o «resoconto personale oggi».
 
 [[CMDNAME:classifiche 7]]
 Mostra il Resoconto dei 7 giorni in privato e le tre classifiche cliccabili nello stesso ordine.
@@ -1949,6 +1955,22 @@ class CommunityFeatures:
                 continue
             dashboard_link = re.fullmatch(r"\[\[DASH:(dash_[prt]_(?:[0-9]|10)_(?:0|7|15|30))\|Apri\]\]", value)
             direct_link = re.fullmatch(r"\[\[URL:(https://telegra\.ph/[^\s|<>\[\]]+)\|Apri\]\]", value)
+            player_link = re.fullmatch(
+                r"\[\[PLAYER:(https://telegra\.ph/[^\s|<>\[\]]+)\|(\d+)\|([^|\[\]]+)\|([^\[\]]*)\]\]", value,
+            )
+            if player_link:
+                url, position, name, score = player_link.groups()
+                medal = {"1": "🥇", "2": "🥈", "3": "🥉"}.get(position, f"{position}.")
+                nodes.append({"tag": "p", "children": [f"{medal} ",
+                    {"tag": "a", "attrs": {"href": url}, "children": [{"tag": "strong", "children": [name]}]},
+                    f" — {score}"]})
+                continue
+            player_heading = re.fullmatch(r"\[\[PLAYERHEADING:([0289PYLQGRJCUV]{3,15})\|([^\[\]]+)\]\]", value)
+            if player_heading:
+                nodes.extend([{"tag": "p", "children": ["\u00a0"]},
+                              {"tag": "h3", "children": [f"GIOCATORE {player_heading.group(1)}"]},
+                              {"tag": "p", "children": [{"tag": "strong", "children": [player_heading.group(2)]}] }])
+                continue
             if direct_link:
                 nodes.append({"tag": "p", "children": [{
                     "tag": "a", "attrs": {"href": direct_link.group(1)},
@@ -2041,11 +2063,19 @@ class CommunityFeatures:
         }
 
     @staticmethod
+    def _player_link_name(name):
+        return re.sub(r"\s+", " ", str(name or "Giocatore").replace("|", "·")
+                      .replace("[", "(").replace("]", ")")).strip()
+
+    @staticmethod
     def _telegram_fallback_links(value):
         """Keep Telegraph markers internal when a Telegram button cannot be sent."""
+        value = re.sub(r"\[\[PLAYER:(https://telegra\.ph/[^\s|<>\[\]]+)\|\d+\|([^|\[\]]+)\|([^\[\]]*)\]\]",
+                       r"\2 — \3: \1", str(value))
+        value = re.sub(r"\[\[PLAYERHEADING:[0289PYLQGRJCUV]{3,15}\|([^\[\]]+)\]\]", r"\1", value)
         return re.sub(
             r"\[\[URL:(https://telegra\.ph/[^\s|<>\[\]]+)\|Apri\]\]",
-            r"📖 Apri il Telegraph: \1", str(value),
+            r"📖 Apri il Telegraph: \1", value,
         )
 
     def admin_reset_primary_registration(self, telegram_user_id):
@@ -3233,6 +3263,7 @@ class CommunityFeatures:
             return f"{title}\n\nStorico non ancora disponibile per questo periodo."
         period = "ATTUALE" if days is None else ("OGGI" if days == 0 else f"{days} GIORNI")
         lines = [f"{title} — {period}", f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}", ""]
+        detail_urls = self._player_detail_pages(rows[:200], days, window) if days is not None else {}
         for index, row in enumerate(rows[:200], 1):
             account_coefficient = f'{float(row["coefficient"]):.6f}'.replace(".", ",")
             value = int(row["value"])
@@ -3240,44 +3271,19 @@ class CommunityFeatures:
             if days is None:
                 lines.append(f'{index}. {row["name"]} — Valore coefficiente: {value_text} — Coeff. Abusivo: {account_coefficient}')
             else:
-                battles = int(row.get("battle_count") or 0)
-                cups = int(row.get("positive_trophies") or 0)
-                bonus = value - cups
-                progression_coefficient = (float(value) / cups) if cups > 0 else 0.0
-                progression_coefficient_text = f"{progression_coefficient:.6f}".replace(".", ",")
-                cups_text = ("+" if cups > 0 else "") + self.number_formatter(cups)
-                bonus_text = ("+" if bonus > 0 else "") + self.number_formatter(bonus)
-                play_seconds = int(row.get("play_seconds") or 0)
-                hours, remainder = divmod(play_seconds, 3600)
-                minutes = remainder // 60
-                play_time = f"{hours}h {minutes:02d}m" if hours else f"{minutes}m"
-                lines += [
-                    f'{index}. {row["name"]}',
-                    f'⏱️ Tempo di gioco: {play_time}',
-                    f'🎮 Partite: {battles}',
-                    f'🏆 Coppe: {cups_text}',
-                    f'⚡ Bonus: {bonus_text}',
-                    f'🔥 Progressione: {value_text}',
-                    f'🧮 Coeff. Progressione: {progression_coefficient_text}',
-                    "",
-                ]
+                tag = str(row.get("player_tag") or "").lstrip("#").upper()
+                if tag in detail_urls:
+                    lines.append(f'[[PLAYER:{detail_urls[tag]}|{index}|{self._player_link_name(row["name"])}|🔥 Progressione: {value_text}]]')
+                else:
+                    lines.append(f'{index}. {row["name"]} — 🔥 Progressione: {value_text}')
         report_url = self._publish_telegraph(f"{title} — {period}", lines)
         if report_url:
             if days is None:
                 summary = [f"{title} — {period}", "", *lines[3:6]]
             else:
-                # Three complete positions in Telegram; the full ranking stays on Telegraph.
-                summary_lines = []
-                positions = 0
-                for line in lines[3:]:
-                    if re.match(r"^\d+\.\s", line):
-                        positions += 1
-                        if positions > 3:
-                            break
-                    summary_lines.append(line)
-                while summary_lines and not summary_lines[-1]:
-                    summary_lines.pop()
-                summary = [f"{title} — {period}", "", *summary_lines]
+                summary = [f"{title} — {period}", "", *[
+                    f'{i}. {row["name"]} — +{self.number_formatter(int(row["value"]))}'
+                    for i, row in enumerate(rows[:3], 1)]]
             return self._telegraph_reply(summary, report_url, lines)
         return "\n".join(lines)
 
@@ -3344,18 +3350,24 @@ class CommunityFeatures:
                 "Ogni membro può usare: registrami #TAG"
             )
         period_label = "OGGI" if days == 0 else f"{days} GIORNI"
-        lines = [f"CLASSIFICA COMMUNITY - {period_label}", ""]
+        title = f"CLASSIFICA COMMUNITY - {period_label}"
+        lines = [title, ""]
+        urls = self._player_detail_pages(rows[:60], days, window)
         for index, row in enumerate(rows[:60], 1):
             if row["delta"] is None:
                 delta_text = "storico di oggi non disponibile" if days == 0 else f"storico {days}g non ancora disponibile"
             else:
                 sign = "+" if row["delta"] > 0 else ""
                 delta_text = f"{sign}{row['delta']}"
-            lines.append(
-                f"{index}. {row['name']} - {self.number_formatter(row['current'])} "
-                f"({delta_text})"
-            )
-        return "\n".join(lines)
+            score = f"{self.number_formatter(row['current'])} ({delta_text})"
+            url = urls.get(str(row["tag"]).lstrip("#").upper())
+            lines.append((f"[[PLAYER:{url}|{index}|{self._player_link_name(row['name'])}|{score}]]"
+                          if url else f"{index}. {row['name']} — {score}"))
+        url = self._publish_telegraph(title, lines)
+        summary = [title, "", *[
+            f"{i}. {r['name']} — {'+' if r['delta'] and r['delta'] > 0 else ''}{r['delta'] if r['delta'] is not None else 'n.d.'}"
+            for i, r in enumerate(rows[:5], 1)]]
+        return self._telegraph_reply(summary, url, lines) if url else "\n".join(summary)
 
     def _complete_roster_daily_rows(self, start_date, end_date):
         """Read complete-roster daily snapshots for [start_date, end_date)."""
@@ -3453,21 +3465,30 @@ class CommunityFeatures:
                     delta = current - int(row["first_trophies"])
                 except (TypeError, ValueError, KeyError):
                     delta = None
-            players.append({"name": row.get("player_name") or row.get("player_tag"), "current": current, "delta": delta})
+            players.append({"name": row.get("player_name") or row.get("player_tag"), "tag": tag,
+                            "current": current, "delta": delta})
         players = [row for row in players if row["delta"] is not None and row["delta"] > 0]
         players.sort(key=lambda row: (row["delta"], row["current"]), reverse=True)
-        lines = ["CLASSIFICA GLOBALE - OGGI", ""]
+        title = "CLASSIFICA GLOBALE - OGGI"
+        lines = [title, ""]
         if not players:
             lines.append("Nessun giocatore con trofei guadagnati oggi.")
             return "\n".join(lines)
+        urls = self._player_detail_pages(players[:200], 0)
         for index, row in enumerate(players[:200], 1):
             if row["delta"] is None:
                 delta_text = "N/D"
             else:
                 sign = "+" if row["delta"] > 0 else ""
                 delta_text = f"{sign}{row['delta']}"
-            lines.append(f"{index}. {row['name']} - {self.number_formatter(row['current'])} ({delta_text})")
-        return "\n".join(lines)
+            score = f"{self.number_formatter(row['current'])} ({delta_text})"
+            url = urls.get(str(row["tag"]).lstrip("#").upper())
+            lines.append((f"[[PLAYER:{url}|{index}|{self._player_link_name(row['name'])}|{score}]]"
+                          if url else f"{index}. {row['name']} — {score}"))
+        url = self._publish_telegraph(title, lines)
+        summary = [title, "", *[f"{i}. {r['name']} — +{r['delta']}"
+                               for i, r in enumerate(players[:5], 1)]]
+        return self._telegraph_reply(summary, url, lines) if url else "\n".join(summary)
 
     def global_club_ranking_text(self, chat_id, monthly=False):
         """Compare all four complete rosters, including non-registered players."""
@@ -3953,7 +3974,7 @@ class CommunityFeatures:
                 lines.append(f"- {name}: {inactive_days} giorni{' - RISCHIO KICK' if risk else ''}")
         return "\n".join(lines)
 
-    def periodic_report_text(self, chat_id, scope="community", days=7, window=None, return_full=False, publish=True):
+    def periodic_report_text(self, chat_id, scope="community", days=7, window=None, return_full=False, publish=True, link_players=None):
         """Combined Trophy + Progressione report. Telegram gets Top 5; Telegraph keeps the full lists."""
         days = int(days)
         if days not in (0, 7, 15, 30):
@@ -4151,6 +4172,10 @@ class CommunityFeatures:
         progression_rows = [r for r in progression_rows if int(r.get("battle_count") or 0) > 0]
         progression_rows.sort(key=lambda r: (r["_value"], r["_coeff"]), reverse=True)
         visible_progression_rows = [r for r in progression_rows if r["_value"] > 0]
+        if link_players is None:
+            link_players = publish
+        detail_urls = (self._player_detail_pages([*visible_trophy_rows, *visible_progression_rows], days, window)
+                       if link_players and (visible_trophy_rows or visible_progression_rows) else {})
 
         title = f"🔥 REPORT {scope_label} — {'OGGI' if days == 0 else f'{days} GIORNI'}"
         full = [title, f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}", "", f"👥 Ambito: {scope_note}", ""]
@@ -4158,7 +4183,9 @@ class CommunityFeatures:
         if visible_trophy_rows:
             for i, r in enumerate(visible_trophy_rows, 1):
                 sign = "+" if r["delta"] > 0 else ""
-                full.append(f"{i}. {r['name']} — {sign}{self.number_formatter(r['delta'])}")
+                url = detail_urls.get(r["tag"])
+                full.append((f"[[PLAYER:{url}|{i}|{self._player_link_name(r['name'])}|{sign}{self.number_formatter(r['delta'])} 🏆]]"
+                             if url else f"{i}. {r['name']} — {sign}{self.number_formatter(r['delta'])}"))
         else:
             full.append("Nessun giocatore con crescita positiva nel periodo." if trophy_rows else
                         "Storico Trofei non ancora sufficiente per calcolare questo periodo.")
@@ -4167,15 +4194,10 @@ class CommunityFeatures:
         full.extend(["", "🔥 CLASSIFICA PROGRESSIONE"])
         if visible_progression_rows:
             for i, r in enumerate(visible_progression_rows, 1):
-                full.extend([
-                    f"{i}. {r['_name']}",
-                    f"🎮 Partite: {int(r.get('battle_count') or 0)}",
-                    f"🏆 Coppe: +{self.number_formatter(r['_cups'])}",
-                    f"⚡ Bonus: +{self.number_formatter(r['_bonus'])}",
-                    f"🔥 Progressione: +{self.number_formatter(r['_value'])}",
-                    f"🧮 Coeff. Progressione: {r['_coeff']:.6f}".replace(".", ","),
-                    "",
-                ])
+                tag = str(r.get("player_tag") or "").lstrip("#").upper()
+                url = detail_urls.get(tag)
+                full.append((f"[[PLAYER:{url}|{i}|{self._player_link_name(r['_name'])}|🔥 Progressione: +{self.number_formatter(r['_value'])}]]"
+                             if url else f"{i}. {r['_name']} — 🔥 Progressione: +{self.number_formatter(r['_value'])}"))
         else:
             full.append("Nessun giocatore con Progressione positiva nel periodo.")
 
@@ -4388,6 +4410,220 @@ class CommunityFeatures:
         return (f"La chiusura delle 23:59 del {yesterday[8:10]}/{yesterday[5:7]}/{yesterday[:4]} "
                 "non è disponibile nell'archivio. Non posso ricostruire il messaggio inviato.")
 
+    def personal_daily_report(self, player_tag, day_offset=0):
+        """Compute one registered account's Rome-calendar day from measured snapshots."""
+        tag = str(player_tag or "").strip().lstrip("#").upper()
+        now = datetime.now(ROME)
+        start = (now - timedelta(days=day_offset)).replace(hour=0, minute=0, second=0, microsecond=0)
+        end = now if day_offset == 0 else start + timedelta(days=1)
+        label = "OGGI" if day_offset == 0 else "IERI"
+        history = self.history_fetcher(tag, days=10)
+        # A later snapshot cannot supply the beginning or ending of yesterday.
+        baseline = None
+        ending = None
+        for item in history or []:
+            try:
+                observed = datetime.fromisoformat(str(item["recorded_at"]).replace("Z", "+00:00"))
+                trophies = int(item["trophies"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if observed <= start and (baseline is None or observed > baseline[0]):
+                baseline = (observed, trophies)
+            if observed < end and (ending is None or observed > ending[0]):
+                ending = (observed, trophies)
+        try:
+            response = requests.post(
+                f"{self.supabase_url}/rest/v1/rpc/coefficient_progression_rows_range",
+                headers=self._headers(),
+                json={"p_player_tags": [tag], "p_start": start.isoformat(), "p_end": end.isoformat()},
+                timeout=20,
+            )
+            response.raise_for_status()
+            progression = (response.json() or [{}])[0]
+        except requests.RequestException as exc:
+            LOG.warning("PERSONAL DAILY PROGRESSION UNAVAILABLE: tag=%s error=%s", tag, type(exc).__name__)
+            progression = {}
+        rows = self._get("observed_trophy_battles", {
+            "select": "player_name,battle_time,brawler_name,brawler_trophies_before,trophy_change,result,mode,bonus_type",
+            "player_tag": f"eq.{tag}",
+            "and": f"(battle_time.gte.{start.astimezone(timezone.utc).isoformat()},battle_time.lt.{end.astimezone(timezone.utc).isoformat()})",
+            "order": "battle_time.asc", "limit": "5000",
+        }) or []
+        rows = [r for r in rows if r.get("trophy_change") is not None
+                and r.get("brawler_trophies_before") is not None
+                and not str(r.get("bonus_type") or "").startswith("excluded")]
+        name = (progression.get("player_name") or
+                next((r.get("player_name") for r in reversed(rows) if r.get("player_name")), tag))
+        delta = (ending[1] - baseline[1]) if baseline and ending else None
+        wins = sum(str(r.get("result") or "").casefold() == "victory" for r in rows)
+        losses = sum(str(r.get("result") or "").casefold() == "defeat" for r in rows)
+        grouped = {}
+        for row in rows:
+            brawler = str(row.get("brawler_name") or "Sconosciuto")
+            grouped[brawler] = grouped.get(brawler, 0) + 1
+        most_used = max(grouped, key=grouped.get) if grouped else "n.d."
+        positive = int(progression.get("positive_trophies") or 0)
+        value = int(progression.get("progression_value") or 0)
+        has_progression = bool(progression)
+        battles = int(progression.get("battle_count") or len(rows))
+        seconds = int(progression.get("play_seconds") or 0)
+        coefficient = f"{value / positive:.4f}".replace(".", ",") if positive else "n.d."
+        trophy_line = (f"{'+' if delta > 0 else ''}{self.number_formatter(delta)}" if delta is not None
+                       else "storico iniziale o finale insufficiente")
+        summary = [f"👤 RESOCONTO PERSONALE — {label} — {name}",
+                   f"📅 {start:%d/%m/%Y}", f"🏆 Trofei guadagnati (saldo): {trophy_line}",
+                   (f"🕒 Ultimo rilevamento trofei: {ending[0].astimezone(ROME):%d/%m %H:%M}"
+                    if ending else "🕒 Ultimo rilevamento trofei: non disponibile"),
+                   f"🎮 Partite osservate: {battles}", f"✅ Vittorie: {wins} · ❌ Sconfitte: {losses}",
+                   f"⏱️ Tempo di gioco osservato: {seconds // 3600}h {(seconds % 3600) // 60:02d}m",
+                   f"🦸 Brawler più usato: {most_used}",
+                   (f"🏆 Coppe positive: +{self.number_formatter(positive)}" if has_progression else "🏆 Coppe positive: n.d."),
+                   (f"⚡ Bonus: +{self.number_formatter(value-positive)}" if has_progression else "⚡ Bonus: n.d."),
+                   (f"🔥 Progressione: +{self.number_formatter(value)}" if has_progression else "🔥 Progressione: n.d."),
+                   f"🧮 Coeff. Progressione: {coefficient}"]
+        lines = [*summary, "", "🎮 BATTAGLIE OSSERVATE"]
+        for index, row in enumerate(rows, 1):
+            instant = datetime.fromisoformat(str(row["battle_time"]).replace("Z", "+00:00")).astimezone(ROME)
+            change = int(row["trophy_change"])
+            lines.extend(["", f"{index}. {instant:%H:%M} — {row.get('brawler_name') or 'Brawler'}",
+                          f"Modalità: {self._progression_mode_it(row.get('mode'))}",
+                          f"Risultato: {self._progression_result_it(row.get('result'), None)}",
+                          f"Coppe: {'+' if change > 0 else ''}{change}"])
+        if not rows:
+            lines.append("Nessuna battaglia osservata in questa giornata.")
+        url = self._publish_telegraph(f"Resoconto personale {name} — {label} {start:%d-%m-%Y}", lines)
+        return self._telegraph_reply(summary, url, lines) if url else "\n".join(summary)
+
+    def _player_detail_pages(self, rows, days, window=None):
+        """Publish grouped player dossiers; a single page serves several links."""
+        from trophy_coefficient import score_brawler_trophies
+        end = window[1] if window else datetime.now(timezone.utc)
+        start = window[0] if window else (
+            end.astimezone(ROME).replace(hour=0, minute=0, second=0, microsecond=0)
+            if days == 0 else end - timedelta(days=int(days or 7))
+        )
+        players = {}
+        for row in rows:
+            tag = str(row.get("tag") or row.get("player_tag") or "").lstrip("#").upper()
+            if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
+                continue
+            players.setdefault(tag, {}).update(row)
+        if not players:
+            return {}
+        # Rolling dashboards expire quickly; fixed calendar windows stay immutable.
+        bucket = (end.isoformat() if window else end.replace(second=0, microsecond=0,
+                    minute=(end.minute // 2) * 2).isoformat())
+        cache_key = (id(self), start.isoformat() if window else str(days), bucket, tuple(sorted(players)))
+        tag_key = (id(self), start.isoformat() if window else str(days), bucket)
+        with _PLAYER_DETAIL_PAGE_LOCK:
+            cached = _PLAYER_DETAIL_PAGE_CACHE.get(cache_key)
+            if cached and cached[0] > time.monotonic():
+                return cached[1]
+            known = {tag: _PLAYER_DETAIL_PAGE_CACHE[(tag_key, tag)][1]
+                     for tag in players if (tag_key, tag) in _PLAYER_DETAIL_PAGE_CACHE
+                     and _PLAYER_DETAIL_PAGE_CACHE[(tag_key, tag)][0] > time.monotonic()}
+        players = {tag: row for tag, row in players.items() if tag not in known}
+        if not players:
+            return known
+
+        def make_section(tag, item):
+            observed = []
+            battle_log_available = True
+            for offset in range(0, 100000, 1000):
+                try:
+                    batch = self._get("observed_trophy_battles", {
+                        "select": "battle_time,brawler_name,brawler_trophies_before,trophy_change,result,placement,mode,bonus_type",
+                        "player_tag": f"eq.{tag}",
+                        "and": f"(battle_time.gte.{start.astimezone(timezone.utc).isoformat()},battle_time.lt.{end.astimezone(timezone.utc).isoformat()})",
+                        "order": "battle_time.asc", "limit": "1000", "offset": str(offset),
+                    }) or []
+                except requests.RequestException as exc:
+                    LOG.warning("PLAYER BATTLE DETAIL UNAVAILABLE: tag=%s error=%s", tag, type(exc).__name__)
+                    battle_log_available = False
+                    break
+                observed.extend(batch)
+                if len(batch) < 1000:
+                    break
+                if offset == 99000:
+                    battle_log_available = False
+            observed = [r for r in observed if r.get("trophy_change") is not None
+                        and r.get("brawler_trophies_before") is not None
+                        and not str(r.get("bonus_type") or "").startswith("excluded")]
+            name = str(item.get("_name") or item.get("name") or item.get("player_name") or tag).replace("|", " ").replace("]]", "")
+            wins = sum(str(r.get("result") or "").casefold() == "victory" for r in observed)
+            losses = sum(str(r.get("result") or "").casefold() == "defeat" for r in observed)
+            trophies = sum(max(0, int(r["trophy_change"])) for r in observed)
+            progression = sum(max(0, score_brawler_trophies(int(r["brawler_trophies_before"]) + int(r["trophy_change"]))
+                                  - score_brawler_trophies(int(r["brawler_trophies_before"])))
+                              for r in observed if int(r["trophy_change"]) > 0)
+            value = int(item.get("_value") if item.get("_value") is not None else
+                        item.get("value") if item.get("value") is not None else round(progression))
+            cups = int(item.get("_cups") if item.get("_cups") is not None else
+                       item.get("positive_trophies") if item.get("positive_trophies") is not None else trophies)
+            sessions = []
+            for r in observed:
+                instant = datetime.fromisoformat(str(r["battle_time"]).replace("Z", "+00:00"))
+                if not sessions or (instant - sessions[-1][-1]).total_seconds() > 600:
+                    sessions.append([instant])
+                else:
+                    sessions[-1].append(instant)
+            seconds = int(item.get("play_seconds") or sum((session[-1] - session[0]).total_seconds()
+                                                           for session in sessions if len(session) > 1))
+            counts = {}
+            for r in observed:
+                key = str(r.get("brawler_name") or "Brawler")
+                counts[key] = counts.get(key, 0) + 1
+            brawler = max(counts, key=counts.get) if counts else "n.d."
+            ratio = f"{value / cups:.6f}".replace(".", ",") if cups else "n.d."
+            lines = [f"[[PLAYERHEADING:{tag}|{name}]]", f"🏷️ Tag: #{tag}",
+                     f"⏱️ Tempo di gioco: {seconds // 3600}h {(seconds % 3600) // 60:02d}m",
+                     f"🎮 Partite: {int(item.get('battle_count') or len(observed))}",
+                     (f"✅ Vittorie: {wins} · ❌ Sconfitte: {losses}" if battle_log_available
+                      else "✅ Vittorie e sconfitte: dati incompleti"),
+                     f"🦸 Brawler più usato: {brawler if battle_log_available else 'n.d. (log incompleto)'}",
+                     f"🏆 Coppe: +{self.number_formatter(cups)}",
+                     f"⚡ Bonus: +{self.number_formatter(value - cups)}",
+                     f"🔥 Progressione: +{self.number_formatter(value)}",
+                     f"🧮 Coeff. Progressione: {ratio}", "", "🎮 BATTAGLIE OSSERVATE"]
+            for index, r in enumerate(observed, 1):
+                when = datetime.fromisoformat(str(r["battle_time"]).replace("Z", "+00:00")).astimezone(ROME)
+                delta = int(r["trophy_change"])
+                before = int(r["brawler_trophies_before"])
+                points = (round(score_brawler_trophies(before + delta) - score_brawler_trophies(before))
+                          if delta > 0 else 0)
+                lines.append(f"{index}. {when:%d/%m %H:%M} · {r.get('brawler_name') or 'Brawler'} · "
+                             f"{self._progression_result_it(r.get('result'), r.get('placement'))} · "
+                             f"{self._progression_mode_it(r.get('mode'))} · "
+                             f"{'+' if delta > 0 else ''}{delta} 🏆 · +{points} 🔥")
+            if not battle_log_available:
+                lines.append("Battaglie temporaneamente non disponibili o incomplete.")
+            elif not observed:
+                lines.append("Nessuna battaglia osservata valida nel periodo.")
+            return tag, lines
+
+        with ThreadPoolExecutor(max_workers=min(6, len(players))) as executor:
+            sections = list(executor.map(lambda tag: make_section(tag, players[tag]), sorted(players)))
+        pages, chunk, tags = [], [], []
+        for tag, section in sections:
+            size = len(__import__("json").dumps(self._telegraph_nodes(["DETTAGLI GIOCATORI", *chunk, *section]), ensure_ascii=False).encode("utf-8"))
+            if chunk and (len(tags) >= 8 or size >= 38000):
+                pages.append((tags, chunk)); chunk, tags = [], []
+            chunk.extend(["", *section]); tags.append(tag)
+        if tags:
+            pages.append((tags, chunk))
+        result = dict(known)
+        for index, (page_tags, content) in enumerate(pages, 1):
+            url = self._publish_telegraph(f"Dettagli giocatori — {start.astimezone(ROME):%d-%m} · {index}",
+                                           ["DETTAGLI GIOCATORI", f"Periodo: {start.astimezone(ROME):%d/%m/%Y} – {end.astimezone(ROME):%d/%m/%Y}", *content])
+            if url:
+                result.update({tag: f"{url}#GIOCATORE-{tag}" for tag in page_tags})
+        with _PLAYER_DETAIL_PAGE_LOCK:
+            expires = time.monotonic() + (300 if window else 120)
+            _PLAYER_DETAIL_PAGE_CACHE[cache_key] = (expires, result)
+            for tag, url in result.items():
+                _PLAYER_DETAIL_PAGE_CACHE[(tag_key, tag)] = (expires, url)
+        return result
+
     def _direct_dashboard_snapshot(self, chat_id, days, window):
         """Create direct detail links for one period; optional fixed scheduler window."""
         label = "OGGI" if days == 0 else f"{days} GIORNI"
@@ -4395,7 +4631,7 @@ class CommunityFeatures:
         lines = self._build_rankings_dashboard_text(days, publish=False, include_today_reports=True)
         links = {}
         _report, report_lines, club_totals = self.periodic_report_text(
-            chat_id, "global_clubs", days, window=window, return_full=True, publish=False,
+            chat_id, "global_clubs", days, window=window, return_full=True, publish=False, link_players=True,
         )
         club_lines = [f"CLASSIFICA 4 CLUB — {label}",
                       "Roster completi dei quattro club ABUSIVI.", ""]
@@ -4558,6 +4794,18 @@ class CommunityFeatures:
             if _ranking_member and _ranking_member.get("chat_id") is not None:
                 _ranking_chat_id = int(_ranking_member["chat_id"])
         _ranking_reply_chat_id = int(message.from_user.id) if getattr(message.chat, "type", None) != "private" else int(message.chat_id)
+        personal_day = re.fullmatch(
+            r"(?:(?:quant[ioe]|quanto)\s+(?:trofei|coppe)\s+(?:ho\s+)?(?:fatto|fatti|guadagnato|guadagnati|preso|presi)|"
+            r"(?:miei\s+)?(?:trofei|coppe)\s+(?:guadagnati|fatti)|"
+            r"resoconto\s+personale)(?:\s+(?:di|del))?\s+(ieri|oggi)\??", q0l)
+        if personal_day:
+            registered = context.user_data.get("_registered_user") or self.get_registered_user(message.from_user.id)
+            if not registered or not registered.get("player_tag"):
+                await message.reply_text("Registra prima il tuo account nel gruppo con registrami #TAG.")
+                return True
+            payload = await asyncio.to_thread(self.personal_daily_report, registered["player_tag"], int(personal_day.group(1) == "ieri"))
+            await self._send_ranking_message(context, _ranking_reply_chat_id, payload)
+            return True
         if re.fullmatch(r"(?:classifica|classifiche|classiche|trofei|coppe|progressione|report)(?:\s+(?:di|dei))?\s+ieri", q0l):
             payload = await asyncio.to_thread(self.yesterday_ranking_snapshot, _ranking_chat_id)
             await self._send_ranking_message(context, _ranking_reply_chat_id, payload)
@@ -4594,9 +4842,9 @@ class CommunityFeatures:
                 return True
             await self._send_ranking_message(context, int(message.from_user.id), payload)
             return True
-        period_hub = re.fullmatch(r"(?:classifica\s+(oggi|7|15|30)|classifiche\s+(oggi|7|15|30))(?:\s+giorni)?", q0l)
+        period_hub = re.fullmatch(r"(?:classifica\s+(oggi|7|15|30)|classifiche\s+(oggi|7|15|30)|(?:trofei|coppe)\s+(oggi))(?:\s+giorni)?", q0l)
         if period_hub:
-            requested = period_hub.group(1) or period_hub.group(2)
+            requested = period_hub.group(1) or period_hub.group(2) or period_hub.group(3)
             days = 0 if requested == "oggi" else int(requested)
             try:
                 payload = await asyncio.wait_for(
@@ -4619,6 +4867,8 @@ class CommunityFeatures:
 
         async def _ranking_reply(text):
             try:
+                if isinstance(text, dict):
+                    return await self._send_ranking_message(context, _ranking_reply_chat_id, text)
                 await context.bot.send_message(chat_id=_ranking_reply_chat_id, text=text)
                 return True
             except Exception as exc:
@@ -4714,10 +4964,8 @@ class CommunityFeatures:
             await self._send_ranking_message(context, _ranking_reply_chat_id, self.global_club_ranking_text(_ranking_chat_id, monthly=False))
             return True
         if re.fullmatch(r"classifica\s+globale(?:\s+(?:di\s+)?oggi)?", q0, re.I):
-            await context.bot.send_message(
-                chat_id=_ranking_reply_chat_id,
-                text=self.global_ranking_text(_ranking_chat_id, 0),
-            )
+            await self._send_ranking_message(context, _ranking_reply_chat_id,
+                                             self.global_ranking_text(_ranking_chat_id, 0))
             return True
         if re.fullmatch(r"classifica\s+globale\s+mensile", q0, re.I):
             await self._send_ranking_message(context, _ranking_reply_chat_id, self.global_monthly_ranking_text(_ranking_chat_id))
