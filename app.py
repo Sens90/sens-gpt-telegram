@@ -3299,6 +3299,12 @@ def normalize_deterministic_command(raw_text, bot_username=None):
             command,
             flags=re.IGNORECASE,
         )
+    # Telegram can deliver a group mention while bot.username is temporarily
+    # unavailable to this update. Accept a leading mention only when the text
+    # after it is already a recognized deterministic command.
+    leading_mention = re.fullmatch(r"\s*@[A-Za-z0-9_]{3,32}\s+(.+)", command, re.S)
+    if leading_mention and _is_manual_deterministic_command(leading_mention.group(1).strip()):
+        command = leading_mention.group(1)
     # A standalone mention marker ("@ stats") is still deterministic command
     # traffic and must never fall through to Gemini.
     command = re.sub(r"^\s*@+\s+", "", command)
@@ -3334,7 +3340,7 @@ def _is_manual_deterministic_command(command):
         )
         or re.fullmatch(r"(?:quante skin (?:ho|possiedo)|quali (?:ho|mi mancano))", value, re.I)
         or re.fullmatch(r"come funziona il coefficiente abusivo", value, re.I)
-        or re.fullmatch(r"(?:(?:quant[ioe]|quanto)\s+(?:trofei|coppe)\s+(?:ho\s+)?(?:fatto|fatti|guadagnato|guadagnati|preso|presi)|(?:miei\s+)?(?:trofei|coppe)\s+(?:guadagnati|fatti)|resoconto\s+personale)(?:\s+(?:di|del))?\s+(?:ieri|oggi)\??", value, re.I)
+        or re.fullmatch(r"(?:(?:quant[ioe]|quanto)\s+(?:trofei|coppe)\s+(?:(?:ho\s+)?(?:fatto|fatti|guadagnato|guadagnati|preso|presi)|avevo)|(?:miei\s+)?(?:trofei|coppe)\s+(?:guadagnati|fatti)|resoconto\s+personale)(?:\s+(?:di|del))?\s+(?:ieri|oggi)\??", value, re.I)
     )
 
 
