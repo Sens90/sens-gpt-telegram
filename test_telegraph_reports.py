@@ -435,7 +435,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         from community_features import _PLAYER_DETAIL_PAGE_CACHE
         _PLAYER_DETAIL_PAGE_CACHE.clear()
         obj = self.make_features()
-        obj._get = Mock(return_value=[{"battle_time": datetime.now(timezone.utc).isoformat(),
+        obj._get = Mock(return_value=[{"player_tag": "2GU9UV2RG", "battle_time": datetime.now(timezone.utc).isoformat(),
                                        "brawler_name": "Emz", "brawler_trophies_before": 500,
                                        "trophy_change": 8, "result": "victory", "placement": 1}])
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/giocatori")
@@ -451,6 +451,29 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(obj._player_detail_pages([{"tag": "2GU9UV2RG", "name": "Tony"}], 0), urls)
         obj._publish_telegraph.assert_called_once()
         self.assertEqual(obj._player_link_name("TA | Tony [EU]"), "TA · Tony (EU)")
+
+    def test_player_detail_pages_share_battle_reads_and_keep_players_separate(self):
+        from community_features import _PLAYER_DETAIL_PAGE_CACHE
+        _PLAYER_DETAIL_PAGE_CACHE.clear()
+        obj = self.make_features()
+        obj._get = Mock(return_value=[
+            {"player_tag": tag, "battle_time": datetime.now(timezone.utc).isoformat(),
+             "brawler_name": brawler, "brawler_trophies_before": 500,
+             "trophy_change": 8, "result": "victory", "placement": 1}
+            for tag, brawler in (("2GU9UV2RG", "Emz"), ("2GUPY9V", "Nita"))
+        ])
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/giocatori")
+        urls = obj._player_detail_pages([{"tag": "2GU9UV2RG", "name": "Tony"},
+                                         {"tag": "2GUPY9V", "name": "Altro"}], 7)
+        obj._get.assert_called_once()
+        self.assertEqual(obj._get.call_args.args[1]["player_tag"], "in.(2GU9UV2RG,2GUPY9V)")
+        self.assertEqual(set(urls), {"2GU9UV2RG", "2GUPY9V"})
+        published = obj._publish_telegraph.call_args.args[1]
+        first = published.index("[[PLAYERHEADING:2GU9UV2RG|Tony]]")
+        second = published.index("[[PLAYERHEADING:2GUPY9V|Altro]]")
+        self.assertTrue(any("Emz" in line for line in published[first:second]))
+        self.assertFalse(any("Nita" in line for line in published[first:second]))
+        self.assertTrue(any("Nita" in line for line in published[second:]))
 
     @patch("community_features.requests.post")
     def test_progression_ranking_is_one_line_per_player_and_links_to_stats(self, post):
