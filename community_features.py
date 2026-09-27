@@ -4706,6 +4706,7 @@ class CommunityFeatures:
         rows = [r for r in rows if r.get("trophy_change") is not None
                 and r.get("brawler_trophies_before") is not None
                 and not str(r.get("bonus_type") or "").startswith("excluded")]
+        brawler_name_it = self._brawler_name_translator()
         name = (progression.get("player_name") or
                 next((r.get("player_name") for r in reversed(rows) if r.get("player_name")), tag))
         delta = (ending[1] - baseline[1]) if baseline and ending else None
@@ -4715,7 +4716,7 @@ class CommunityFeatures:
         for row in rows:
             brawler = str(row.get("brawler_name") or "Sconosciuto")
             grouped[brawler] = grouped.get(brawler, 0) + 1
-        most_used = max(grouped, key=grouped.get) if grouped else "n.d."
+        most_used = brawler_name_it(max(grouped, key=grouped.get)) if grouped else "n.d."
         positive = int(progression.get("positive_trophies") or 0)
         value = int(progression.get("progression_value") or 0)
         has_progression = bool(progression)
@@ -4744,7 +4745,7 @@ class CommunityFeatures:
         for index, row in enumerate(rows, 1):
             instant = datetime.fromisoformat(str(row["battle_time"]).replace("Z", "+00:00")).astimezone(ROME)
             change = int(row["trophy_change"])
-            lines.extend(["", f"{index}. {instant:%H:%M} — {row.get('brawler_name') or 'Brawler'}",
+            lines.extend(["", f"{index}. {instant:%H:%M} — {brawler_name_it(row.get('brawler_name'))}",
                           f"Modalità: {self._progression_mode_it(row.get('mode'))}",
                           f"Risultato: {self._progression_result_it(row.get('result'), None)}",
                           f"Coppe: {'+' if change > 0 else ''}{change}"])
@@ -4752,6 +4753,23 @@ class CommunityFeatures:
             lines.append("Nessuna battaglia osservata in questa giornata.")
         url = self._publish_telegraph(f"Resoconto personale {name} — {label} {start:%d-%m-%Y}", lines)
         return self._telegraph_reply(summary, url, lines) if url else "\n".join(summary)
+
+    def _brawler_name_translator(self):
+        """Translate battle API names once per page from the Italian Brawler catalog."""
+        try:
+            catalog = self._get("brawlers_catalog", {"select": "name_en,name_it"}) or []
+        except requests.RequestException as exc:
+            LOG.warning("BRAWLER LOCALIZATION UNAVAILABLE: type=%s", type(exc).__name__)
+            catalog = []
+        names = {str(row.get("name_en") or "").strip().casefold():
+                 str(row.get("name_it") or row.get("name_en") or "").strip()
+                 for row in catalog if row.get("name_en")}
+
+        def translate(value):
+            original = str(value or "").strip()
+            return names.get(original.casefold()) or original or "Brawler"
+
+        return translate
 
     def _player_detail_pages(self, rows, days, window=None):
         """Publish grouped player dossiers; a single page serves several links."""
@@ -4784,6 +4802,7 @@ class CommunityFeatures:
         players = {tag: row for tag, row in players.items() if tag not in known}
         if not players:
             return known
+        brawler_name_it = self._brawler_name_translator()
 
         def fetch_battles(group):
             grouped = {tag: [] for tag in group}
@@ -4856,7 +4875,7 @@ class CommunityFeatures:
             for r in observed:
                 key = str(r.get("brawler_name") or "Brawler")
                 counts[key] = counts.get(key, 0) + 1
-            brawler = max(counts, key=counts.get) if counts else "n.d."
+            brawler = brawler_name_it(max(counts, key=counts.get)) if counts else "n.d."
             ratio = f"{(cups + bonus) / cups:.6f}".replace(".", ",") if cups else "n.d."
             lines = [f"[[PLAYERHEADING:{tag}|{name}]]", f"🏷️ Tag: #{tag}",
                      f"⏱️ Tempo di gioco: {seconds // 3600}h {(seconds % 3600) // 60:02d}m",
@@ -4884,7 +4903,7 @@ class CommunityFeatures:
                               if band else "3000+ ×1,0000")
                 points = (round(score_brawler_trophies(before + delta) - score_brawler_trophies(before))
                           if delta > 0 else 0)
-                lines.append(f"{index}. {when:%d/%m %H:%M} · {r.get('brawler_name') or 'Brawler'} · "
+                lines.append(f"{index}. {when:%d/%m %H:%M} · {brawler_name_it(r.get('brawler_name'))} · "
                              f"{self._progression_result_it(self._observed_battle_outcome(r), r.get('placement'))} · "
                              f"{self._progression_mode_it(r.get('mode'))} · "
                              f"🎯 Fascia iniziale: {band_label} ({before} 🏆 prima) · "
