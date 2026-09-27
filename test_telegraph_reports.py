@@ -197,7 +197,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                 lines.extend(["🏆 Classifica", f"[[URL:https://telegra.ph/{days}-{index}|Apri]]", ""])
             return [{"payload": {"report_url": f"https://telegra.ph/period-{days}",
                                  "fallback": "\n".join(lines), "cached_at": timestamp,
-                                 "cache_revision": 10}}]
+                                 "cache_revision": 11}}]
         obj._get = Mock(side_effect=get)
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/indice")
         payload = obj.rankings_dashboard_text(-1001)
@@ -284,7 +284,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         payload = {"text": "📋 RESOCONTO\n🏆 Coppe totali reali: 100", "report_url": "https://telegra.ph/periodo-7",
-                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 10}
+                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 11}
         obj._get = Mock(return_value=[{"payload": payload}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse the exact period"))
         result = obj.rankings_dashboard_text(-123, 7)
@@ -303,7 +303,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._get = Mock(return_value=[{"payload": {
             "report_url": "https://telegra.ph/periodo",
             "cached_at": (datetime.now(timezone.utc) - timedelta(seconds=89)).isoformat(),
-            "cache_revision": 10,
+            "cache_revision": 11,
         }}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse saved period"))
         with patch("community_features.time.monotonic", return_value=1000):
@@ -324,7 +324,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._direct_dashboard_snapshot = Mock(return_value=fresh)
         self.assertEqual(obj.rankings_dashboard_text(-123, 0), fresh)
         obj._direct_dashboard_snapshot.assert_called_once_with(-123, 0, None, compact=True)
-        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 10)
+        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 11)
 
     @patch("community_features.requests.post")
     def test_global_roster_uses_observed_nonregistered_snapshots_at_period_boundary(self, post):
@@ -579,6 +579,63 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         lines = published["Classifica 4 Club — 7 GIORNI"]
         self.assertIn("[[PLAYER:https://telegra.ph/titani-battaglie|1|TITANI ABUSIVI|+12 (1/2 giocatori)]]", lines)
 
+    def test_compact_period_links_club_and_player_inside_published_pages(self):
+        obj = self.make_features()
+        published = {}
+        def publish(title, lines):
+            published[title] = lines
+            return f"https://telegra.ph/page-{len(published)}"
+        obj._publish_telegraph = Mock(side_effect=publish)
+        obj._build_rankings_dashboard_text = Mock(return_value=[
+            "CLASSIFICHE", "Aggiornato: ora", "[[DASH:dash_t_1_7|Apri]]",
+            "[[DASH:dash_t_2_7|Apri]]", "[[DASH:dash_p_2_7|Apri]]"])
+        obj._player_detail_pages = Mock(side_effect=AssertionError("no dossier publication"))
+        obj._club_battle_detail_links = Mock(side_effect=AssertionError("no club publication"))
+        obj.periodic_report_text = Mock(return_value=("REPORT", [
+            "REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI",
+            "[[PLAYER:#GIOCATORE-2GU9UV2RG|1|Tony|+12 🏆]]", "🔥 CLASSIFICA PROGRESSIONE",
+            "📊 RESOCONTO", "", "👤 DETTAGLI GIOCATORI",
+            "[[PLAYERHEADING:2GU9UV2RG|Tony]]", "🏆 Coppe: +12"], {
+            "TITANI ABUSIVI": {"delta": 12, "players": 1, "roster": 2}}))
+        obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progressione"})
+        obj._direct_dashboard_snapshot(-1001, 7, None, compact=True)
+        trophies = published["Trofei Globali 4 Club — 7 GIORNI"]
+        self.assertTrue(any("#GIOCATORE-2GU9UV2RG" in row for row in trophies))
+        self.assertTrue(any("PLAYERHEADING:2GU9UV2RG" in row for row in trophies))
+        clubs = published["Classifica 4 Club — 7 GIORNI"]
+        self.assertTrue(any("#CLUB-TITANI-ABUSIVI" in row for row in clubs))
+        self.assertTrue(any("CLUBHEADING:TITANI-ABUSIVI" in row for row in clubs))
+        self.assertEqual(obj.periodic_report_text.call_args.kwargs["inline_player_details"], True)
+        self.assertEqual(obj.coefficient_ranking_text.call_args.kwargs["inline_player_details"], True)
+        nodes = obj._telegraph_nodes(trophies)
+        self.assertTrue(any(node.get("tag") == "p" and any(
+            child.get("attrs", {}).get("href") == "#GIOCATORE-2GU9UV2RG"
+            for child in node.get("children", []) if isinstance(child, dict)) for node in nodes))
+
+    def test_large_compact_ranking_rewrites_anchors_to_direct_detail_pages(self):
+        obj = self.make_features()
+        pages = {}
+        def publish(title, lines):
+            pages[title] = lines
+            return "https://telegra.ph/page-" + str(len(pages))
+        obj._publish_telegraph = Mock(side_effect=publish)
+        rows = ["CLASSIFICA TROFEI — 7 GIORNI"]
+        tags = []
+        for number in range(125):
+            tag = "2" + "".join("0289"[(number // (4 ** place)) % 4] for place in (3, 2, 1, 0))
+            tags.append(tag)
+            rows.append(f"[[PLAYER:#GIOCATORE-{tag}|{number + 1}|Giocatore {number}|+123 🏆]]")
+        rows.append("👤 DETTAGLI GIOCATORI")
+        for number, tag in enumerate(tags):
+            rows.extend([f"[[PLAYERHEADING:{tag}|Giocatore {number}]]",
+                         "👤 Giocatore · 🏆 120.000 trofei · 📈 123 saldo · 🎮 300 partite · "
+                         "🏆 +100 coppe · ⚡ +13 bonus · 🔥 +113 · 🧮 1,1300"])
+        obj._publish_inline_ranking("Trofei", rows)
+        self.assertGreater(len(pages), 1)
+        ranking = pages["Trofei"]
+        self.assertFalse(any("[[PLAYER:#" in line for line in ranking))
+        self.assertEqual(sum("[[PLAYER:https://telegra.ph/" in line for line in ranking), 125)
+
     @patch("community_features.requests.post")
     def test_progression_ranking_is_one_line_per_player_and_links_to_stats(self, post):
         obj = self.make_features()
@@ -594,6 +651,22 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[[PLAYER:https://telegra.ph/player#GIOCATORE-2GU9UV2RG|1|Tony|🔥 Progressione: +15]]", lines)
         self.assertIn("Tony — +15", payload["text"])
         self.assertNotIn("[[PLAYER:", payload["text"])
+
+    @patch("community_features.requests.post")
+    def test_compact_progression_has_player_anchor_and_stats_without_dossiers(self, post):
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        obj._get = Mock(return_value=[{"player_tag": "2GU9UV2RG", "player_name": "Tony"}])
+        obj._player_detail_pages = Mock(side_effect=AssertionError("must not publish dossiers"))
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/progressione")
+        post.return_value.json.return_value = [{"player_tag": "2GU9UV2RG", "progression_value": 15,
+                                                 "positive_trophies": 12, "battle_count": 2, "coefficient": 1}]
+        obj.coefficient_ranking_text(123, "community", 0, publish_player_details=False,
+                                     inline_player_details=True)
+        lines = obj._publish_telegraph.call_args.args[1]
+        self.assertIn("[[PLAYER:#GIOCATORE-2GU9UV2RG|1|Tony|🔥 Progressione: +15]]", lines)
+        self.assertIn("[[PLAYERHEADING:2GU9UV2RG|Tony]]", lines)
+        self.assertTrue(any("🏆 +12 coppe · ⚡ +3 bonus · 🔥 +15 · 🧮 1,2500" in row for row in lines))
 
     def test_direct_trophy_ranking_links_names_without_showing_marker_in_telegram(self):
         obj = self.make_features()
