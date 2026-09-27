@@ -197,7 +197,7 @@ Per le classifiche Trofei dei 4 Club si usa il roster completo: la crescita del 
 Mostra in privato il Resoconto di oggi e apre il Telegraph giornaliero con le tre classifiche cliccabili.
 
 [[CMDNAME:progressione oggi]]
-Mostra subito in privato la tua Progressione di oggi, con dettaglio dei Brawler nel Telegraph.
+Mostra subito in privato la tua Progressione di oggi, con dettaglio dei Brawler nel Telegraph. Funziona anche «Progressi oggi».
 
 I comandi specifici dei singoli ambiti e periodi restano disponibili per l'uso avanzato.
 
