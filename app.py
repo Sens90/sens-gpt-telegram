@@ -3322,7 +3322,7 @@ def _is_manual_deterministic_command(command):
     value = str(command or "").strip()
     return bool(
         re.match(
-            r"^(?:classifica|classifiche|progressione|report|stats|statistiche|profilo|scheda|status|stato|"
+            r"^(?:classifica|classifiche|classiche\s+ieri|trofei\s+ieri|coppe\s+ieri|progressione|report|stats|statistiche|profilo|scheda|status|stato|"
             r"registrami|tegistrami|registra|registrati|skin|ranked|draft|counter|grafico|club|"
             r"elenco|inattivi|assenza|eventi|partecipo|reclutamento|regole|faq|sito|discord|"
             r"comandi|aiuto|help|funzioni|coefficiente|guida|generazioni|"
@@ -5680,6 +5680,17 @@ async def _send_auto_ranking_slot(context, slot, frozen_only=False):
                     raise RuntimeError(f"Telegram delivery failed: {label}")
                 pending["next_index"] = index + 1
                 await asyncio.to_thread(_persist_auto_ranking_pending, chat_id, previous_slot, pending)
+
+            if slot.hour == 23 and slot.minute == 59:
+                # Archive the very payload delivered to Telegram. If the write
+                # fails, retain the frozen checkpoint for the watchdog retry.
+                await asyncio.to_thread(
+                    community._post, "scheduled_dashboard_delivery",
+                    {"chat_id": chat_id, "slot": f"daily:2359:{slot.date().isoformat()}",
+                     "payload": payloads[0][1]},
+                    None, "resolution=merge-duplicates,return=minimal",
+                )
+                print("CLASSIFICA IERI ARCHIVED:", chat_id, key, flush=True)
 
             # Persist completion only after every Telegram delivery succeeded.
             complete_params = {"chat_id": f"eq.{chat_id}", "select": "chat_id"}
