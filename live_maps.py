@@ -348,7 +348,8 @@ def _install_direct_meta_route():
                 if key:
                     response=requests.post("https://api.tavily.com/search",json={"api_key":key,"query":"BrawlTrack PRO ACTIVE maps PRIORITY PICKS COMMON FINAL COMPS site:brawltrack.app/pro/maps","search_depth":"advanced","max_results":12,"include_raw_content":True,"include_answer":False,"include_domains":["brawltrack.app"]},timeout=20)
                     response.raise_for_status();merged["results"].extend(response.json().get("results",[]))
-                report=render_current_meta(merged,"both")
+                names_it=(safe_get("i18n/names.it.json.gz") or {}).get("brawlers",{})
+                report=render_current_meta(merged,"both",brawler_names_it=names_it)
                 if report:
                     print("META APP IMPORT: BrawlTrack tier-list diretta+maps; Gemini BLOCCATO",flush=True);await message.reply_text(report)
                 else:
