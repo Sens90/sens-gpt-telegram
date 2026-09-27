@@ -54,6 +54,8 @@ def install_club_ranking_router():
         return ms[0]
     async def routed(self,message,context,question):
         q=re.sub(r"^[!/]+","",str(question or "").strip()).strip().strip("\"'“”‘’ ").strip(); m=re.fullmatch(r"classific(?:a|he)\s+(titani(?: abusivi)?|tamarri(?: abusivi)?|tornadi(?: abusivi)?|talenti(?: abusivi)?)",q,re.I)
+        if re.fullmatch(r"(?:classifica|classifiche|classiche|trofei|coppe|progressione|report)(?:\s+(?:di|dei))?\s+ieri",q,re.I):
+            return await current(self,message,context,question)
         if m:club=aliases[m.group(1).casefold()];await message.reply_text(self.stat_ranking_text(message.chat_id,"trofei",club));return True
         name=_extract_daily_trophy_query(q)
         if name:
