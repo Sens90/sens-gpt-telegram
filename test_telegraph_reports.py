@@ -686,7 +686,9 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             "CLASSIFICHE", "Aggiornato: ora", "[[DASH:dash_t_1_7|Apri]]",
             "[[DASH:dash_t_2_7|Apri]]", "[[DASH:dash_p_2_7|Apri]]"])
         obj._player_detail_pages = Mock(side_effect=AssertionError("no dossier publication"))
-        obj._club_battle_detail_links = Mock(side_effect=AssertionError("no club publication"))
+        obj._club_battle_detail_links = Mock(return_value={"TITANI ABUSIVI": [
+            "🏆 TITANI ABUSIVI — 7 GIORNI", "📅 Periodo", "", "📋 RISULTATI DEL ROSTER COMPLETO",
+            "🎮 Battaglie osservate: 3", "🧮 Coeff. medio membri: 1,5000 (1/2 con coppe positive)"]})
         obj.periodic_report_text = Mock(return_value=("REPORT", [
             "REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI",
             "[[PLAYER:#GIOCATORE-2GU9UV2RG|1|Tony|+12 🏆]]", "🔥 CLASSIFICA PROGRESSIONE",
@@ -702,11 +704,18 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("PLAYERHEADING:2GU9UV2RG" in row for title, lines in published.items()
                             if title.startswith("Dettagli Trofei Globali") for row in lines))
         clubs = published["Classifica 4 Club — 7 GIORNI"]
+        self.assertFalse(any("Coeff. medio" in row for row in clubs))
         self.assertTrue(any("https://telegra.ph/page-" in row and "#CLUB-TITANI-ABUSIVI" in row
                             for row in clubs))
         self.assertFalse(any("CLUBHEADING:" in row for row in clubs))
         self.assertTrue(any("CLUBHEADING:TITANI-ABUSIVI" in row
                             for row in published["Dettagli 4 Club — 7 GIORNI"]))
+        details = published["Dettagli 4 Club — 7 GIORNI"]
+        self.assertIn("📋 RISULTATI DEL ROSTER COMPLETO", details)
+        self.assertIn("🎮 Battaglie osservate: 3", details)
+        self.assertTrue(any("Coeff. medio membri" in row for row in details))
+        obj._club_battle_detail_links.assert_called_once()
+        self.assertFalse(obj._club_battle_detail_links.call_args.kwargs["publish"])
         self.assertEqual(obj.periodic_report_text.call_args.kwargs["inline_player_details"], True)
         self.assertEqual(obj.coefficient_ranking_text.call_args.kwargs["inline_player_details"], True)
         nodes = obj._telegraph_nodes(trophies)
