@@ -4448,11 +4448,8 @@ class CommunityFeatures:
         except requests.RequestException as exc:
             LOG.warning("CLASSIFICHE INDEX CACHE READ FAILED: %s", type(exc).__name__)
             return None
-        now = datetime.now(ROME)
         title = "Classifiche — TITANI ABUSIVI"
-        lines = [title.upper(), f"Indice creato: {now:%d/%m/%Y %H:%M}", "",
-                 "Liste: valori positivi verificati · roster completi · dati aggiornati per periodo.",
-                 "Ogni periodo indica l'ora dei dati pubblicati. Apri per le tre classifiche Telegraph."]
+        lines = [title.upper()]
         for (days, label), saved in zip(periods, saved_periods):
             if saved is None:
                 LOG.info("CLASSIFICHE PERIOD LIVE REFRESH START: chat=%s days=%s", chat_id, days)
@@ -4490,8 +4487,7 @@ class CommunityFeatures:
             return None
         LOG.info("CLASSIFICHE INDEX CURRENT FOUR PERIODS: chat=%s url=%s", chat_id, url)
         return self._telegraph_reply(
-            ["📊 CLASSIFICHE — TITANI ABUSIVI", lines[1], "", "🏆 OGGI · 7 · 15 · 30 GIORNI",
-             "L'ora dei dati di ogni periodo è indicata nell'indice."], url, lines,
+            ["📊 CLASSIFICHE — TITANI ABUSIVI", "", "🏆 OGGI · 7 · 15 · 30 GIORNI"], url, lines,
         )
 
     def _latest_published_dashboard(self):
