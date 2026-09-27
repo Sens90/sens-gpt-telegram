@@ -197,7 +197,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                 lines.extend(["🏆 Classifica", f"[[URL:https://telegra.ph/{days}-{index}|Apri]]", ""])
             return [{"payload": {"report_url": f"https://telegra.ph/period-{days}",
                                  "fallback": "\n".join(lines), "cached_at": timestamp,
-                                 "cache_revision": 13}}]
+                                 "cache_revision": 14}}]
         obj._get = Mock(side_effect=get)
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/indice")
         payload = obj.rankings_dashboard_text(-1001)
@@ -285,7 +285,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         payload = {"text": "📋 RESOCONTO\n🏆 Coppe totali reali: 100", "report_url": "https://telegra.ph/periodo-7",
-                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 13}
+                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 14}
         obj._get = Mock(return_value=[{"payload": payload}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse the exact period"))
         result = obj.rankings_dashboard_text(-123, 7)
@@ -304,7 +304,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._get = Mock(return_value=[{"payload": {
             "report_url": "https://telegra.ph/periodo",
             "cached_at": (datetime.now(timezone.utc) - timedelta(seconds=89)).isoformat(),
-            "cache_revision": 13,
+            "cache_revision": 14,
         }}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse saved period"))
         with patch("community_features.time.monotonic", return_value=1000):
@@ -325,7 +325,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._direct_dashboard_snapshot = Mock(return_value=fresh)
         self.assertEqual(obj.rankings_dashboard_text(-123, 0), fresh)
         obj._direct_dashboard_snapshot.assert_called_once_with(-123, 0, None, compact=False)
-        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 13)
+        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 14)
 
     @patch("community_features.requests.post")
     def test_global_roster_uses_observed_nonregistered_snapshots_at_period_boundary(self, post):
@@ -925,6 +925,29 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         context = SimpleNamespace(user_data={"_registered_user": {"player_tag": "2GU9UV2RG"}})
         self.assertTrue(await obj.handle_command(message, context, "report club oggi"))
         obj.periodic_report_text.assert_called_once_with(-1001, "community_club", 0)
+
+    @patch("community_features.requests.post")
+    def test_club_coefficient_is_mean_of_members_not_weighted_ratio(self, post):
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        members = [{"player_tag": tag, "player_name": tag, "club_name": "TITANI ABUSIVI"}
+                   for tag in ("AAA", "BBB", "CCC")]
+        obj._get = Mock(side_effect=lambda table, params: members if table == "community_members" else [])
+        obj.history_fetcher = Mock(return_value=[{"trophies": 100}])
+        obj.change_calculator = Mock(return_value={"7d": 10})
+        post.return_value.raise_for_status.return_value = None
+        post.return_value.json.return_value = [
+            {"player_tag": "AAA", "progression_value": 12, "positive_trophies": 10, "battle_count": 1},
+            {"player_tag": "BBB", "progression_value": 180, "positive_trophies": 100, "battle_count": 1},
+            {"player_tag": "CCC", "progression_value": 0, "positive_trophies": 0, "battle_count": 1},
+        ]
+        _summary, _full, totals = obj.periodic_report_text(123, "community", 7,
+                                                           return_full=True, publish=False)
+        club = totals["TITANI ABUSIVI"]
+        self.assertEqual(club["coefficient_players"], 2)
+        self.assertEqual(club["roster"], 3)
+        self.assertEqual(obj._club_average_progression_line(club),
+                         "🧮 Coeff. medio membri: 1,5000 (2/3 con coppe positive)")
 
     @patch("community_features.requests.post")
     def test_periodic_report_summary_and_scope(self, post):
