@@ -4526,26 +4526,44 @@ class CommunityFeatures:
         if not players:
             return known
 
-        def make_section(tag, item):
-            observed = []
-            battle_log_available = True
+        def fetch_battles(group):
+            grouped = {tag: [] for tag in group}
+            available = True
             for offset in range(0, 100000, 1000):
                 try:
                     batch = self._get("observed_trophy_battles", {
-                        "select": "battle_time,brawler_name,brawler_trophies_before,trophy_change,result,placement,mode,bonus_type",
-                        "player_tag": f"eq.{tag}",
+                        "select": "player_tag,battle_time,brawler_name,brawler_trophies_before,trophy_change,result,placement,mode,bonus_type",
+                        "player_tag": f"in.({','.join(group)})",
                         "and": f"(battle_time.gte.{start.astimezone(timezone.utc).isoformat()},battle_time.lt.{end.astimezone(timezone.utc).isoformat()})",
-                        "order": "battle_time.asc", "limit": "1000", "offset": str(offset),
+                        "order": "battle_time.asc,player_tag.asc", "limit": "1000", "offset": str(offset),
                     }) or []
                 except requests.RequestException as exc:
-                    LOG.warning("PLAYER BATTLE DETAIL UNAVAILABLE: tag=%s error=%s", tag, type(exc).__name__)
-                    battle_log_available = False
+                    LOG.warning("PLAYER BATTLE DETAIL UNAVAILABLE: group_size=%s error=%s", len(group), type(exc).__name__)
+                    available = False
                     break
-                observed.extend(batch)
+                for row in batch:
+                    tag = str(row.get("player_tag") or "").lstrip("#").upper()
+                    if tag in grouped:
+                        grouped[tag].append(row)
                 if len(batch) < 1000:
                     break
                 if offset == 99000:
-                    battle_log_available = False
+                    available = False
+            return grouped, available
+
+        groups = [list(players)[i:i + 20] for i in range(0, len(players), 20)]
+        with ThreadPoolExecutor(max_workers=min(6, len(groups))) as executor:
+            fetched = list(executor.map(fetch_battles, groups))
+        battles_by_tag = {}
+        availability = {}
+        for (grouped, available) in fetched:
+            for tag, rows in grouped.items():
+                battles_by_tag[tag] = rows
+                availability[tag] = available
+
+        def make_section(tag, item):
+            observed = battles_by_tag[tag]
+            battle_log_available = availability[tag]
             observed = [r for r in observed if r.get("trophy_change") is not None
                         and r.get("brawler_trophies_before") is not None
                         and not str(r.get("bonus_type") or "").startswith("excluded")]
@@ -4601,8 +4619,7 @@ class CommunityFeatures:
                 lines.append("Nessuna battaglia osservata valida nel periodo.")
             return tag, lines
 
-        with ThreadPoolExecutor(max_workers=min(6, len(players))) as executor:
-            sections = list(executor.map(lambda tag: make_section(tag, players[tag]), sorted(players)))
+        sections = [make_section(tag, players[tag]) for tag in sorted(players)]
         pages, chunk, tags = [], [], []
         for tag, section in sections:
             size = len(__import__("json").dumps(self._telegraph_nodes(["DETTAGLI GIOCATORI", *chunk, *section]), ensure_ascii=False).encode("utf-8"))
