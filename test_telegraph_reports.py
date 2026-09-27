@@ -374,6 +374,28 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.progression_detail_text.assert_called_once_with("2GU9UV2RG", 0)
         self.assertEqual(obj._send_ranking_message.await_args.args[1], 456)
 
+    async def test_yesterday_aliases_replay_archived_group_snapshot_privately(self):
+        obj = self.make_features()
+        archived = {"text": "Chiusura delle 23:59", "report_url": "https://telegra.ph/chiusura"}
+        obj.yesterday_ranking_snapshot = Mock(return_value=archived)
+        obj._send_ranking_message = AsyncMock(return_value=True)
+        message = SimpleNamespace(chat_id=-1001, chat=SimpleNamespace(type="group"),
+                                  from_user=SimpleNamespace(id=456))
+        context = SimpleNamespace(user_data={})
+        for command in ("Trofei ieri", "Classifica ieri", "Classifiche ieri", "Progressione ieri", "Report ieri"):
+            self.assertTrue(await obj.handle_command(message, context, command))
+            obj.yesterday_ranking_snapshot.assert_called_with(-1001)
+            obj._send_ranking_message.assert_awaited_with(context, 456, archived)
+
+    def test_yesterday_archive_never_regenerates_missing_closure(self):
+        obj = self.make_features()
+        obj._get = Mock(return_value=[])
+        obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must not regenerate"))
+        result = obj.yesterday_ranking_snapshot(-1001)
+        self.assertIn("non è disponibile nell'archivio", result)
+        self.assertEqual(obj._get.call_args.args[0], "scheduled_dashboard_delivery")
+        self.assertTrue(obj._get.call_args.args[1]["slot"].startswith("eq.daily:2359:"))
+
     def test_each_period_index_contains_only_its_own_reports(self):
         from community_features import _DASHBOARD_CACHE
         _DASHBOARD_CACHE.clear()
