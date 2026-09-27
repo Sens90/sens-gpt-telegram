@@ -31,7 +31,7 @@ _SKIN_CATEGORY_URLS = {}
 _SKIN_CATEGORY_URLS_LOCK = threading.Lock()
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_FORMAT_REVISION = 13
+_DASHBOARD_FORMAT_REVISION = 14
 _DASHBOARD_SOURCE_MARKER = "Liste: valori positivi verificati · copertura club, coefficiente medio e schede giocatori cliccabili."
 _PROGRESSION_DETAIL_CACHE = {}
 _PROGRESSION_DETAIL_LOCK = threading.Lock()
@@ -4341,7 +4341,9 @@ class CommunityFeatures:
         if report_url:
             summary.extend(["", f"📊 REPORT COMPLETO: {report_url}"])
         if return_full:
-            club_totals = {name: {"delta": 0, "players": 0, "roster": 0, "tags": []} for name in self.CLUB_TAGS}
+            club_totals = {name: {"delta": 0, "players": 0, "roster": 0, "tags": [],
+                                  "coefficient_sum": 0.0, "coefficient_players": 0}
+                           for name in self.CLUB_TAGS}
             for member in by_tag.values():
                 club = str(member.get("club_name") or "").strip().upper()
                 if club in club_totals:
@@ -4352,6 +4354,12 @@ class CommunityFeatures:
                 if club in club_totals:
                     club_totals[club]["delta"] += row["delta"]
                     club_totals[club]["players"] += 1
+            for row in progression_rows:
+                tag = str(row.get("player_tag") or "").lstrip("#").upper()
+                club = str(by_tag.get(tag, {}).get("club_name") or "").strip().upper()
+                if club in club_totals and row["_cups"] > 0:
+                    club_totals[club]["coefficient_sum"] += row["_coeff"]
+                    club_totals[club]["coefficient_players"] += 1
             return "\n".join(summary), full, club_totals
         return "\n".join(summary)
 
@@ -4841,6 +4849,15 @@ class CommunityFeatures:
                 _PLAYER_DETAIL_PAGE_CACHE[(tag_key, tag)] = (expires, url)
         return result
 
+    @staticmethod
+    def _club_average_progression_line(club):
+        """Arithmetic mean of each roster member's defined period coefficient."""
+        count = int(club.get("coefficient_players") or 0)
+        roster = int(club.get("roster") or 0)
+        value = (f"{float(club.get('coefficient_sum') or 0) / count:.4f}".replace(".", ",")
+                 if count else "n.d.")
+        return f"🧮 Coeff. medio membri: {value} ({count}/{roster} con coppe positive)"
+
     def _club_battle_detail_links(self, club_totals, days, window=None):
         """Publish each complete roster's observed results for the selected period."""
         from trophy_coefficient import score_brawler_trophies
@@ -4915,6 +4932,7 @@ class CommunityFeatures:
                      f"🏆 Coppe positive: +{self.number_formatter(stats['cups'])}",
                      f"⚡ Bonus Progressione: +{self.number_formatter(stats['progression'] - stats['cups'])}",
                      f"🔥 Progressione: +{self.number_formatter(stats['progression'])}"]
+            lines.append(self._club_average_progression_line(roster))
             url = self._publish_telegraph(f"Risultati {club} — {label}", lines)
             if url:
                 links[club] = url
@@ -4971,6 +4989,7 @@ class CommunityFeatures:
             url = club_detail_links.get(name) or (f"#{anchor}" if compact else None)
             club_lines.append((f"[[PLAYER:{url}|{position}|{self._player_link_name(name)}|{score}]]"
                                if url else f"{position}. {name} — {score}"))
+            club_lines.extend([self._club_average_progression_line(result), ""])
         if not positive_clubs:
             club_lines.append("Nessun club con crescita positiva nel periodo." if measured else
                               "Storico Trofei non ancora sufficiente per calcolare questo periodo. "
@@ -4981,7 +5000,8 @@ class CommunityFeatures:
                 anchor = re.sub(r"[^A-Z0-9]+", "-", name.upper()).strip("-")
                 club_lines.extend(["", f"[[CLUBHEADING:{anchor}|{name}]]",
                                    f"👥 Giocatori: {result['players']}/{result.get('roster', result['players'])}",
-                                   f"🏆 Saldo Trofei: +{self.number_formatter(result['delta'])}"])
+                                   f"🏆 Saldo Trofei: +{self.number_formatter(result['delta'])}",
+                                   self._club_average_progression_line(result)])
             first_detail = next((i for i, row in enumerate(club_lines)
                                  if row.startswith("[[CLUBHEADING:")), None)
             if first_detail is not None:
