@@ -14,6 +14,13 @@ with patch("google.genai.Client", return_value=Mock()):
 
 
 class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
+    def test_progressi_oggi_alias_is_a_private_deterministic_command(self):
+        for text in ("Progressi oggi", "Progressi pggi", "Progressione oggi"):
+            command = app.normalize_deterministic_command(text)
+            self.assertEqual(command, "progressione oggi")
+            self.assertTrue(app._is_manual_deterministic_command(command))
+            self.assertFalse(app._is_public_group_command(command))
+
     def setUp(self):
         app._AUTO_RANKING_IN_FLIGHT.clear()
         app._AUTO_RANKING_PENDING.clear()

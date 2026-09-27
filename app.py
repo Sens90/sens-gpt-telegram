@@ -3308,7 +3308,10 @@ def normalize_deterministic_command(raw_text, bot_username=None):
         command,
         flags=re.I,
     )
-    return re.sub(r"\s+", " ", command).strip()
+    command = re.sub(r"\s+", " ", command).strip()
+    if re.fullmatch(r"progressi(?:one)?\s+(?:oggi|pggi)", command, re.I):
+        return "progressione oggi"
+    return command
 
 
 def is_explicit_bot_mention(text, bot_username):
