@@ -77,6 +77,7 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
             patch.object(app.community, "_get", return_value=self.settings),
             patch.object(app.community, "scheduled_dashboard_snapshot", return_value={"text": "DASHBOARD", "report_url": "https://telegra.ph/dashboard"}) as snapshot,
             patch.object(app.community, "_send_ranking_message", new=AsyncMock(return_value=True)) as sender,
+            patch.object(app.community, "_post") as archive,
             patch.object(app.requests, "patch", return_value=response) as database_patch,
         ):
             await app._send_auto_ranking_slot(
@@ -84,6 +85,8 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(sender.await_count, 1)
+        archive.assert_called_once()
+        self.assertEqual(archive.call_args.args[1]["slot"], "daily:2359:2026-09-23")
         snapshot.assert_called_once_with(-100123, 0, (datetime(2026, 9, 23, 0, 0, tzinfo=app.ROME), datetime(2026, 9, 23, 23, 59, tzinfo=app.ROME)))
         self.assertEqual(database_patch.call_args.kwargs["json"]["last_auto_ranking_slot"], "2026-09-23-2359")
         self.assertFalse(app._AUTO_RANKING_PENDING)
@@ -104,6 +107,7 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
             patch.object(app.community, "_get", return_value=self.settings),
             patch.object(app.community, "ranking_text") as rebuild,
             patch.object(app.community, "_send_ranking_message", new=AsyncMock(return_value=True)) as send,
+            patch.object(app.community, "_post"),
             patch.object(app.requests, "patch", return_value=response) as finish,
         ):
             await app._send_auto_ranking_slot(self.context, slot, frozen_only=True)
@@ -137,6 +141,7 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
             patch.object(app.community, "_get", return_value=self.settings),
             patch.object(app.community, "scheduled_dashboard_snapshot", return_value={"text": "DASHBOARD", "report_url": "https://telegra.ph/dashboard"}) as snapshot,
             patch.object(app.community, "_send_ranking_message", new=sender),
+            patch.object(app.community, "_post"),
             patch.object(app.requests, "patch", return_value=response) as database_patch,
         ):
             slot = datetime(2026, 9, 23, 23, 59, tzinfo=app.ROME)
