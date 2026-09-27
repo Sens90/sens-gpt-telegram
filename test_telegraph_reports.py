@@ -197,16 +197,38 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                 lines.extend(["🏆 Classifica", f"[[URL:https://telegra.ph/{days}-{index}|Apri]]", ""])
             return [{"payload": {"report_url": f"https://telegra.ph/period-{days}",
                                  "fallback": "\n".join(lines), "cached_at": timestamp,
-                                 "cache_revision": 3 if days else 10}}]
+                                 "cache_revision": 10}}]
         obj._get = Mock(side_effect=get)
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/indice")
         payload = obj.rankings_dashboard_text(-1001)
         self.assertEqual(payload["report_url"], "https://telegra.ph/indice")
-        self.assertEqual(obj._get.call_count, 4)
+        self.assertEqual(obj._get.call_count, 8)
         published = obj._publish_telegraph.call_args.args[1]
         self.assertEqual(sum(line.startswith("[[URL:") for line in published), 12)
         self.assertEqual(sum(line.startswith("Ultimo aggiornamento:") for line in published), 4)
         self.assertFalse(any("[[DASH:" in line for line in published))
+
+    def test_shared_dashboard_refreshes_outdated_periods_with_compact_live_pages(self):
+        from community_features import _DASHBOARD_CACHE
+        _DASHBOARD_CACHE.clear()
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        obj._get = Mock(return_value=[])
+        obj._post = Mock(return_value=[])
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/indice")
+        def snapshot(_chat_id, days, _window, compact=False):
+            self.assertTrue(compact)
+            label = "OGGI" if days == 0 else f"{days} GIORNI"
+            lines = [f"CLASSIFICHE — {label}", "Aggiornato adesso", "", f"══ {label} ══"]
+            lines += [f"[[URL:https://telegra.ph/{days}-{index}|Apri]]" for index in range(3)]
+            return {"text": "Dati aggiornati", "report_url": f"https://telegra.ph/periodo-{days}",
+                    "fallback": "\n".join(lines)}
+        obj._direct_dashboard_snapshot = Mock(side_effect=snapshot)
+        payload = obj.rankings_dashboard_text(-1001)
+        self.assertEqual(payload["report_url"], "https://telegra.ph/indice")
+        self.assertEqual([call.kwargs["compact"] for call in obj._direct_dashboard_snapshot.call_args_list], [True] * 4)
+        self.assertEqual([call.args[1]["slot"] for call in obj._post.call_args_list],
+                         [f"manual:compact:{days}" for days in (0, 7, 15, 30)])
 
     @patch.dict(os.environ, {"TELEGRAPH_ACCESS_TOKEN": "fake-token"})
     @patch("community_features.requests.get")
