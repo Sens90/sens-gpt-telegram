@@ -31,7 +31,7 @@ _SKIN_CATEGORY_URLS = {}
 _SKIN_CATEGORY_URLS_LOCK = threading.Lock()
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_FORMAT_REVISION = 10
+_DASHBOARD_FORMAT_REVISION = 11
 _DASHBOARD_SOURCE_MARKER = "Liste: valori positivi verificati · copertura club, coefficiente medio e schede giocatori cliccabili."
 _PROGRESSION_DETAIL_CACHE = {}
 _PROGRESSION_DETAIL_LOCK = threading.Lock()
@@ -1957,7 +1957,7 @@ class CommunityFeatures:
             dashboard_link = re.fullmatch(r"\[\[DASH:(dash_[prt]_(?:[0-9]|10)_(?:0|7|15|30))\|Apri\]\]", value)
             direct_link = re.fullmatch(r"\[\[URL:(https://telegra\.ph/[^\s|<>\[\]]+)\|Apri\]\]", value)
             player_link = re.fullmatch(
-                r"\[\[PLAYER:(https://telegra\.ph/[^\s|<>\[\]]+)\|(\d+)\|([^|\[\]]+)\|([^\[\]]*)\]\]", value,
+                r"\[\[PLAYER:(https://telegra\.ph/[^\s|<>\[\]]+|#(?:GIOCATORE|CLUB)-[A-Z0-9-]+)\|(\d+)\|([^|\[\]]+)\|([^\[\]]*)\]\]", value,
             )
             if player_link:
                 url, position, name, score = player_link.groups()
@@ -1968,9 +1968,17 @@ class CommunityFeatures:
                 continue
             player_heading = re.fullmatch(r"\[\[PLAYERHEADING:([0289PYLQGRJCUV]{3,15})\|([^\[\]]+)\]\]", value)
             if player_heading:
+                nodes.extend(([{"tag": "h3", "children": [f"GIOCATORE {player_heading.group(1)}"]}]
+                              if is_ranking_report else
+                              [{"tag": "p", "children": ["\u00a0"]},
+                               {"tag": "h3", "children": [f"GIOCATORE {player_heading.group(1)}"]},
+                               {"tag": "p", "children": [{"tag": "strong", "children": [player_heading.group(2)]}]}]))
+                continue
+            club_heading = re.fullmatch(r"\[\[CLUBHEADING:([A-Z-]+)\|([^\[\]]+)\]\]", value)
+            if club_heading:
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]},
-                              {"tag": "h3", "children": [f"GIOCATORE {player_heading.group(1)}"]},
-                              {"tag": "p", "children": [{"tag": "strong", "children": [player_heading.group(2)]}] }])
+                              {"tag": "h3", "children": [f"CLUB {club_heading.group(1)}"]},
+                              {"tag": "p", "children": [{"tag": "strong", "children": [club_heading.group(2)]}]}])
                 continue
             if direct_link:
                 nodes.append({"tag": "p", "children": [{
@@ -3155,7 +3163,7 @@ class CommunityFeatures:
         return "\n".join(lines)
 
     def coefficient_ranking_text(self, chat_id, scope="community", days=None, window=None,
-                                 publish_player_details=True):
+                                 publish_player_details=True, inline_player_details=False):
         scope = str(scope or "community").strip().casefold()
         club_name = None
         registered_only = False
@@ -3271,6 +3279,11 @@ class CommunityFeatures:
         lines = [f"{title} — {period}", f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}", ""]
         detail_urls = (self._player_detail_pages(rows[:200], days, window)
                        if days is not None and publish_player_details else {})
+        if inline_player_details:
+            for row in rows[:200]:
+                tag = str(row.get("player_tag") or "").lstrip("#").upper()
+                if re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
+                    detail_urls.setdefault(tag, f"#GIOCATORE-{tag}")
         for index, row in enumerate(rows[:200], 1):
             account_coefficient = f'{float(row["coefficient"]):.6f}'.replace(".", ",")
             value = int(row["value"])
@@ -3283,7 +3296,22 @@ class CommunityFeatures:
                     lines.append(f'[[PLAYER:{detail_urls[tag]}|{index}|{self._player_link_name(row["name"])}|🔥 Progressione: {value_text}]]')
                 else:
                     lines.append(f'{index}. {row["name"]} — 🔥 Progressione: {value_text}')
-        report_url = self._publish_telegraph(f"{title} — {period}", lines)
+        if inline_player_details:
+            lines.extend(["", "👤 DETTAGLI GIOCATORI"])
+            for row in rows[:200]:
+                tag = str(row.get("player_tag") or "").lstrip("#").upper()
+                if tag not in detail_urls:
+                    continue
+                value = int(row["value"])
+                cups = int(row.get("positive_trophies") or 0)
+                seconds = int(row.get("play_seconds") or 0)
+                ratio = f"{value / cups:.4f}".replace(".", ",") if cups else "n.d."
+                lines.extend([f"[[PLAYERHEADING:{tag}|{self._player_link_name(row['name'])}]]",
+                              f"👤 {self._player_link_name(row['name'])} · ⏱️ {seconds // 3600}h {(seconds % 3600) // 60:02d}m · "
+                              f"🎮 {int(row.get('battle_count') or 0)} partite · 🏆 +{self.number_formatter(cups)} coppe · "
+                              f"⚡ +{self.number_formatter(value - cups)} bonus · 🔥 +{self.number_formatter(value)} · 🧮 {ratio}"])
+        report_url = (self._publish_inline_ranking(f"{title} — {period}", lines)
+                      if inline_player_details else self._publish_telegraph(f"{title} — {period}", lines))
         if report_url:
             if days is None:
                 summary = [f"{title} — {period}", "", *lines[3:6]]
@@ -3981,7 +4009,8 @@ class CommunityFeatures:
                 lines.append(f"- {name}: {inactive_days} giorni{' - RISCHIO KICK' if risk else ''}")
         return "\n".join(lines)
 
-    def periodic_report_text(self, chat_id, scope="community", days=7, window=None, return_full=False, publish=True, link_players=None):
+    def periodic_report_text(self, chat_id, scope="community", days=7, window=None, return_full=False, publish=True,
+                             link_players=None, inline_player_details=False):
         """Combined Trophy + Progressione report. Telegram gets Top 5; Telegraph keeps the full lists."""
         days = int(days)
         if days not in (0, 7, 15, 30):
@@ -4210,6 +4239,11 @@ class CommunityFeatures:
             link_players = publish
         detail_urls = (self._player_detail_pages([*visible_trophy_rows, *visible_progression_rows], days, window)
                        if link_players and (visible_trophy_rows or visible_progression_rows) else {})
+        if inline_player_details:
+            for row in [*visible_trophy_rows, *visible_progression_rows]:
+                tag = str(row.get("tag") or row.get("player_tag") or "").lstrip("#").upper()
+                if re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
+                    detail_urls.setdefault(tag, f"#GIOCATORE-{tag}")
 
         title = f"🔥 REPORT {scope_label} — {'OGGI' if days == 0 else f'{days} GIORNI'}"
         full = [title, f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}", "", f"👥 Ambito: {scope_note}", ""]
@@ -4253,6 +4287,26 @@ class CommunityFeatures:
             f"🔥 Progressione complessiva: +{self.number_formatter(total_progression)}",
             coefficient_line,
         ])
+        if inline_player_details:
+            progression_by_tag = {str(row.get("player_tag") or "").lstrip("#").upper(): row
+                                  for row in progression_rows}
+            full.extend(["", "👤 DETTAGLI GIOCATORI"])
+            detail_rows = {row["tag"]: row for row in visible_trophy_rows}
+            for progress_row in visible_progression_rows:
+                tag = str(progress_row.get("player_tag") or "").lstrip("#").upper()
+                detail_rows.setdefault(tag, {"name": progress_row["_name"], "tag": tag,
+                                             "current": current_trophies_by_tag.get(tag, 0), "delta": 0})
+            for tag, row in detail_rows.items():
+                if tag not in detail_urls:
+                    continue
+                progress = progression_by_tag.get(tag, {})
+                cups = int(progress.get("_cups") or 0)
+                value = int(progress.get("_value") or 0)
+                ratio = f"{value / cups:.4f}".replace(".", ",") if cups else "n.d."
+                full.extend([f"[[PLAYERHEADING:{tag}|{self._player_link_name(row['name'])}]]",
+                             f"👤 {self._player_link_name(row['name'])} · 🏆 {self.number_formatter(row['current'])} trofei · 📈 {self.number_formatter(row['delta'])} saldo · "
+                             f"🎮 {int(progress.get('battle_count') or 0)} partite · 🏆 +{self.number_formatter(cups)} coppe · "
+                             f"⚡ +{self.number_formatter(value - cups)} bonus · 🔥 +{self.number_formatter(value)} · 🧮 {ratio}"])
 
         report_url = self._publish_telegraph(title, full) if publish else None
         summary = [title, "", "🏆 CLASSIFICA TROFEI"]
@@ -4840,6 +4894,35 @@ class CommunityFeatures:
                 links[club] = url
         return links
 
+    def _publish_inline_ranking(self, title, lines):
+        """Keep ranking anchors on the same page, or link bounded detail pages."""
+        json_module = __import__("json")
+        if len(json_module.dumps(self._telegraph_nodes(lines), ensure_ascii=False).encode("utf-8")) <= 45000:
+            return self._publish_telegraph(title, lines)
+        if "👤 DETTAGLI GIOCATORI" not in lines:
+            return self._publish_telegraph(title, lines)
+        index = lines.index("👤 DETTAGLI GIOCATORI")
+        ranking = list(lines[:index])
+        sections = []
+        for line in lines[index + 1:]:
+            if str(line).startswith("[[PLAYERHEADING:"):
+                sections.append([line])
+            elif sections:
+                sections[-1].append(line)
+        for offset in range(0, len(sections), 60):
+            group = sections[offset:offset + 60]
+            page = self._publish_telegraph(f"Dettagli {title} · {offset // 60 + 1}",
+                                           ["👤 DETTAGLI GIOCATORI", *[line for section in group for line in section]])
+            if not page:
+                return None
+            for section in group:
+                match = re.fullmatch(r"\[\[PLAYERHEADING:([0289PYLQGRJCUV]{3,15})\|[^\[\]]+\]\]", section[0])
+                if match:
+                    anchor = f"#GIOCATORE-{match.group(1)}"
+                    ranking = [line.replace(f"[[PLAYER:{anchor}|", f"[[PLAYER:{page}{anchor}|")
+                               for line in ranking]
+        return self._publish_telegraph(title, ranking)
+
     def _direct_dashboard_snapshot(self, chat_id, days, window, compact=False):
         """Create direct detail links for one period; optional fixed scheduler window."""
         label = "OGGI" if days == 0 else f"{days} GIORNI"
@@ -4848,7 +4931,7 @@ class CommunityFeatures:
         links = {}
         _report, report_lines, club_totals = self.periodic_report_text(
             chat_id, "global_clubs", days, window=window, return_full=True, publish=False,
-            link_players=not compact,
+            link_players=not compact, inline_player_details=compact,
         )
         club_lines = [f"CLASSIFICA 4 CLUB — {label}",
                       "Roster completi dei quattro club ABUSIVI.", ""]
@@ -4861,7 +4944,8 @@ class CommunityFeatures:
             delta = result["delta"]
             score = (f"+{self.number_formatter(delta)} "
                      f"({result['players']}/{result.get('roster', result['players'])} giocatori)")
-            url = club_detail_links.get(name)
+            anchor = "CLUB-" + re.sub(r"[^A-Z0-9]+", "-", name.upper()).strip("-")
+            url = club_detail_links.get(name) or (f"#{anchor}" if compact else None)
             club_lines.append((f"[[PLAYER:{url}|{position}|{self._player_link_name(name)}|{score}]]"
                                if url else f"{position}. {name} — {score}"))
         if not positive_clubs:
@@ -4869,14 +4953,24 @@ class CommunityFeatures:
                               "Storico Trofei non ancora sufficiente per calcolare questo periodo. "
                               "I roster continuano a essere censiti.")
         club_lines.extend(["", f"📌 Storico Trofei: {measured}/{roster} giocatori misurabili nel periodo."])
+        if compact:
+            for name, result in positive_clubs:
+                anchor = re.sub(r"[^A-Z0-9]+", "-", name.upper()).strip("-")
+                club_lines.extend(["", f"[[CLUBHEADING:{anchor}|{name}]]",
+                                   f"👥 Giocatori: {result['players']}/{result.get('roster', result['players'])}",
+                                   f"🏆 Saldo Trofei: +{self.number_formatter(result['delta'])}"])
         links[f"dash_t_1_{days}"] = self._publish_telegraph(f"Classifica 4 Club — {label}", club_lines)
         trophy_start = report_lines.index("🏆 CLASSIFICA TROFEI")
         trophy_end = report_lines.index("🔥 CLASSIFICA PROGRESSIONE", trophy_start)
         trophy_lines = [f"CLASSIFICA TROFEI GLOBALE CLUB — {label}", report_lines[3], "",
                         *report_lines[trophy_start:trophy_end]]
-        links[f"dash_t_2_{days}"] = self._publish_telegraph(f"Trofei Globali 4 Club — {label}", trophy_lines)
+        if compact and "👤 DETTAGLI GIOCATORI" in report_lines:
+            trophy_lines.extend(["", *report_lines[report_lines.index("👤 DETTAGLI GIOCATORI"):]])
+        links[f"dash_t_2_{days}"] = (self._publish_inline_ranking(f"Trofei Globali 4 Club — {label}", trophy_lines)
+                                      if compact else self._publish_telegraph(f"Trofei Globali 4 Club — {label}", trophy_lines))
         progression = self.coefficient_ranking_text(
-            chat_id, "global_clubs", days, window=window, publish_player_details=not compact)
+            chat_id, "global_clubs", days, window=window,
+            publish_player_details=not compact, inline_player_details=compact)
         links[f"dash_p_2_{days}"] = progression.get("report_url") if isinstance(progression, dict) else None
         if not links[f"dash_p_2_{days}"]:
             LOG.warning("CLASSIFICHE LIVE TELEGRAPH UNAVAILABLE: days=%s stage=progression", days)
