@@ -163,6 +163,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(obj.dashboard_command("dash_t_1_15"), "classifica club 15")
         self.assertEqual(obj.dashboard_command("dash_r_1_0"), "report club oggi")
         self.assertIsNone(obj.dashboard_command("dash_p_11_7"))
+
         nodes = obj._telegraph_nodes(["CLASSIFICHE & REPORT", "[[DASH:dash_r_10_30|Apri]]"])
         self.assertEqual(nodes[-1]["children"][0]["attrs"]["href"],
                          "https://t.me/SensGPT_TitaniAbusiviBot?start=dash_r_10_30")
@@ -176,6 +177,34 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(obj.periodic_report_text.call_count, 4)
         self.assertTrue(all(call.args[1] == "global_clubs" and call.kwargs.get("return_full") and call.kwargs.get("publish") is False for call in obj.periodic_report_text.call_args_list))
         self.assertTrue(all(call.args[1] == "global_clubs" for call in obj.coefficient_ranking_text.call_args_list))
+
+    def test_shared_dashboard_reuses_published_periods_without_generating_reports(self):
+        from community_features import _DASHBOARD_CACHE
+        _DASHBOARD_CACHE.clear()
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must not rebuild four periods"))
+        obj._latest_published_dashboard = Mock(side_effect=AssertionError("must not scan Telegraph pages"))
+        labels = {0: "OGGI", 7: "7 GIORNI", 15: "15 GIORNI", 30: "30 GIORNI"}
+        timestamp = datetime.now(timezone.utc).isoformat()
+        def get(_table, params):
+            days = int(params["slot"].split(":")[-1])
+            label = labels[days]
+            lines = [f"CLASSIFICHE — {label}", "Aggiornato", "", f"══ {label} ══", ""]
+            for index in range(3):
+                lines.extend(["🏆 Classifica", f"[[URL:https://telegra.ph/{days}-{index}|Apri]]", ""])
+            return [{"payload": {"report_url": f"https://telegra.ph/period-{days}",
+                                 "fallback": "\n".join(lines), "cached_at": timestamp,
+                                 "cache_revision": 3 if days else 10}}]
+        obj._get = Mock(side_effect=get)
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/indice")
+        payload = obj.rankings_dashboard_text(-1001)
+        self.assertEqual(payload["report_url"], "https://telegra.ph/indice")
+        self.assertEqual(obj._get.call_count, 4)
+        published = obj._publish_telegraph.call_args.args[1]
+        self.assertEqual(sum(line.startswith("[[URL:") for line in published), 12)
+        self.assertEqual(sum(line.startswith("Ultimo aggiornamento:") for line in published), 4)
+        self.assertFalse(any("[[DASH:" in line for line in published))
 
     @patch.dict(os.environ, {"TELEGRAPH_ACCESS_TOKEN": "fake-token"})
     @patch("community_features.requests.get")
