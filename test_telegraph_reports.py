@@ -231,7 +231,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         payload = {"text": "📋 RESOCONTO\n🏆 Coppe totali reali: 100", "report_url": "https://telegra.ph/periodo-7",
-                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 9}
+                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 10}
         obj._get = Mock(return_value=[{"payload": payload}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse the exact period"))
         result = obj.rankings_dashboard_text(-123, 7)
@@ -271,7 +271,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._direct_dashboard_snapshot = Mock(return_value=fresh)
         self.assertEqual(obj.rankings_dashboard_text(-123, 0), fresh)
         obj._direct_dashboard_snapshot.assert_called_once()
-        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 9)
+        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 10)
 
     @patch("community_features.requests.post")
     def test_global_roster_uses_observed_nonregistered_snapshots_at_period_boundary(self, post):
@@ -474,6 +474,57 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("Emz" in line for line in published[first:second]))
         self.assertFalse(any("Nita" in line for line in published[first:second]))
         self.assertTrue(any("Nita" in line for line in published[second:]))
+
+    def test_club_detail_counts_only_its_roster_and_period(self):
+        obj = self.make_features()
+        rows = [
+            {"player_tag": "2GU9UV2RG", "brawler_trophies_before": 500,
+             "trophy_change": 8, "result": "victory"},
+            {"player_tag": "2GU9UV2RG", "brawler_trophies_before": 508,
+             "trophy_change": -7, "result": "defeat"},
+            {"player_tag": "2GUPY9V", "brawler_trophies_before": 500,
+             "trophy_change": 8, "result": "victory"},
+            {"player_tag": "2GU9UV2RG", "brawler_trophies_before": 508,
+             "trophy_change": 5, "result": "victory", "bonus_type": "excluded_duplicate"},
+        ]
+        obj._get = Mock(return_value=rows)
+        obj._publish_telegraph = Mock(side_effect=lambda title, lines: f"https://telegra.ph/{title.split()[1]}")
+        clubs = {"TITANI ABUSIVI": {"delta": 1, "players": 1, "roster": 1,
+                                    "tags": ["2GU9UV2RG"]},
+                 "TAMARRI ABUSIVI": {"delta": 8, "players": 1, "roster": 1,
+                                     "tags": ["2GUPY9V"]}}
+        urls = obj._club_battle_detail_links(clubs, 7)
+        self.assertEqual(len(urls), 2)
+        self.assertEqual(obj._get.call_count, 1)
+        titani = obj._publish_telegraph.call_args_list[0].args[1]
+        tamarri = obj._publish_telegraph.call_args_list[1].args[1]
+        self.assertIn("🎮 Battaglie osservate: 2", titani)
+        self.assertIn("✅ Vittorie osservate: 1", titani)
+        self.assertIn("❌ Sconfitte osservate: 1", titani)
+        self.assertIn("📈 Win rate osservato: 50,0%", titani)
+        self.assertIn("🎮 Battaglie osservate: 1", tamarri)
+        self.assertIn("❌ Sconfitte osservate: 0", tamarri)
+
+    def test_club_ranking_links_to_its_observed_results(self):
+        obj = self.make_features()
+        published = {}
+        def publish(title, lines):
+            published[title] = lines
+            return "https://telegra.ph/" + title.replace(" ", "-")
+        obj._publish_telegraph = Mock(side_effect=publish)
+        obj._club_battle_detail_links = Mock(return_value={
+            "TITANI ABUSIVI": "https://telegra.ph/titani-battaglie"})
+        obj._build_rankings_dashboard_text = Mock(return_value=[
+            "CLASSIFICHE", "Aggiornato: ora", "[[DASH:dash_t_1_7|Apri]]",
+            "[[DASH:dash_t_2_7|Apri]]", "[[DASH:dash_p_2_7|Apri]]"])
+        report_lines = ["REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI",
+                        "1. Tony +12", "🔥 CLASSIFICA PROGRESSIONE", "📊 RESOCONTO", "🎮 Battaglie: 2"]
+        obj.periodic_report_text = Mock(return_value=("REPORT", report_lines, {
+            "TITANI ABUSIVI": {"delta": 12, "players": 1, "roster": 2, "tags": ["2GU9UV2RG"]}}))
+        obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progressione"})
+        obj._direct_dashboard_snapshot(-1001, 7, None)
+        lines = published["Classifica 4 Club — 7 GIORNI"]
+        self.assertIn("[[PLAYER:https://telegra.ph/titani-battaglie|1|TITANI ABUSIVI|+12 (1/2 giocatori)]]", lines)
 
     @patch("community_features.requests.post")
     def test_progression_ranking_is_one_line_per_player_and_links_to_stats(self, post):
