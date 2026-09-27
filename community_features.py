@@ -31,7 +31,7 @@ _SKIN_CATEGORY_URLS = {}
 _SKIN_CATEGORY_URLS_LOCK = threading.Lock()
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_FORMAT_REVISION = 12
+_DASHBOARD_FORMAT_REVISION = 13
 _DASHBOARD_SOURCE_MARKER = "Liste: valori positivi verificati · copertura club, coefficiente medio e schede giocatori cliccabili."
 _PROGRESSION_DETAIL_CACHE = {}
 _PROGRESSION_DETAIL_LOCK = threading.Lock()
@@ -558,6 +558,18 @@ class CommunityFeatures:
         if placement is not None:
             return f"Posizione {int(placement)}"
         return "Risultato non disponibile"
+
+    @staticmethod
+    def _observed_battle_outcome(row):
+        """Use the explicit outcome, then the signed trophy change when absent."""
+        result = str(row.get("result") or "").strip().casefold()
+        if result:
+            return result
+        try:
+            delta = int(row["trophy_change"])
+        except (KeyError, TypeError, ValueError):
+            return "other"
+        return "victory" if delta > 0 else "defeat" if delta < 0 else "other"
 
     @staticmethod
     def _progression_bonus_it(value):
@@ -2625,8 +2637,8 @@ class CommunityFeatures:
         raw_total = sum(int(r.get("trophy_change") or 0) for r in rows)
         weighted_total = int(Decimal(str(sum(weighted_delta(r) for r in rows))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
         extra_total = sum(int(r.get("observed_extra") or 0) for r in rows if r.get("observed_extra") is not None)
-        total_wins = sum(str(r.get("result") or "").casefold() == "victory" for r in rows)
-        total_losses = sum(str(r.get("result") or "").casefold() == "defeat" for r in rows)
+        total_wins = sum(self._observed_battle_outcome(r) == "victory" for r in rows)
+        total_losses = sum(self._observed_battle_outcome(r) == "defeat" for r in rows)
         def results_line(wins, losses):
             decided = wins + losses
             rate = f"{100 * wins / decided:.1f}".replace(".", ",") if decided else "n.d."
@@ -2652,8 +2664,8 @@ class CommunityFeatures:
             weighted = int(Decimal(str(sum(weighted_delta(r) for r in br))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
             bonus = weighted - positive
             progression_coefficient = (float(weighted) / positive) if positive > 0 else 0.0
-            wins = sum(1 for r in br if str(r.get("result") or "").casefold() == "victory")
-            losses = sum(1 for r in br if str(r.get("result") or "").casefold() == "defeat")
+            wins = sum(self._observed_battle_outcome(r) == "victory" for r in br)
+            losses = sum(self._observed_battle_outcome(r) == "defeat" for r in br)
             starts = [int(r.get("brawler_trophies_before") or 0) for r in br]
             ends = [max(0, int(r.get("brawler_trophies_before") or 0)+int(r.get("trophy_change") or 0)) for r in br]
             first, last = dt_local(br[0]["battle_time"]), dt_local(br[-1]["battle_time"])
@@ -3076,8 +3088,8 @@ class CommunityFeatures:
         positive = sum(max(0, int(x.get("trophy_change") or 0)) for x in matches)
         lost = sum(min(0, int(x.get("trophy_change") or 0)) for x in matches)
         bonus = pts - positive
-        wins = sum(1 for x in matches if str(x.get("result") or "").casefold() == "victory")
-        losses = sum(1 for x in matches if str(x.get("result") or "").casefold() == "defeat")
+        wins = sum(self._observed_battle_outcome(x) == "victory" for x in matches)
+        losses = sum(self._observed_battle_outcome(x) == "defeat" for x in matches)
         draws = sum(1 for x in matches if str(x.get("result") or "").casefold() == "draw")
         decided = wins + losses
         win_rate = (wins * 100.0 / decided) if decided else 0.0
@@ -4626,8 +4638,8 @@ class CommunityFeatures:
         name = (progression.get("player_name") or
                 next((r.get("player_name") for r in reversed(rows) if r.get("player_name")), tag))
         delta = (ending[1] - baseline[1]) if baseline and ending else None
-        wins = sum(str(r.get("result") or "").casefold() == "victory" for r in rows)
-        losses = sum(str(r.get("result") or "").casefold() == "defeat" for r in rows)
+        wins = sum(self._observed_battle_outcome(r) == "victory" for r in rows)
+        losses = sum(self._observed_battle_outcome(r) == "defeat" for r in rows)
         grouped = {}
         for row in rows:
             brawler = str(row.get("brawler_name") or "Sconosciuto")
@@ -4739,8 +4751,11 @@ class CommunityFeatures:
                         and r.get("brawler_trophies_before") is not None
                         and not str(r.get("bonus_type") or "").startswith("excluded")]
             name = str(item.get("_name") or item.get("name") or item.get("player_name") or tag).replace("|", " ").replace("]]", "")
-            wins = sum(str(r.get("result") or "").casefold() == "victory" for r in observed)
-            losses = sum(str(r.get("result") or "").casefold() == "defeat" for r in observed)
+            wins = sum(self._observed_battle_outcome(r) == "victory" for r in observed)
+            losses = sum(self._observed_battle_outcome(r) == "defeat" for r in observed)
+            placements = sum(self._observed_battle_outcome(r) not in ("victory", "defeat")
+                             and r.get("placement") is not None for r in observed)
+            other = len(observed) - wins - losses - placements
             trophies = sum(max(0, int(r["trophy_change"])) for r in observed)
             progression = sum(max(0, score_brawler_trophies(int(r["brawler_trophies_before"]) + int(r["trophy_change"]))
                                   - score_brawler_trophies(int(r["brawler_trophies_before"])))
@@ -4766,9 +4781,15 @@ class CommunityFeatures:
             ratio = f"{value / cups:.6f}".replace(".", ",") if cups else "n.d."
             lines = [f"[[PLAYERHEADING:{tag}|{name}]]", f"🏷️ Tag: #{tag}",
                      f"⏱️ Tempo di gioco: {seconds // 3600}h {(seconds % 3600) // 60:02d}m",
-                     f"🎮 Partite: {int(item.get('battle_count') or len(observed))}",
+                     f"🎮 Partite osservate: {len(observed) if battle_log_available else int(item.get('battle_count') or len(observed))}",
                      (f"✅ Vittorie: {wins} · ❌ Sconfitte: {losses}" if battle_log_available
                       else "✅ Vittorie e sconfitte: dati incompleti"),
+                     *([*([f"📍 Posizionamenti senza saldo Trofei: {placements}"] if placements else []),
+                        *([f"➖ Pareggi/altri esiti: {other}"] if other else []),
+                        (f"📈 Win rate sulle {wins + losses} partite con esito: "
+                         f"{wins / (wins + losses) * 100:.1f}%".replace(".", ",")
+                         if wins + losses else "📈 Win rate: n.d. (nessun esito vittoria/sconfitta)")]
+                       if battle_log_available else []),
                      f"🦸 Brawler più usato: {brawler if battle_log_available else 'n.d. (log incompleto)'}",
                      f"🏆 Coppe: +{self.number_formatter(cups)}",
                      f"⚡ Bonus: +{self.number_formatter(value - cups)}",
@@ -4785,7 +4806,7 @@ class CommunityFeatures:
                 points = (round(score_brawler_trophies(before + delta) - score_brawler_trophies(before))
                           if delta > 0 else 0)
                 lines.append(f"{index}. {when:%d/%m %H:%M} · {r.get('brawler_name') or 'Brawler'} · "
-                             f"{self._progression_result_it(r.get('result'), r.get('placement'))} · "
+                             f"{self._progression_result_it(self._observed_battle_outcome(r), r.get('placement'))} · "
                              f"{self._progression_mode_it(r.get('mode'))} · "
                              f"🎯 Fascia iniziale: {band_label} ({before} 🏆 prima) · "
                              f"{'+' if delta > 0 else ''}{delta} 🏆 · +{points} 🔥")
@@ -4834,7 +4855,7 @@ class CommunityFeatures:
         }
         if not club_by_tag:
             return {}
-        results = {club: {"battles": 0, "wins": 0, "losses": 0, "other": 0,
+        results = {club: {"battles": 0, "wins": 0, "losses": 0, "placements": 0, "other": 0,
                           "cups": 0, "progression": 0} for club in club_totals}
         tags = sorted(club_by_tag)
         try:
@@ -4842,7 +4863,7 @@ class CommunityFeatures:
                 group = tags[index:index + 20]
                 for offset in range(0, 100000, 1000):
                     rows = self._get("observed_trophy_battles", {
-                        "select": "player_tag,brawler_trophies_before,trophy_change,result,bonus_type",
+                        "select": "player_tag,brawler_trophies_before,trophy_change,result,placement,bonus_type",
                         "player_tag": f"in.({','.join(group)})",
                         "and": f"(battle_time.gte.{start.astimezone(timezone.utc).isoformat()},battle_time.lt.{end.astimezone(timezone.utc).isoformat()})",
                         "order": "battle_time.asc,player_tag.asc",
@@ -4854,9 +4875,10 @@ class CommunityFeatures:
                             continue
                         stats = results[club]
                         stats["battles"] += 1
-                        result = str(row.get("result") or "").casefold()
+                        result = self._observed_battle_outcome(row)
                         stats["wins" if result == "victory" else
-                              "losses" if result == "defeat" else "other"] += 1
+                              "losses" if result == "defeat" else
+                              "placements" if row.get("placement") is not None else "other"] += 1
                         try:
                             change = int(row["trophy_change"])
                             before = int(row["brawler_trophies_before"])
@@ -4887,8 +4909,9 @@ class CommunityFeatures:
                      f"🎮 Battaglie osservate: {stats['battles']}",
                      f"✅ Vittorie osservate: {stats['wins']}",
                      f"❌ Sconfitte osservate: {stats['losses']}",
-                     f"➖ Altri risultati osservati: {stats['other']}",
-                     f"📈 Win rate osservato: {win_rate}",
+                     *([f"📍 Posizionamenti senza saldo Trofei: {stats['placements']}"] if stats['placements'] else []),
+                     *([f"➖ Pareggi/altri esiti: {stats['other']}"] if stats['other'] else []),
+                     f"📈 Win rate sulle {games} partite con esito: {win_rate}",
                      f"🏆 Coppe positive: +{self.number_formatter(stats['cups'])}",
                      f"⚡ Bonus Progressione: +{self.number_formatter(stats['progression'] - stats['cups'])}",
                      f"🔥 Progressione: +{self.number_formatter(stats['progression'])}"]
@@ -6814,17 +6837,36 @@ class CommunityFeatures:
                 for member, days, risk in inactive:
                     last_warning = self._parse_dt(member.get("last_warning_at"))
                     if days >= warn_days and (not last_warning or now_utc - last_warning >= timedelta(hours=24)):
-                        name = member.get("display_name") or member.get("telegram_username") or str(member.get("telegram_user_id"))
+                        from telegram.helpers import mention_html
+                        from telegram.error import TelegramError
+                        user_id = int(member["telegram_user_id"])
+                        name = member.get("display_name") or member.get("telegram_username") or "Membro"
+                        mention = mention_html(user_id, str(name))
                         await context.bot.send_message(
                             chat_id=chat_id,
-                            text=f"Avviso inattività: {name} risulta inattivo nel gruppo da {days} giorni. Soglia kick: {kick_days} giorni.",
+                            text=(f"⚠️ Avviso inattività: {mention}, il bot non rileva attività nel gruppo "
+                                  f"da {days} giorni. Soglia kick: {kick_days} giorni."),
+                            parse_mode="HTML",
                         )
+                        try:
+                            await context.bot.send_message(
+                                chat_id=user_id,
+                                text=(f"⚠️ Ciao {name}, abbiamo notato che il bot non rileva tuoi messaggi "
+                                      f"nel gruppo da {days} giorni. La soglia di inattività è {kick_days} giorni: "
+                                      "superandola potresti essere rimosso dal gruppo. "
+                                      "Scrivi nel gruppo per aggiornare la tua attività; se sei assente, "
+                                      "puoi segnalare l'assenza con il comando 'assenza N'. "
+                                      "Il bot misura i messaggi che vede nel gruppo, non i tuoi accessi a Telegram."),
+                            )
+                        except TelegramError as exc:
+                            LOG.info("INACTIVITY PRIVATE NOTICE UNAVAILABLE: chat=%s user=%s error=%s",
+                                     chat_id, user_id, type(exc).__name__)
                         self._patch(
                             "community_members",
                             {"last_warning_at": now_utc.isoformat()},
                             params={
                                 "chat_id": f"eq.{chat_id}",
-                                "telegram_user_id": f"eq.{int(member['telegram_user_id'])}",
+                                "telegram_user_id": f"eq.{user_id}",
                             },
                         )
             except Exception as exc:
