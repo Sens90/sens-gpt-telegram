@@ -880,7 +880,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             patch.object(obj, "periodic_report_text", return_value=("REPORT", ["REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI", "1. player +10", "", "🔥 CLASSIFICA PROGRESSIONE", "📊 RESOCONTO", "🏆 Coppe totali reali: 100"], {"TITANI ABUSIVI": {"delta": 10, "players": 2}})),
         ):
             result = obj.scheduled_dashboard_snapshot(-1001, 15, (start, end))
-        self.assertEqual(result["report_url"], "https://telegra.ph/page-3")
+        self.assertEqual(result["report_url"], "https://telegra.ph/page-4")
         self.assertEqual(sum("[[URL:" in row for row in captured[-1]), 3)
         self.assertIn("📋 RESOCONTO", result["text"])
         self.assertIn("🏆 Coppe totali reali: 100", result["text"])
