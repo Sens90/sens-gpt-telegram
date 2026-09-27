@@ -1487,11 +1487,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             ]]}}
         }
         obj._get = Mock(side_effect=[
-            [battle],
             [
                 {"name_en": "EL PRIMO", "name_it": "EL PRIMO"},
                 {"name_en": "SURGE", "name_it": "ENERGETIK"},
             ],
+            [battle],
         ])
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/progressione-el-primo")
 
@@ -1521,8 +1521,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             "raw_battle": {"battle": {}},
         }
         obj._get = Mock(side_effect=[
-            [battle],
             [{"name_en": "EL PRIMO", "name_it": "El Primo"}],
+            [battle],
         ])
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/progressione-el-primo")
 

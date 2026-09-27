@@ -76,7 +76,12 @@ def _pro_map(result):
     return {'name':name,'mode':mode,'sets':sets,'priority':priority,'comps':comps}
 
 
-def render_current_meta(search_data, context='both'):
+def render_current_meta(search_data, context='both', brawler_names_it=None):
+    names_it = {str(key).casefold(): str(value) for key, value in (brawler_names_it or {}).items() if value}
+
+    def italian(name):
+        return names_it.get(str(name).casefold(), name)
+
     tiers = {}
     pro_maps, seen_maps = [], set()
     for result in (search_data or {}).get('results', []):
@@ -99,7 +104,7 @@ def render_current_meta(search_data, context='both'):
     lines = ['META ATTUALE — TIER LIST BRAWLTRACK', '', 'Meta generale:']
     for tier in ('S','A','B','C','D','F'):
         names = tiers.get(tier)
-        if names: lines.append(f"- Tier {tier}: " + ', '.join(names))
+        if names: lines.append(f"- Tier {tier}: " + ', '.join(italian(name) for name in names))
 
     if pro_maps:
         lines += ['', 'COMPETITIVO / PRO — approfondimento separato:']
@@ -109,9 +114,9 @@ def render_current_meta(search_data, context='both'):
             if item['sets'] is not None: header += f" ({item['sets']} set)"
             lines.append('- ' + header)
             if item['priority']:
-                lines.append('  Pick prioritari: ' + '; '.join(f'{n} — Utilizzo {u}, Vittorie {w}' for n,u,w in item['priority']))
+                lines.append('  Pick prioritari: ' + '; '.join(f'{italian(n)} — Utilizzo {u}, Vittorie {w}' for n,u,w in item['priority']))
             if item['comps']:
-                lines.append('  Composizioni finali: ' + '; '.join(f"{' + '.join(team)} — {sets} set, Vittorie {wr}" for team,sets,wr in item['comps']))
+                lines.append('  Composizioni finali: ' + '; '.join(f"{' + '.join(italian(n) for n in team)} — {sets} set, Vittorie {wr}" for team,sets,wr in item['comps']))
 
     lines += ['', 'Fonte meta generale: Tier List BrawlTrack. Le statistiche dei singoli Brawler non vengono più usate per decidere chi è nel meta.']
     return '\n'.join(lines)
