@@ -38,6 +38,7 @@ TROPHY_COEFFICIENT_BANDS = (
 PREMIUM_CAP = 3000
 WEIGHT_SCALE = 10_000
 COEFFICIENT_FORMULA_VERSION = 2
+REFERENCE_BRAWLER_TROPHIES = 1000
 
 
 def score_brawler_trophies(trophies):
@@ -87,9 +88,13 @@ def calculate_trophy_coefficient(brawler_trophies, official_total=None):
 
     rounded_score = int(weighted_total.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     coefficient = float(weighted_total / raw_total) if raw_total else 1.0
+    # The comparison scale is anchored to an actual 1,000-trophy Brawler;
+    # it never changes the marginal band weights or the progression score.
+    reference = float(score_brawler_trophies(REFERENCE_BRAWLER_TROPHIES) / REFERENCE_BRAWLER_TROPHIES)
     return {
         "score": rounded_score,
         "coefficient": round(coefficient, 6),
+        "relative_index_1000": round(coefficient / reference, 6),
         "detail_total": detail_total,
         "official_total": raw_total,
     }

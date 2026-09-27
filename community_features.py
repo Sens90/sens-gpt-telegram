@@ -2497,6 +2497,7 @@ class CommunityFeatures:
         result = calculate_trophy_coefficient(player.get("brawler_trophies"), player.get("trophies"))
         value = int(result["score"]) - int(result["official_total"])
         coefficient = f'{result["coefficient"]:.6f}'.replace(".", ",")
+        relative_index = f'{result["relative_index_1000"]:.6f}'.replace(".", ",")
         return "\n".join([
             f'COEFFICIENTE ABUSIVO — {player.get("name") or player_tag}',
             "",
@@ -2504,6 +2505,7 @@ class CommunityFeatures:
             f'Punteggio per coefficiente: {self.number_formatter(result["score"])}',
             f'Valore coefficiente: {self.number_formatter(value)}',
             f'Coefficiente Abusivo: {coefficient}',
+            f'Indice relativo a 1.000 coppe: {relative_index} (1,000000 = Brawler a 1.000 coppe)',
         ])
 
     def progression_detail_text(self, player_tag, days=0):

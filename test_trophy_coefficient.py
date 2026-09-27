@@ -53,3 +53,15 @@ def test_official_total_is_preserved_when_detail_is_incomplete():
     result = calculate_trophy_coefficient([{"trophies": 1000}], 1100)
     assert result["score"] >= 1100
     assert result["official_total"] == 1100
+
+
+def test_relative_index_is_anchored_at_1000_without_changing_weights():
+    zero = calculate_trophy_coefficient([], 0)
+    eight = calculate_trophy_coefficient([{"trophies": 800}], 800)
+    anchor = calculate_trophy_coefficient([{"trophies": 1000}], 1000)
+    twelve = calculate_trophy_coefficient([{"trophies": 1200}], 1200)
+    assert zero["relative_index_1000"] == 0.94679
+    assert eight["relative_index_1000"] < 1
+    assert anchor["relative_index_1000"] == 1
+    assert twelve["relative_index_1000"] > 1
+    assert anchor["coefficient"] == 1.0562
