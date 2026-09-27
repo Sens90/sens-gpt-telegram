@@ -4646,6 +4646,9 @@ class CommunityFeatures:
         """Freeze every report page before publishing a dashboard with direct Telegraph links."""
         if days not in (0, 7, 15, 30) or not window or window[0] >= window[1]:
             raise ValueError("Invalid scheduled dashboard period")
+        # The dated player/club dossiers share pages with anchored links.
+        # Publishing a page per player can trip Telegraph's FLOOD_WAIT before
+        # the frozen slot payload exists; retries must remain possible.
         return self._direct_dashboard_snapshot(chat_id, days, window, compact=True)
 
     def yesterday_ranking_snapshot(self, chat_id):
@@ -4926,7 +4929,7 @@ class CommunityFeatures:
                  if count else "n.d.")
         return f"🧮 Coeff. medio membri: {value} ({count}/{roster} con coppe positive)"
 
-    def _club_battle_detail_links(self, club_totals, days, window=None):
+    def _club_battle_detail_links(self, club_totals, days, window=None, publish=True):
         """Publish each complete roster's observed results for the selected period."""
         from trophy_coefficient import score_brawler_trophies
         end = window[1] if window else datetime.now(timezone.utc)
@@ -5001,6 +5004,9 @@ class CommunityFeatures:
                      f"⚡ Bonus Progressione: +{self.number_formatter(stats['progression'] - stats['cups'])}",
                      f"🔥 Progressione: +{self.number_formatter(stats['progression'])}"]
             lines.append(self._club_average_progression_line(roster))
+            if not publish:
+                links[club] = lines
+                continue
             url = self._publish_telegraph(f"Risultati {club} — {label}", lines)
             if url:
                 links[club] = url
@@ -5048,6 +5054,8 @@ class CommunityFeatures:
         measured = sum(result["players"] for result in club_totals.values())
         roster = sum(result.get("roster", result["players"]) for result in club_totals.values())
         positive_clubs = [(name, result) for name, result in ranked_clubs if result["delta"] > 0]
+        club_detail_lines = (self._club_battle_detail_links(club_totals, days, window, publish=False)
+                             if compact else {})
         club_detail_links = {} if compact else self._club_battle_detail_links(club_totals, days, window)
         for position, (name, result) in enumerate(positive_clubs, 1):
             delta = result["delta"]
@@ -5057,7 +5065,7 @@ class CommunityFeatures:
             url = club_detail_links.get(name) or (f"#{anchor}" if compact else None)
             club_lines.append((f"[[PLAYER:{url}|{position}|{self._player_link_name(name)}|{score}]]"
                                if url else f"{position}. {name} — {score}"))
-            club_lines.extend([self._club_average_progression_line(result), ""])
+            club_lines.append("")
         if not positive_clubs:
             club_lines.append("Nessun club con crescita positiva nel periodo." if measured else
                               "Storico Trofei non ancora sufficiente per calcolare questo periodo. "
@@ -5066,10 +5074,13 @@ class CommunityFeatures:
         if compact:
             for name, result in positive_clubs:
                 anchor = re.sub(r"[^A-Z0-9]+", "-", name.upper()).strip("-")
+                detail = club_detail_lines.get(name)
                 club_lines.extend(["", f"[[CLUBHEADING:{anchor}|{name}]]",
-                                   f"👥 Giocatori: {result['players']}/{result.get('roster', result['players'])}",
-                                   f"🏆 Saldo Trofei: +{self.number_formatter(result['delta'])}",
-                                   self._club_average_progression_line(result)])
+                                   *(detail[3:] if detail else [
+                                       f"👥 Giocatori: {result['players']}/{result.get('roster', result['players'])}",
+                                       f"🏆 Saldo Trofei: +{self.number_formatter(result['delta'])}",
+                                       "🎮 Risultati del roster: temporaneamente non disponibili.",
+                                       self._club_average_progression_line(result)])])
             first_detail = next((i for i, row in enumerate(club_lines)
                                  if row.startswith("[[CLUBHEADING:")), None)
             if first_detail is not None:
