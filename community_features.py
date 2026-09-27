@@ -2572,20 +2572,7 @@ class CommunityFeatures:
                     return float(weight)
             return 1.0
 
-        try:
-            catalog_rows = self._get("brawlers_catalog", {"select": "name_en,name_it"}) or []
-        except Exception as exc:
-            LOG.warning("PROGRESSION DETAIL LOCALIZATION ERROR: type=%s", type(exc).__name__)
-            catalog_rows = []
-        brawler_names_it = {
-            str(item.get("name_en") or "").strip().casefold():
-                str(item.get("name_it") or item.get("name_en") or "").strip()
-            for item in catalog_rows if item.get("name_en")
-        }
-
-        def brawler_name_it(value):
-            source = str(value or "").strip()
-            return brawler_names_it.get(source.casefold()) or source or "Brawler"
+        brawler_name_it = self._brawler_name_translator()
 
         def team_context(row):
             team = row.get("team_composition")
@@ -2996,6 +2983,8 @@ class CommunityFeatures:
         wanted = str(brawler_name or "").strip()
         if not tag or not wanted:
             return "Giocatore o Brawler non disponibile."
+        brawler_name_it = self._brawler_name_translator()
+        wanted = brawler_name_it.canonical.get(wanted.casefold(), wanted)
         now_local = datetime.now(ROME)
         if int(days or 0) == 0:
             start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -3028,24 +3017,11 @@ class CommunityFeatures:
                 "brawler_trophies_before": "not.is.null",
                 "limit": "5000",
             })
-            available = sorted({str(x.get("brawler_name") or "") for x in available_rows or [] if x.get("brawler_name")})
+            available = sorted({brawler_name_it(x.get("brawler_name")) for x in available_rows or [] if x.get("brawler_name")})
             suffix = ("\nBrawler osservati nel periodo: " + ", ".join(available)) if available else ""
-            return f"Nessuna battaglia valida di {wanted} osservata nel periodo {period}.{suffix}"
+            return f"Nessuna battaglia valida di {brawler_name_it(wanted)} osservata nel periodo {period}.{suffix}"
 
-        try:
-            catalog_rows = self._get("brawlers_catalog", {"select": "name_en,name_it"}) or []
-        except Exception as exc:
-            LOG.warning("PROGRESSION BRAWLER LOCALIZATION ERROR: type=%s", type(exc).__name__)
-            catalog_rows = []
-        brawler_names_it = {
-            str(item.get("name_en") or "").strip().casefold():
-                str(item.get("name_it") or item.get("name_en") or "").strip()
-            for item in catalog_rows if item.get("name_en")
-        }
-
-        def brawler_name_it(value):
-            source = str(value or "").strip()
-            return brawler_names_it.get(source.casefold()) or source or "Brawler"
+        brawler_name_it = self._brawler_name_translator()
 
         def local_dt(value):
             return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(ROME)
@@ -4768,6 +4744,8 @@ class CommunityFeatures:
         def translate(value):
             original = str(value or "").strip()
             return names.get(original.casefold()) or original or "Brawler"
+
+        translate.canonical = {name.casefold(): english for english, name in names.items()}
 
         return translate
 
