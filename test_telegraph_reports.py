@@ -204,6 +204,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["report_url"], "https://telegra.ph/indice")
         self.assertEqual(obj._get.call_count, 8)
         published = obj._publish_telegraph.call_args.args[1]
+        self.assertFalse(any(line.startswith(("Indice creato:", "Liste:", "Ogni periodo")) for line in published))
         self.assertEqual(sum(line.startswith("[[URL:") for line in published), 12)
         self.assertEqual(sum(line.startswith("Ultimo aggiornamento:") for line in published), 4)
         self.assertFalse(any("[[DASH:" in line for line in published))
