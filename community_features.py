@@ -3021,8 +3021,6 @@ class CommunityFeatures:
             suffix = ("\nBrawler osservati nel periodo: " + ", ".join(available)) if available else ""
             return f"Nessuna battaglia valida di {brawler_name_it(wanted)} osservata nel periodo {period}.{suffix}"
 
-        brawler_name_it = self._brawler_name_translator()
-
         def local_dt(value):
             return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(ROME)
 
