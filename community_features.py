@@ -31,7 +31,7 @@ _SKIN_CATEGORY_URLS = {}
 _SKIN_CATEGORY_URLS_LOCK = threading.Lock()
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_FORMAT_REVISION = 14
+_DASHBOARD_FORMAT_REVISION = 15
 _DASHBOARD_SOURCE_MARKER = "Liste: valori positivi verificati · copertura club, coefficiente medio e schede giocatori cliccabili."
 _PROGRESSION_DETAIL_CACHE = {}
 _PROGRESSION_DETAIL_LOCK = threading.Lock()
@@ -190,7 +190,7 @@ Mostra Resoconto e classifiche cliccabili dei 15 giorni.
 Mostra Resoconto e classifiche cliccabili dei 30 giorni.
 
 Sono accettate anche le forme Classifica 7, Classifica 15 e Classifica 30. Gli invii automatici pubblicano Resoconto e indice con link Telegraph diretti alle 06:00, 12:00, 18:00 e 23:59 per oggi; ogni lunedì alle 06:00 per la settimana conclusa; il 16 alle 06:00 per i giorni 1–15; l'ultimo giorno del mese alle 23:59 per i giorni 16–fine mese; il 1° alle 06:00 per il mese solare precedente.
-Il Coeff. medio Progressione nel Resoconto è Progressione complessiva divisa per Coppe positive dello stesso periodo e ambito; senza coppe positive non è calcolabile.
+La Progressione netta parte dal saldo Trofei dell'account e aggiunge il bonus ponderato delle battaglie positive. Il Coeff. medio dei bonus nel Resoconto divide i punti ponderati positivi per le coppe positive; senza coppe positive non è calcolabile.
 Per le classifiche Trofei dei 4 Club si usa il roster completo: la crescita del periodo si calcola solo quando esistono misure reali prima dell'inizio e alla fine. Ogni club indica quanti giocatori hanno uno storico sufficiente rispetto al roster completo. Nelle liste compaiono solo crescite positive.
 
 ⚡ COMANDI DIRETTI DI OGGI
@@ -2635,7 +2635,22 @@ class CommunityFeatures:
         for row in rows:
             grouped.setdefault(str(row.get("brawler_name") or "Brawler"), []).append(row)
         raw_total = sum(int(r.get("trophy_change") or 0) for r in rows)
+        positive_total = sum(max(0, int(r.get("trophy_change") or 0)) for r in rows)
         weighted_total = int(Decimal(str(sum(weighted_delta(r) for r in rows))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        bonus_total = weighted_total - positive_total
+        account_saldo = None
+        if callable(getattr(self, "history_fetcher", None)):
+            try:
+                history = self.history_fetcher(tag, days=max(int(days) + 2, 10)) or []
+                current = history[-1].get("trophies") if history else None
+                if current is not None:
+                    account_saldo = self.change_calculator(history, int(current)).get(
+                        "today" if int(days) == 0 else {7: "7d", 15: "15d", 30: "30d"}.get(int(days)))
+            except (ValueError, TypeError, KeyError, requests.RequestException) as exc:
+                LOG.warning("PROGRESSION ACCOUNT SALDO UNAVAILABLE: tag=%s error=%s", tag, type(exc).__name__)
+        net_progression = int(account_saldo) + bonus_total if account_saldo is not None else None
+        def signed(value):
+            return ("+" if value > 0 else "") + self.number_formatter(value)
         extra_total = sum(int(r.get("observed_extra") or 0) for r in rows if r.get("observed_extra") is not None)
         total_wins = sum(self._observed_battle_outcome(r) == "victory" for r in rows)
         total_losses = sum(self._observed_battle_outcome(r) == "defeat" for r in rows)
@@ -2648,9 +2663,11 @@ class CommunityFeatures:
             f"PROGRESSIONE ABUSIVA — {name}", f"Periodo: {period}",
             f"Partite osservate valide: {len(rows)}",
             results_line(total_wins, total_losses),
-            f"Coppe nette: {'+' if raw_total > 0 else ''}{self.number_formatter(raw_total)}",
-            f"Punteggio Progressione: {'+' if weighted_total > 0 else ''}{self.number_formatter(weighted_total)}",
-            f"Valore difficoltà: {'+' if weighted_total-raw_total > 0 else ''}{self.number_formatter(weighted_total-raw_total)}",
+            f"Saldo Trofei account: {signed(int(account_saldo)) if account_saldo is not None else 'storico insufficiente'}",
+            f"Coppe positive osservate: +{self.number_formatter(positive_total)}",
+            f"Saldo battaglie osservate: {signed(raw_total)}",
+            f"Bonus Progressione: +{self.number_formatter(bonus_total)}",
+            f"Progressione netta: {signed(net_progression) if net_progression is not None else 'storico insufficiente'}",
             f"Extra osservati vs delta base: +{self.number_formatter(extra_total)}", "",
             "DETTAGLIO BRAWLER"
         ]
@@ -2673,7 +2690,7 @@ class CommunityFeatures:
                       results_line(wins, losses),
                       f"Coppe osservate: {min(starts+ends):,}–{max(starts+ends):,}".replace(",", "."),
                       f"Coppe positive: +{self.number_formatter(positive)} | Coppe perse: {self.number_formatter(lost)} | Saldo: {'+' if raw > 0 else ''}{self.number_formatter(raw)}",
-                      f"Bonus: {'+' if bonus > 0 else ''}{self.number_formatter(bonus)} | Progressione: {'+' if weighted > 0 else ''}{self.number_formatter(weighted)}",
+                      f"Bonus: +{self.number_formatter(bonus)} | Progressione osservata: {signed(raw + bonus)}",
                       f"Coeff. Progressione: {progression_coefficient:.6f}".replace(".", ","),
                       "Fasce: " + " · ".join(band_labels(min(starts+ends), max(starts+ends)))]
             sessions=[]; current=[]
@@ -2758,7 +2775,8 @@ class CommunityFeatures:
                 overview = full_lines
                 break
             points = int(Decimal(str(sum(weighted_delta(r) for r in br))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-            overview.extend(["", f"🦸 {brawler_name_it(brawler)}", f"Partite: {len(br)} · Progressione: +{self.number_formatter(points)}",
+            net_brawler = sum(int(r.get("trophy_change") or 0) for r in br) + points - sum(max(0, int(r.get("trophy_change") or 0)) for r in br)
+            overview.extend(["", f"🦸 {brawler_name_it(brawler)}", f"Partite: {len(br)} · Progressione osservata: {signed(net_brawler)}",
                              results_line(sum(str(r.get("result") or "").casefold() == "victory" for r in br),
                                           sum(str(r.get("result") or "").casefold() == "defeat" for r in br)),
                              f"[[URL:{detail_url}|Apri]]"])
@@ -2770,8 +2788,9 @@ class CommunityFeatures:
                 f"Periodo: {period}",
                 f"Partite osservate valide: {len(rows)}",
                 results_line(total_wins, total_losses),
-                f"Coppe nette: {'+' if raw_total > 0 else ''}{self.number_formatter(raw_total)}",
-                f"Punteggio Progressione: {'+' if weighted_total > 0 else ''}{self.number_formatter(weighted_total)}",
+                f"Saldo Trofei account: {signed(int(account_saldo)) if account_saldo is not None else 'storico insufficiente'}",
+                f"Bonus Progressione: +{self.number_formatter(bonus_total)}",
+                f"Progressione netta: {signed(net_progression) if net_progression is not None else 'storico insufficiente'}",
             ]
             return self._telegraph_reply(summary, report_url, lines)
         return "\n".join(lines)
@@ -3178,10 +3197,12 @@ class CommunityFeatures:
         return "\n".join(lines)
 
     def coefficient_ranking_text(self, chat_id, scope="community", days=None, window=None,
-                                 publish_player_details=True, inline_player_details=False):
+                                 publish_player_details=True, inline_player_details=False,
+                                 trophy_delta_by_tag=None):
         scope = str(scope or "community").strip().casefold()
         club_name = None
         registered_only = False
+        global_single = scope.startswith("global_single:")
 
         if scope == "community":
             # All registered users, regardless of club.
@@ -3278,12 +3299,28 @@ class CommunityFeatures:
             member = member_by_tag.get(str(row.get("player_tag") or "").upper(), {})
             row["name"] = row.get("player_name") or member.get("player_name") or member.get("display_name") or row.get("player_tag")
             row["value"] = row.get("coefficient_value") if days is None else row.get("progression_value")
+        if days is not None and trophy_delta_by_tag is None:
+            _summary, _report, _clubs, trophy_delta_by_tag = self.periodic_report_text(
+                chat_id, ("global_clubs" if scope == "global_clubs" else
+                          f"global_single:{scope}" if global_single else scope), days,
+                window=window, return_full=True, return_deltas=True, publish=False,
+                link_players=False,
+            )
+        if days is not None:
+            for row in rows:
+                tag = str(row.get("player_tag") or "").lstrip("#").upper()
+                cups = int(row.get("positive_trophies") or 0)
+                weighted = int(row.get("progression_value") or 0)
+                row["_bonus"] = weighted - cups
+                row["_weighted"] = weighted
+                row["value"] = ((trophy_delta_by_tag or {})[tag] + row["_bonus"]
+                                if tag in (trophy_delta_by_tag or {}) else None)
         rows = [row for row in rows if row.get("value") is not None
                 and (days is None or int(row["value"]) > 0)]
         rows.sort(
             key=lambda row: (
                 int(row["value"]),
-                (float(row["value"]) / int(row.get("positive_trophies") or 0))
+                (float(row.get("_weighted") or 0) / int(row.get("positive_trophies") or 0))
                 if days is not None and int(row.get("positive_trophies") or 0) > 0 else 0,
             ),
             reverse=True,
@@ -3320,11 +3357,11 @@ class CommunityFeatures:
                 value = int(row["value"])
                 cups = int(row.get("positive_trophies") or 0)
                 seconds = int(row.get("play_seconds") or 0)
-                ratio = f"{value / cups:.4f}".replace(".", ",") if cups else "n.d."
+                ratio = f"{row.get('_weighted', 0) / cups:.4f}".replace(".", ",") if cups else "n.d."
                 lines.extend([f"[[PLAYERHEADING:{tag}|{self._player_link_name(row['name'])}]]",
                               f"👤 {self._player_link_name(row['name'])} · ⏱️ {seconds // 3600}h {(seconds % 3600) // 60:02d}m · "
                               f"🎮 {int(row.get('battle_count') or 0)} partite · 🏆 +{self.number_formatter(cups)} coppe · "
-                              f"⚡ +{self.number_formatter(value - cups)} bonus · 🔥 +{self.number_formatter(value)} · 🧮 {ratio}"])
+                              f"⚡ +{self.number_formatter(row.get('_bonus') or 0)} bonus · 🔥 +{self.number_formatter(value)} · 🧮 {ratio}"])
         report_url = (self._publish_inline_ranking(f"{title} — {period}", lines)
                       if inline_player_details else self._publish_telegraph(f"{title} — {period}", lines))
         if report_url:
@@ -3957,6 +3994,7 @@ class CommunityFeatures:
         ranking = self.ranking(chat_id, period_days)
         inactive = self.inactivity_rows(chat_id)
         valid_growth = [x for x in ranking if x["delta"] is not None]
+        growth_by_tag = {str(x["tag"]).lstrip("#").upper(): int(x["delta"]) for x in valid_growth}
         growth = sum(x["delta"] for x in valid_growth)
         lines = [
             f"TITANI ABUSIVI - {title}",
@@ -3995,21 +4033,25 @@ class CommunityFeatures:
             for row in progression_rows:
                 member = progression_by_tag.get(str(row.get("player_tag") or "").upper(), {})
                 row["_name"] = row.get("player_name") or member.get("player_name") or member.get("display_name") or row.get("player_tag")
-            progression_rows = [row for row in progression_rows if row.get("progression_value") is not None and int(row.get("battle_count") or 0) > 0]
+            progression_rows = [row for row in progression_rows if row.get("progression_value") is not None
+                                and int(row.get("battle_count") or 0) > 0
+                                and str(row.get("player_tag") or "").lstrip("#").upper() in growth_by_tag]
             progression_rows.sort(key=lambda row: (
-                int(row.get("progression_value") or 0),
+                growth_by_tag[str(row.get("player_tag") or "").lstrip("#").upper()]
+                + int(row.get("progression_value") or 0) - int(row.get("positive_trophies") or 0),
                 (float(row.get("progression_value") or 0) / int(row.get("positive_trophies") or 0))
                 if int(row.get("positive_trophies") or 0) > 0 else 0,
             ), reverse=True)
             if progression_rows:
                 lines.append(f"\n🔥 Top Progressione ({period_label.lower()}):")
                 for row in progression_rows[:5]:
-                    value = int(row.get("progression_value") or 0)
+                    weighted = int(row.get("progression_value") or 0)
                     cups = int(row.get("positive_trophies") or 0)
-                    bonus = value - cups
-                    coeff = (float(value) / cups) if cups > 0 else 0.0
+                    bonus = weighted - cups
+                    value = growth_by_tag[str(row.get("player_tag") or "").lstrip("#").upper()] + bonus
+                    coeff = (float(weighted) / cups) if cups > 0 else 0.0
                     lines.append(
-                        f"- {row['_name']}: +{self.number_formatter(value)} "
+                        f"- {row['_name']}: {'+' if value > 0 else ''}{self.number_formatter(value)} "
                         f"(Coppe +{self.number_formatter(cups)} · Bonus +{self.number_formatter(bonus)} · "
                         f"Coeff. {coeff:.6f})"
                     )
@@ -4025,7 +4067,7 @@ class CommunityFeatures:
         return "\n".join(lines)
 
     def periodic_report_text(self, chat_id, scope="community", days=7, window=None, return_full=False, publish=True,
-                             link_players=None, inline_player_details=False):
+                             link_players=None, inline_player_details=False, return_deltas=False):
         """Combined Trophy + Progressione report. Telegram gets Top 5; Telegraph keeps the full lists."""
         days = int(days)
         if days not in (0, 7, 15, 30):
@@ -4223,6 +4265,7 @@ class CommunityFeatures:
             except Exception:
                 continue
         trophy_rows.sort(key=lambda r: (r["delta"], r["current"]), reverse=True)
+        trophy_delta_by_tag = {row["tag"]: int(row["delta"]) for row in trophy_rows}
         # Keep all rows for club totals; hide inactive/negative players only in today's lists.
         visible_trophy_rows = [r for r in trophy_rows if r["delta"] > 0]
 
@@ -4243,13 +4286,17 @@ class CommunityFeatures:
         for row in progression_rows:
             m = by_tag.get(str(row.get("player_tag") or "").upper(), {})
             row["_name"] = row.get("player_name") or m.get("player_name") or m.get("display_name") or row.get("player_tag")
-            row["_value"] = int(row.get("progression_value") or 0)
+            row["_weighted"] = int(row.get("progression_value") or 0)
             row["_cups"] = int(row.get("positive_trophies") or 0)
-            row["_bonus"] = row["_value"] - row["_cups"]
-            row["_coeff"] = (row["_value"] / row["_cups"]) if row["_cups"] > 0 else 0.0
+            row["_bonus"] = row["_weighted"] - row["_cups"]
+            tag = str(row.get("player_tag") or "").lstrip("#").upper()
+            row["_value"] = (trophy_delta_by_tag[tag] + row["_bonus"]
+                             if tag in trophy_delta_by_tag else None)
+            row["_coeff"] = (row["_weighted"] / row["_cups"]) if row["_cups"] > 0 else 0.0
         progression_rows = [r for r in progression_rows if int(r.get("battle_count") or 0) > 0]
-        progression_rows.sort(key=lambda r: (r["_value"], r["_coeff"]), reverse=True)
-        visible_progression_rows = [r for r in progression_rows if r["_value"] > 0]
+        progression_rows.sort(key=lambda r: (r["_value"] if r["_value"] is not None else -10**12,
+                                             r["_coeff"]), reverse=True)
+        visible_progression_rows = [r for r in progression_rows if r["_value"] is not None and r["_value"] > 0]
         if link_players is None:
             link_players = publish
         detail_urls = (self._player_detail_pages([*visible_trophy_rows, *visible_progression_rows], days, window)
@@ -4288,8 +4335,11 @@ class CommunityFeatures:
         # Real current trophy total for the exact report scope (not period gains).
         total_real_trophies = sum(current_trophies_by_tag.values())
         total_cups = sum(r["_cups"] for r in progression_rows)
-        total_progression = sum(r["_value"] for r in progression_rows)
-        average_coefficient = (f"{total_progression / total_cups:.4f}".replace(".", ",")
+        total_bonus = sum(r["_bonus"] for r in progression_rows)
+        total_saldo = sum(row["delta"] for row in trophy_rows)
+        total_progression = total_saldo + total_bonus
+        total_weighted = sum(r["_weighted"] for r in progression_rows)
+        average_coefficient = (f"{total_weighted / total_cups:.4f}".replace(".", ",")
                                if total_cups > 0 else "n.d.")
         coefficient_line = f"🧮 Coeff. medio Progressione: {average_coefficient}"
         full.extend([
@@ -4297,9 +4347,10 @@ class CommunityFeatures:
             f"👥 Giocatori monitorati: {len(tags)}",
             f"🏆 Coppe totali reali: {self.number_formatter(total_real_trophies)}",
             f"🎮 Battaglie analizzate: {total_battles}",
+            f"🏆 Saldo Trofei: {'+' if total_saldo > 0 else ''}{self.number_formatter(total_saldo)}",
             f"🏆 Coppe positive: +{self.number_formatter(total_cups)}",
-            f"⚡ Bonus Progressione: +{self.number_formatter(total_progression-total_cups)}",
-            f"🔥 Progressione complessiva: +{self.number_formatter(total_progression)}",
+            f"⚡ Bonus Progressione: +{self.number_formatter(total_bonus)}",
+            f"🔥 Progressione complessiva: {'+' if total_progression > 0 else ''}{self.number_formatter(total_progression)}",
             coefficient_line,
         ])
         if inline_player_details:
@@ -4316,12 +4367,12 @@ class CommunityFeatures:
                     continue
                 progress = progression_by_tag.get(tag, {})
                 cups = int(progress.get("_cups") or 0)
-                value = int(progress.get("_value") or 0)
-                ratio = f"{value / cups:.4f}".replace(".", ",") if cups else "n.d."
+                value = progress.get("_value")
+                ratio = f"{progress.get('_coeff', 0):.4f}".replace(".", ",") if cups else "n.d."
                 full.extend([f"[[PLAYERHEADING:{tag}|{self._player_link_name(row['name'])}]]",
                              f"👤 {self._player_link_name(row['name'])} · 🏆 {self.number_formatter(row['current'])} trofei · 📈 {self.number_formatter(row['delta'])} saldo · "
                              f"🎮 {int(progress.get('battle_count') or 0)} partite · 🏆 +{self.number_formatter(cups)} coppe · "
-                             f"⚡ +{self.number_formatter(value - cups)} bonus · 🔥 +{self.number_formatter(value)} · 🧮 {ratio}"])
+                             f"⚡ +{self.number_formatter(progress.get('_bonus') or 0)} bonus · 🔥 {self.number_formatter(value) if value is not None else 'n.d.'} · 🧮 {ratio}"])
 
         report_url = self._publish_telegraph(title, full) if publish else None
         summary = [title, "", "🏆 CLASSIFICA TROFEI"]
@@ -4336,12 +4387,13 @@ class CommunityFeatures:
             f"👥 Giocatori monitorati: {len(tags)}",
             f"🏆 Coppe totali reali: {self.number_formatter(total_real_trophies)}",
             f"🎮 Battaglie analizzate: {total_battles}",
+            f"🏆 Saldo Trofei: {'+' if total_saldo > 0 else ''}{self.number_formatter(total_saldo)}",
             coefficient_line,
         ])
         if report_url:
             summary.extend(["", f"📊 REPORT COMPLETO: {report_url}"])
         if return_full:
-            club_totals = {name: {"delta": 0, "players": 0, "roster": 0, "tags": [],
+            club_totals = {name: {"delta": 0, "players": 0, "roster": 0, "tags": [], "delta_by_tag": {},
                                   "coefficient_sum": 0.0, "coefficient_players": 0}
                            for name in self.CLUB_TAGS}
             for member in by_tag.values():
@@ -4354,12 +4406,15 @@ class CommunityFeatures:
                 if club in club_totals:
                     club_totals[club]["delta"] += row["delta"]
                     club_totals[club]["players"] += 1
+                    club_totals[club]["delta_by_tag"][row["tag"]] = row["delta"]
             for row in progression_rows:
                 tag = str(row.get("player_tag") or "").lstrip("#").upper()
                 club = str(by_tag.get(tag, {}).get("club_name") or "").strip().upper()
                 if club in club_totals and row["_cups"] > 0:
                     club_totals[club]["coefficient_sum"] += row["_coeff"]
                     club_totals[club]["coefficient_players"] += 1
+            if return_deltas:
+                return "\n".join(summary), full, club_totals, trophy_delta_by_tag
             return "\n".join(summary), full, club_totals
         return "\n".join(summary)
 
@@ -4768,8 +4823,11 @@ class CommunityFeatures:
             progression = sum(max(0, score_brawler_trophies(int(r["brawler_trophies_before"]) + int(r["trophy_change"]))
                                   - score_brawler_trophies(int(r["brawler_trophies_before"])))
                               for r in observed if int(r["trophy_change"]) > 0)
+            bonus = int(item.get("_bonus") if item.get("_bonus") is not None else
+                        round(progression) - trophies)
             value = int(item.get("_value") if item.get("_value") is not None else
-                        item.get("value") if item.get("value") is not None else round(progression))
+                        item.get("value") if item.get("value") is not None else
+                        sum(int(r["trophy_change"]) for r in observed) + bonus)
             cups = int(item.get("_cups") if item.get("_cups") is not None else
                        item.get("positive_trophies") if item.get("positive_trophies") is not None else trophies)
             sessions = []
@@ -4786,7 +4844,7 @@ class CommunityFeatures:
                 key = str(r.get("brawler_name") or "Brawler")
                 counts[key] = counts.get(key, 0) + 1
             brawler = max(counts, key=counts.get) if counts else "n.d."
-            ratio = f"{value / cups:.6f}".replace(".", ",") if cups else "n.d."
+            ratio = f"{(cups + bonus) / cups:.6f}".replace(".", ",") if cups else "n.d."
             lines = [f"[[PLAYERHEADING:{tag}|{name}]]", f"🏷️ Tag: #{tag}",
                      f"⏱️ Tempo di gioco: {seconds // 3600}h {(seconds % 3600) // 60:02d}m",
                      f"🎮 Partite osservate: {len(observed) if battle_log_available else int(item.get('battle_count') or len(observed))}",
@@ -4800,8 +4858,8 @@ class CommunityFeatures:
                        if battle_log_available else []),
                      f"🦸 Brawler più usato: {brawler if battle_log_available else 'n.d. (log incompleto)'}",
                      f"🏆 Coppe: +{self.number_formatter(cups)}",
-                     f"⚡ Bonus: +{self.number_formatter(value - cups)}",
-                     f"🔥 Progressione: +{self.number_formatter(value)}",
+                     f"⚡ Bonus: +{self.number_formatter(bonus)}",
+                     f"🔥 Progressione: {'+' if value > 0 else ''}{self.number_formatter(value)}",
                      f"🧮 Coeff. Progressione: {ratio}", "", "🎮 BATTAGLIE OSSERVATE"]
             for index, r in enumerate(observed, 1):
                 when = datetime.fromisoformat(str(r["battle_time"]).replace("Z", "+00:00")).astimezone(ROME)
@@ -5024,7 +5082,9 @@ class CommunityFeatures:
                                       if compact else self._publish_telegraph(f"Trofei Globali 4 Club — {label}", trophy_lines))
         progression = self.coefficient_ranking_text(
             chat_id, "global_clubs", days, window=window,
-            publish_player_details=not compact, inline_player_details=compact)
+            publish_player_details=not compact, inline_player_details=compact,
+            trophy_delta_by_tag={tag: delta for club in club_totals.values()
+                                 for tag, delta in club.get("delta_by_tag", {}).items()})
         links[f"dash_p_2_{days}"] = progression.get("report_url") if isinstance(progression, dict) else None
         if not links[f"dash_p_2_{days}"]:
             LOG.warning("CLASSIFICHE LIVE TELEGRAPH UNAVAILABLE: days=%s stage=progression", days)
