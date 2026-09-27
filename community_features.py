@@ -31,7 +31,7 @@ _SKIN_CATEGORY_URLS = {}
 _SKIN_CATEGORY_URLS_LOCK = threading.Lock()
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_FORMAT_REVISION = 9
+_DASHBOARD_FORMAT_REVISION = 10
 _DASHBOARD_SOURCE_MARKER = "Liste: valori positivi verificati · copertura club, coefficiente medio e schede giocatori cliccabili."
 _PROGRESSION_DETAIL_CACHE = {}
 _PROGRESSION_DETAIL_LOCK = threading.Lock()
@@ -4238,11 +4238,12 @@ class CommunityFeatures:
         if report_url:
             summary.extend(["", f"📊 REPORT COMPLETO: {report_url}"])
         if return_full:
-            club_totals = {name: {"delta": 0, "players": 0, "roster": 0} for name in self.CLUB_TAGS}
+            club_totals = {name: {"delta": 0, "players": 0, "roster": 0, "tags": []} for name in self.CLUB_TAGS}
             for member in by_tag.values():
                 club = str(member.get("club_name") or "").strip().upper()
                 if club in club_totals:
                     club_totals[club]["roster"] += 1
+                    club_totals[club]["tags"].append(str(member.get("player_tag") or "").lstrip("#").upper())
             for row in trophy_rows:
                 club = str(by_tag[row["tag"]].get("club_name") or "").strip().upper()
                 if club in club_totals:
@@ -4641,6 +4642,83 @@ class CommunityFeatures:
                 _PLAYER_DETAIL_PAGE_CACHE[(tag_key, tag)] = (expires, url)
         return result
 
+    def _club_battle_detail_links(self, club_totals, days, window=None):
+        """Publish each complete roster's observed results for the selected period."""
+        from trophy_coefficient import score_brawler_trophies
+        end = window[1] if window else datetime.now(timezone.utc)
+        start = window[0] if window else (
+            end.astimezone(ROME).replace(hour=0, minute=0, second=0, microsecond=0)
+            if days == 0 else end - timedelta(days=days)
+        )
+        club_by_tag = {
+            tag: club for club, totals in club_totals.items()
+            for tag in totals.get("tags", []) if tag
+        }
+        if not club_by_tag:
+            return {}
+        results = {club: {"battles": 0, "wins": 0, "losses": 0, "other": 0,
+                          "cups": 0, "progression": 0} for club in club_totals}
+        tags = sorted(club_by_tag)
+        try:
+            for index in range(0, len(tags), 20):
+                group = tags[index:index + 20]
+                for offset in range(0, 100000, 1000):
+                    rows = self._get("observed_trophy_battles", {
+                        "select": "player_tag,brawler_trophies_before,trophy_change,result,bonus_type",
+                        "player_tag": f"in.({','.join(group)})",
+                        "and": f"(battle_time.gte.{start.astimezone(timezone.utc).isoformat()},battle_time.lt.{end.astimezone(timezone.utc).isoformat()})",
+                        "order": "battle_time.asc,player_tag.asc",
+                        "limit": "1000", "offset": str(offset),
+                    }) or []
+                    for row in rows:
+                        club = club_by_tag.get(str(row.get("player_tag") or "").lstrip("#").upper())
+                        if not club or str(row.get("bonus_type") or "").startswith("excluded"):
+                            continue
+                        stats = results[club]
+                        stats["battles"] += 1
+                        result = str(row.get("result") or "").casefold()
+                        stats["wins" if result == "victory" else
+                              "losses" if result == "defeat" else "other"] += 1
+                        try:
+                            change = int(row["trophy_change"])
+                            before = int(row["brawler_trophies_before"])
+                        except (ValueError, TypeError, KeyError):
+                            continue
+                        if change > 0:
+                            stats["cups"] += change
+                            stats["progression"] += max(0, round(
+                                score_brawler_trophies(before + change) - score_brawler_trophies(before)))
+                    if len(rows) < 1000:
+                        break
+                    if offset == 99000:
+                        raise RuntimeError("club battle log exceeds pagination limit")
+        except (requests.RequestException, RuntimeError) as exc:
+            LOG.warning("CLUB BATTLE DETAIL UNAVAILABLE: error=%s", type(exc).__name__)
+            return {}
+        links = {}
+        label = "OGGI" if days == 0 else f"{days} GIORNI"
+        for club, stats in results.items():
+            roster = club_totals[club]
+            games = stats["wins"] + stats["losses"]
+            win_rate = f"{stats['wins'] / games * 100:.1f}%".replace(".", ",") if games else "n.d."
+            lines = [f"🏆 {club} — {label}",
+                     f"📅 Periodo: {start.astimezone(ROME):%d/%m/%Y %H:%M} – {end.astimezone(ROME):%d/%m/%Y %H:%M}",
+                     "", "📋 RISULTATI DEL ROSTER COMPLETO",
+                     f"👥 Giocatori con storico Trofei: {roster['players']}/{roster['roster']}",
+                     f"🏆 Saldo Trofei: {'+' if roster['delta'] > 0 else ''}{self.number_formatter(roster['delta'])}",
+                     f"🎮 Battaglie osservate: {stats['battles']}",
+                     f"✅ Vittorie osservate: {stats['wins']}",
+                     f"❌ Sconfitte osservate: {stats['losses']}",
+                     f"➖ Altri risultati osservati: {stats['other']}",
+                     f"📈 Win rate osservato: {win_rate}",
+                     f"🏆 Coppe positive: +{self.number_formatter(stats['cups'])}",
+                     f"⚡ Bonus Progressione: +{self.number_formatter(stats['progression'] - stats['cups'])}",
+                     f"🔥 Progressione: +{self.number_formatter(stats['progression'])}"]
+            url = self._publish_telegraph(f"Risultati {club} — {label}", lines)
+            if url:
+                links[club] = url
+        return links
+
     def _direct_dashboard_snapshot(self, chat_id, days, window):
         """Create direct detail links for one period; optional fixed scheduler window."""
         label = "OGGI" if days == 0 else f"{days} GIORNI"
@@ -4656,10 +4734,14 @@ class CommunityFeatures:
         measured = sum(result["players"] for result in club_totals.values())
         roster = sum(result.get("roster", result["players"]) for result in club_totals.values())
         positive_clubs = [(name, result) for name, result in ranked_clubs if result["delta"] > 0]
+        club_detail_links = self._club_battle_detail_links(club_totals, days, window)
         for position, (name, result) in enumerate(positive_clubs, 1):
             delta = result["delta"]
-            club_lines.append(f"{position}. {name} — +{self.number_formatter(delta)} "
-                              f"({result['players']}/{result.get('roster', result['players'])} giocatori)")
+            score = (f"+{self.number_formatter(delta)} "
+                     f"({result['players']}/{result.get('roster', result['players'])} giocatori)")
+            url = club_detail_links.get(name)
+            club_lines.append((f"[[PLAYER:{url}|{position}|{self._player_link_name(name)}|{score}]]"
+                               if url else f"{position}. {name} — {score}"))
         if not positive_clubs:
             club_lines.append("Nessun club con crescita positiva nel periodo." if measured else
                               "Storico Trofei non ancora sufficiente per calcolare questo periodo. "
