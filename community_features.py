@@ -39,6 +39,7 @@ _PROGRESSION_DETAIL_FLIGHTS = {}
 _PLAYER_DETAIL_PAGE_CACHE = {}
 _PLAYER_DETAIL_PAGE_LOCK = threading.Lock()
 _TELEGRAPH_PAGE_LOCK = threading.Lock()
+_TELEGRAPH_BACKOFF_UNTIL = 0.0
 
 PROGRESSION_MODE_NAMES_IT = {
     "gemgrab": "Arraffagemme",
@@ -2815,7 +2816,11 @@ class CommunityFeatures:
         content = self._telegraph_nodes(lines)
 
         def create_page(page_title, nodes):
+            global _TELEGRAPH_BACKOFF_UNTIL
             with _TELEGRAPH_PAGE_LOCK:
+                if time.monotonic() < _TELEGRAPH_BACKOFF_UNTIL:
+                    LOG.warning("TELEGRAPH BACKOFF ACTIVE: title=%s", str(page_title)[:80])
+                    return None
                 for attempt in range(4):
                     response = requests.post(
                         "https://api.telegra.ph/createPage",
@@ -2834,11 +2839,11 @@ class CommunityFeatures:
                         break
                     error = str(payload.get("error") or "unknown")
                     flood = re.fullmatch(r"FLOOD_WAIT_(\d+)", error)
-                    if flood and attempt < 3:
-                        delay = min(int(flood.group(1)) + 1, 30)
-                        LOG.warning("TELEGRAPH FLOOD WAIT: seconds=%s attempt=%s", delay, attempt + 1)
-                        time.sleep(delay)
-                        continue
+                    if flood:
+                        delay = min(int(flood.group(1)) + 1, 120)
+                        _TELEGRAPH_BACKOFF_UNTIL = time.monotonic() + delay
+                        LOG.warning("TELEGRAPH FLOOD WAIT: seconds=%s title=%s", delay, str(page_title)[:80])
+                        return None
                     LOG.error("TELEGRAPH API ERROR: status=%s error=%s", response.status_code, error[:300])
                     return None
             url = payload.get("result", {}).get("url")
@@ -4071,14 +4076,41 @@ class CommunityFeatures:
                 LOG.warning("REPORT TROPHY HISTORY FAILED: tag=%s type=%s", tag, type(exc).__name__)
                 return None
 
-        # A complete club roster can exceed 100 accounts. Fetch independent
-        # histories concurrently, then process them in the original tag order.
-        # Keep small reports sequential to avoid thread overhead and preserve
-        # their existing behavior.
+        # Read the registered accounts' histories in groups. Calling the REST
+        # endpoint once per player held up live dashboards for minutes.
         history_by_tag = None
         if len(tags) >= 16:
-            with ThreadPoolExecutor(max_workers=min(6, len(tags))) as executor:
-                history_by_tag = dict(zip(tags, executor.map(fetch_history, tags)))
+            history_days = self._window_history_days(window[0]) if window else max(days + 2, 10)
+            since = (datetime.now(timezone.utc) - timedelta(days=history_days)).isoformat()
+            requested = [tag for tag in tags if not (tag in roster_histories and tag not in registered_tags)]
+            groups = [requested[i:i + 20] for i in range(0, len(requested), 20)]
+            def read_group(group):
+                result = {tag: [] for tag in group}
+                for offset in range(0, 100000, 1000):
+                    batch = self._get("trophy_history", {
+                        "select": "player_tag,trophies,recorded_at",
+                        "player_tag": f"in.({','.join(group)})", "recorded_at": f"gte.{since}",
+                        "order": "recorded_at.asc,player_tag.asc", "limit": "1000", "offset": str(offset),
+                    }) or []
+                    for row in batch:
+                        tag = str(row.get("player_tag") or "").lstrip("#").upper()
+                        if tag in result:
+                            result[tag].append(row)
+                    if len(batch) < 1000:
+                        break
+                    if offset == 99000:
+                        raise RuntimeError("trophy history batch exceeds pagination limit")
+                return result
+            try:
+                with ThreadPoolExecutor(max_workers=min(6, len(groups))) as executor:
+                    batches = list(executor.map(read_group, groups))
+                history_by_tag = {tag: [] for tag in tags}
+                for batch in batches:
+                    history_by_tag.update(batch)
+            except (requests.RequestException, RuntimeError) as exc:
+                LOG.warning("REPORT BATCH HISTORY FALLBACK: %s", type(exc).__name__)
+                with ThreadPoolExecutor(max_workers=min(6, len(tags))) as executor:
+                    history_by_tag = dict(zip(tags, executor.map(fetch_history, tags)))
 
         trophy_rows = []
         current_trophies_by_tag = {}
@@ -4690,6 +4722,9 @@ class CommunityFeatures:
                                            ["DETTAGLI GIOCATORI", f"Periodo: {start.astimezone(ROME):%d/%m/%Y} – {end.astimezone(ROME):%d/%m/%Y}", *content])
             if url:
                 result.update({tag: f"{url}#GIOCATORE-{tag}" for tag in page_tags})
+            else:
+                LOG.warning("PLAYER DETAIL PUBLISH STOPPED: remaining_pages=%s", len(pages) - index)
+                break
         with _PLAYER_DETAIL_PAGE_LOCK:
             expires = time.monotonic() + (300 if window else 120)
             _PLAYER_DETAIL_PAGE_CACHE[cache_key] = (expires, result)
@@ -4811,9 +4846,15 @@ class CommunityFeatures:
         progression = self.coefficient_ranking_text(chat_id, "global_clubs", days, window=window)
         links[f"dash_p_2_{days}"] = progression.get("report_url") if isinstance(progression, dict) else None
         if not links[f"dash_p_2_{days}"]:
-            raise RuntimeError("The global progression page is unavailable")
+            LOG.warning("CLASSIFICHE LIVE TELEGRAPH UNAVAILABLE: days=%s stage=progression", days)
+            if window:
+                raise RuntimeError("The global progression page is unavailable")
+            return _report + "\n\n⚠️ Telegraph temporaneamente limitato; questo Resoconto è calcolato adesso."
         if any(not url for url in links.values()):
-            raise RuntimeError("A global dashboard Telegraph page is unavailable")
+            LOG.warning("CLASSIFICHE LIVE TELEGRAPH UNAVAILABLE: days=%s stage=rankings", days)
+            if window:
+                raise RuntimeError("A global dashboard Telegraph page is unavailable")
+            return _report + "\n\n⚠️ Telegraph temporaneamente limitato; questo Resoconto è calcolato adesso."
         for i, line in enumerate(lines):
             match = re.fullmatch(r"\[\[DASH:(dash_[prt]_(?:[0-9]|10)_(?:0|7|15|30))\|Apri\]\]", line)
             if match:
@@ -4824,7 +4865,10 @@ class CommunityFeatures:
             lines[1] = f"Periodo: {window[0].astimezone(ROME):%d/%m/%Y %H:%M} – {window[1].astimezone(ROME):%d/%m/%Y %H:%M}"
         url = self._publish_telegraph(title, lines)
         if not url:
-            raise RuntimeError("Scheduled dashboard Telegraph page is unavailable")
+            LOG.warning("CLASSIFICHE LIVE TELEGRAPH UNAVAILABLE: days=%s stage=index", days)
+            if window:
+                raise RuntimeError("Scheduled dashboard Telegraph page is unavailable")
+            return _report + "\n\n⚠️ Telegraph temporaneamente limitato; questo Resoconto è calcolato adesso."
         resoconto = report_lines[report_lines.index("📊 RESOCONTO") + 1:]
         return self._telegraph_reply([f"📊 {title.upper()}", lines[1], "", "📋 RESOCONTO", *resoconto], url, lines)
 
