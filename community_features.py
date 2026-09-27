@@ -4261,6 +4261,14 @@ class CommunityFeatures:
             cached = _DASHBOARD_CACHE.get(cache_key)
             if cached and cached[0] > time.monotonic():
                 return cached[1]
+        if days is None and getattr(self, "ready", False):
+            # The four period pages are published separately. An index request
+            # must never wait for all of their (potentially large) dossiers.
+            payload = self._index_from_published_periods(chat_id)
+            if isinstance(payload, dict) and payload.get("report_url"):
+                with _DASHBOARD_CACHE_LOCK:
+                    _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 60, payload)
+            return payload or "Indice classifiche temporaneamente non disponibile. Riprova tra poco."
         if days is not None and getattr(self, "ready", False):
             try:
                 saved = self._get("scheduled_dashboard_delivery", {
@@ -4321,6 +4329,53 @@ class CommunityFeatures:
                 except requests.RequestException as exc:
                     LOG.warning("CLASSIFICHE PERIOD CACHE WRITE FAILED: %s", type(exc).__name__)
         return payload or "Dashboard Classifiche & Report temporaneamente non disponibile."
+
+    def _index_from_published_periods(self, chat_id):
+        """Link existing Telegraph pages without regenerating any period report."""
+        periods = ((0, "OGGI"), (7, "7 GIORNI"), (15, "15 GIORNI"), (30, "30 GIORNI"))
+        def read_period(days):
+            saved = self._get("scheduled_dashboard_delivery", {
+                "select": "payload", "chat_id": f"eq.{int(chat_id)}",
+                "slot": f"eq.manual:rolling:{days}", "limit": "1",
+            })
+            return saved[0].get("payload") if saved else None
+        try:
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                saved_periods = list(executor.map(read_period, (days for days, _ in periods)))
+        except requests.RequestException as exc:
+            LOG.warning("CLASSIFICHE INDEX CACHE READ FAILED: %s", type(exc).__name__)
+            return None
+        now = datetime.now(ROME)
+        title = "Classifiche — TITANI ABUSIVI"
+        lines = [title.upper(), f"Indice creato: {now:%d/%m/%Y %H:%M}", "",
+                 _DASHBOARD_SOURCE_MARKER,
+                 "Ogni periodo indica l'ora dei dati pubblicati. Apri per le tre classifiche Telegraph."]
+        for (days, label), saved in zip(periods, saved_periods):
+            if not isinstance(saved, dict) or not re.fullmatch(
+                    r"https://telegra\.ph/[^\s|<>\[\]]+", str(saved.get("report_url") or "")):
+                LOG.warning("CLASSIFICHE INDEX PERIOD MISSING: days=%s", days)
+                return None
+            period_lines = str(saved.get("fallback") or "").splitlines()
+            first = next((i for i, line in enumerate(period_lines) if line.startswith("══ ")), None)
+            detail = period_lines[first:] if first is not None else []
+            if (not detail or f"══ {label} ══" not in detail[0]
+                    or len([line for line in detail if re.fullmatch(
+                        r"\[\[URL:https://telegra\.ph/[^\s|<>\[\]]+\|Apri\]\]", line)]) != 3):
+                LOG.warning("CLASSIFICHE INDEX PERIOD LINKS INVALID: days=%s", days)
+                return None
+            try:
+                updated = datetime.fromisoformat(str(saved["cached_at"]).replace("Z", "+00:00")).astimezone(ROME)
+            except (KeyError, TypeError, ValueError):
+                return None
+            lines.extend(["", *detail[:1], f"Ultimo aggiornamento: {updated:%d/%m/%Y %H:%M}", *detail[1:]])
+        url = self._publish_telegraph(title, lines)
+        if not url:
+            return None
+        LOG.info("CLASSIFICHE INDEX REUSED FOUR PERIODS: chat=%s url=%s", chat_id, url)
+        return self._telegraph_reply(
+            ["📊 CLASSIFICHE — TITANI ABUSIVI", lines[1], "", "🏆 OGGI · 7 · 15 · 30 GIORNI",
+             "L'ora dei dati di ogni periodo è indicata nell'indice."], url, lines,
+        )
 
     def _latest_published_dashboard(self):
         """Read the latest complete index without recomputing four periods."""
