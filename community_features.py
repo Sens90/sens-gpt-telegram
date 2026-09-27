@@ -5090,8 +5090,11 @@ class CommunityFeatures:
                 return True
             except RetryAfter as exc:
                 delay = exc.retry_after.total_seconds() if hasattr(exc.retry_after, "total_seconds") else float(exc.retry_after)
-            except (TimedOut, NetworkError):
+                LOG.warning("RANKING TELEGRAM RATE LIMIT chat=%s attempt=%s delay=%s", chat_id, attempt + 1, delay)
+            except (TimedOut, NetworkError) as exc:
                 delay = 2 ** attempt
+                LOG.warning("RANKING TELEGRAM NETWORK FAILURE chat=%s attempt=%s type=%s",
+                            chat_id, attempt + 1, type(exc).__name__)
             except TelegramError as exc:
                 if report_url:
                     try:
@@ -5102,6 +5105,28 @@ class CommunityFeatures:
                 LOG.error("RANKING TELEGRAM SEND FAILED chat=%s error=%r", chat_id, exc); return False
             LOG.warning("RANKING TELEGRAM RETRY chat=%s attempt=%s", chat_id, attempt + 1)
             if attempt < 2: await asyncio.sleep(max(1, delay))
+        if report_url:
+            # Use a fresh HTTP connection if python-telegram-bot's pooled
+            # connection remains unavailable. Keep the complete page URL in
+            # the private message so it can be opened without a button.
+            def send_direct():
+                response = requests.post(
+                    f"https://api.telegram.org/bot{context.bot.token}/sendMessage",
+                    json={"chat_id": chat_id,
+                          "text": f"{str(message_text).splitlines()[0][:120]}\n{report_url}",
+                          "disable_web_page_preview": True},
+                    timeout=12,
+                )
+                response.raise_for_status()
+                return bool(response.json().get("ok"))
+            try:
+                if await asyncio.to_thread(send_direct):
+                    LOG.info("RANKING TELEGRAM DIRECT FALLBACK DELIVERED chat=%s url=%s", chat_id, report_url)
+                    return True
+                LOG.error("RANKING TELEGRAM DIRECT FALLBACK REJECTED chat=%s", chat_id)
+            except (requests.RequestException, ValueError, TypeError) as exc:
+                LOG.error("RANKING TELEGRAM DIRECT FALLBACK FAILED chat=%s type=%s",
+                          chat_id, type(exc).__name__)
         LOG.error("RANKING TELEGRAM SEND EXHAUSTED chat=%s", chat_id); return False
 
     async def handle_command(self, message, context, question):

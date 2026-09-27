@@ -1044,6 +1044,25 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(kwargs["reply_markup"])
         self.assertIn("TELEGRAPH REPORT DELIVERED", " ".join(str(call) for call in printed.call_args_list))
 
+    @patch("community_features.asyncio.sleep", new_callable=AsyncMock)
+    @patch("community_features.requests.post")
+    async def test_sender_delivers_direct_private_link_after_network_pool_failure(self, post, sleep):
+        from telegram.error import NetworkError
+        obj = self.make_features()
+        bot = SimpleNamespace(send_message=AsyncMock(side_effect=NetworkError("connection unavailable")),
+                              token="dummy-test-token")
+        context = SimpleNamespace(bot=bot)
+        post.return_value.json.return_value = {"ok": True}
+        payload = obj._telegraph_reply(["📊 CLASSIFICHE — OGGI"],
+                                       "https://telegra.ph/classifiche-09-27", ["Tutti i dati"])
+        with self.assertLogs("community_features", level="WARNING") as captured:
+            self.assertTrue(await obj._send_ranking_message(context, 123, payload))
+        self.assertEqual(bot.send_message.await_count, 3)
+        self.assertEqual(post.call_args.kwargs["json"]["chat_id"], 123)
+        self.assertIn("https://telegra.ph/classifiche-09-27", post.call_args.kwargs["json"]["text"])
+        self.assertIn("RANKING TELEGRAM NETWORK FAILURE", " ".join(captured.output))
+        self.assertNotIn("dummy-test-token", " ".join(captured.output))
+
     async def test_plain_ranking_becomes_top_ten_plus_full_report(self):
         obj = self.make_features()
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/classifica-completa")
