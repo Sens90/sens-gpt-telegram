@@ -31,7 +31,7 @@ _SKIN_CATEGORY_URLS = {}
 _SKIN_CATEGORY_URLS_LOCK = threading.Lock()
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_FORMAT_REVISION = 11
+_DASHBOARD_FORMAT_REVISION = 12
 _DASHBOARD_SOURCE_MARKER = "Liste: valori positivi verificati · copertura club, coefficiente medio e schede giocatori cliccabili."
 _PROGRESSION_DETAIL_CACHE = {}
 _PROGRESSION_DETAIL_LOCK = threading.Lock()
@@ -1981,9 +1981,10 @@ class CommunityFeatures:
                               {"tag": "p", "children": [{"tag": "strong", "children": [club_heading.group(2)]}]}])
                 continue
             if direct_link:
+                label = "🏆 Apri la Classifica" if (is_dashboard or is_ranking_report) else "📖 Apri il Telegraph"
                 nodes.append({"tag": "p", "children": [{
                     "tag": "a", "attrs": {"href": direct_link.group(1)},
-                    "children": ["📖 Apri il Telegraph"],
+                    "children": [label],
                 }]})
                 continue
             if dashboard_link:
@@ -2082,9 +2083,11 @@ class CommunityFeatures:
         value = re.sub(r"\[\[PLAYER:(https://telegra\.ph/[^\s|<>\[\]]+)\|\d+\|([^|\[\]]+)\|([^\[\]]*)\]\]",
                        r"\2 — \3: \1", str(value))
         value = re.sub(r"\[\[PLAYERHEADING:[0289PYLQGRJCUV]{3,15}\|([^\[\]]+)\]\]", r"\1", value)
+        title = str(value).lstrip().upper()
+        label = "🏆 Apri la Classifica" if re.match(r"(?:📊\s*)?CLASSIFIC", title) else "📖 Apri il Telegraph"
         return re.sub(
             r"\[\[URL:(https://telegra\.ph/[^\s|<>\[\]]+)\|Apri\]\]",
-            r"📖 Apri il Telegraph: \1", value,
+            lambda match: f"{label}: {match.group(1)}", value,
         )
 
     def admin_reset_primary_registration(self, telegram_user_id):
@@ -4403,10 +4406,9 @@ class CommunityFeatures:
                 url, lines,
             ) if url else None
         else:
-            # Manual period requests must remain responsive when Telegraph is
-            # publishing other pages. Publish the current rankings first;
-            # generating all player and club dossiers here trips FLOOD_WAIT.
-            payload = self._direct_dashboard_snapshot(chat_id, days, None, compact=True)
+            # A requested period has the same linked player and club dossiers
+            # as its scheduled delivery; publish only this period at a time.
+            payload = self._direct_dashboard_snapshot(chat_id, days, None, compact=False)
         if isinstance(payload, dict) and payload.get("report_url"):
             with _DASHBOARD_CACHE_LOCK:
                 _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 90, payload)
@@ -4665,7 +4667,7 @@ class CommunityFeatures:
 
     def _player_detail_pages(self, rows, days, window=None):
         """Publish grouped player dossiers; a single page serves several links."""
-        from trophy_coefficient import score_brawler_trophies
+        from trophy_coefficient import score_brawler_trophies, TROPHY_COEFFICIENT_BANDS
         end = window[1] if window else datetime.now(timezone.utc)
         start = window[0] if window else (
             end.astimezone(ROME).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -4776,11 +4778,16 @@ class CommunityFeatures:
                 when = datetime.fromisoformat(str(r["battle_time"]).replace("Z", "+00:00")).astimezone(ROME)
                 delta = int(r["trophy_change"])
                 before = int(r["brawler_trophies_before"])
+                band = next(((start, end, weight) for start, end, weight in TROPHY_COEFFICIENT_BANDS
+                             if start <= before < end), None)
+                band_label = (f"{band[0]}–{band[1] - 1} ×{band[2]:.4f}".replace(".", ",")
+                              if band else "3000+ ×1,0000")
                 points = (round(score_brawler_trophies(before + delta) - score_brawler_trophies(before))
                           if delta > 0 else 0)
                 lines.append(f"{index}. {when:%d/%m %H:%M} · {r.get('brawler_name') or 'Brawler'} · "
                              f"{self._progression_result_it(r.get('result'), r.get('placement'))} · "
                              f"{self._progression_mode_it(r.get('mode'))} · "
+                             f"🎯 Fascia iniziale: {band_label} ({before} 🏆 prima) · "
                              f"{'+' if delta > 0 else ''}{delta} 🏆 · +{points} 🔥")
             if not battle_log_available:
                 lines.append("Battaglie temporaneamente non disponibili o incomplete.")
@@ -5087,7 +5094,9 @@ class CommunityFeatures:
         reply_markup = None
         if report_url:
             from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-            reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("📊 REPORT COMPLETO", url=report_url)]])
+            ranking = re.match(r"(?:📊\s*)?CLASSIFIC", str(message_text).lstrip(), re.I)
+            button = "🏆 Apri la Classifica" if ranking else "📊 REPORT COMPLETO"
+            reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(button, url=report_url)]])
         for attempt in range(3):
             try:
                 await context.bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, connect_timeout=20, read_timeout=30, write_timeout=30, pool_timeout=20)
