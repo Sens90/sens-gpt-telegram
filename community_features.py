@@ -5002,7 +5002,7 @@ class CommunityFeatures:
                      f"📈 Win rate sulle {games} partite con esito: {win_rate}",
                      f"🏆 Coppe positive: +{self.number_formatter(stats['cups'])}",
                      f"⚡ Bonus Progressione: +{self.number_formatter(stats['progression'] - stats['cups'])}",
-                     f"🔥 Progressione: +{self.number_formatter(stats['progression'])}"]
+                     f"🔥 Progressione netta: {'+' if roster['delta'] + stats['progression'] - stats['cups'] > 0 else ''}{self.number_formatter(roster['delta'] + stats['progression'] - stats['cups'])}"]
             lines.append(self._club_average_progression_line(roster))
             if not publish:
                 links[club] = lines
