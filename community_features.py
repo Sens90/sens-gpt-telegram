@@ -4314,7 +4314,7 @@ class CommunityFeatures:
                         and payload.get("cache_revision") == _DASHBOARD_FORMAT_REVISION):
                     stored_at = datetime.fromisoformat(str(payload.get("cached_at") or "").replace("Z", "+00:00"))
                     age = (datetime.now(timezone.utc) - stored_at).total_seconds()
-                    max_age = 120 if days == 0 else 300
+                    max_age = 90
                     if 0 <= age < max_age:
                         LOG.info("CLASSIFICHE PERIOD CACHE REUSED: chat=%s days=%s age_seconds=%s", chat_id, days, int(age))
                         with _DASHBOARD_CACHE_LOCK:
@@ -4349,10 +4349,13 @@ class CommunityFeatures:
                 url, lines,
             ) if url else None
         else:
-            payload = self._direct_dashboard_snapshot(chat_id, days, None)
+            # Manual period requests must remain responsive when Telegraph is
+            # publishing other pages. Publish the current rankings first;
+            # generating all player and club dossiers here trips FLOOD_WAIT.
+            payload = self._direct_dashboard_snapshot(chat_id, days, None, compact=True)
         if isinstance(payload, dict) and payload.get("report_url"):
             with _DASHBOARD_CACHE_LOCK:
-                _DASHBOARD_CACHE[cache_key] = (time.monotonic() + (120 if days == 0 else 300), payload)
+                _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 90, payload)
             if days is not None and getattr(self, "ready", False):
                 try:
                     saved_payload = {**payload, "cached_at": datetime.now(timezone.utc).isoformat(),
