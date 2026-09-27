@@ -197,7 +197,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                 lines.extend(["🏆 Classifica", f"[[URL:https://telegra.ph/{days}-{index}|Apri]]", ""])
             return [{"payload": {"report_url": f"https://telegra.ph/period-{days}",
                                  "fallback": "\n".join(lines), "cached_at": timestamp,
-                                 "cache_revision": 12}}]
+                                 "cache_revision": 13}}]
         obj._get = Mock(side_effect=get)
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/indice")
         payload = obj.rankings_dashboard_text(-1001)
@@ -285,7 +285,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         payload = {"text": "📋 RESOCONTO\n🏆 Coppe totali reali: 100", "report_url": "https://telegra.ph/periodo-7",
-                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 12}
+                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 13}
         obj._get = Mock(return_value=[{"payload": payload}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse the exact period"))
         result = obj.rankings_dashboard_text(-123, 7)
@@ -304,7 +304,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._get = Mock(return_value=[{"payload": {
             "report_url": "https://telegra.ph/periodo",
             "cached_at": (datetime.now(timezone.utc) - timedelta(seconds=89)).isoformat(),
-            "cache_revision": 12,
+            "cache_revision": 13,
         }}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse saved period"))
         with patch("community_features.time.monotonic", return_value=1000):
@@ -325,7 +325,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._direct_dashboard_snapshot = Mock(return_value=fresh)
         self.assertEqual(obj.rankings_dashboard_text(-123, 0), fresh)
         obj._direct_dashboard_snapshot.assert_called_once_with(-123, 0, None, compact=False)
-        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 12)
+        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 13)
 
     @patch("community_features.requests.post")
     def test_global_roster_uses_observed_nonregistered_snapshots_at_period_boundary(self, post):
@@ -524,6 +524,67 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("2000–2199 ×1,5500", detail)
         self.assertIn("3000+ ×1,0000", detail)
 
+    def test_player_dossier_separates_showdown_placements_from_known_outcomes(self):
+        from community_features import _PLAYER_DETAIL_PAGE_CACHE
+        _PLAYER_DETAIL_PAGE_CACHE.clear()
+        obj = self.make_features()
+        now = datetime.now(timezone.utc).isoformat()
+        battles = ([{"player_tag": "2GU9UV2RG", "battle_time": now, "brawler_name": "Emz",
+                     "brawler_trophies_before": 500, "trophy_change": 8, "result": "victory"}] * 7
+                   + [{"player_tag": "2GU9UV2RG", "battle_time": now, "brawler_name": "Emz",
+                       "brawler_trophies_before": 500, "trophy_change": -6, "result": "defeat"}] * 6
+                   + [{"player_tag": "2GU9UV2RG", "battle_time": now, "brawler_name": "Emz",
+                       "brawler_trophies_before": 500, "trophy_change": 8, "result": None,
+                       "placement": 2, "mode": "trioShowdown"}] * 63
+                   + [{"player_tag": "2GU9UV2RG", "battle_time": now, "brawler_name": "Emz",
+                       "brawler_trophies_before": 500, "trophy_change": -8, "result": None,
+                       "placement": 3, "mode": "trioShowdown"}] * 13)
+        obj._get = Mock(return_value=battles)
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/giocatori")
+        obj._player_detail_pages([{"tag": "2GU9UV2RG", "name": "Giorgio", "battle_count": 89}], 0)
+        detail = obj._publish_telegraph.call_args.args[1]
+        self.assertIn("🎮 Partite osservate: 89", detail)
+        self.assertIn("✅ Vittorie: 70 · ❌ Sconfitte: 19", detail)
+        self.assertFalse(any("Posizionamenti senza saldo" in line for line in detail))
+        self.assertIn("📈 Win rate sulle 89 partite con esito: 78,7%", detail)
+
+    def test_observed_battle_outcome_uses_explicit_result_then_trophy_sign(self):
+        outcome = self.make_features()._observed_battle_outcome
+        self.assertEqual(outcome({"result": None, "trophy_change": 5, "placement": 3}), "victory")
+        self.assertEqual(outcome({"result": None, "trophy_change": -5, "placement": 3}), "defeat")
+        self.assertEqual(outcome({"result": None, "trophy_change": 0, "placement": 3}), "other")
+        self.assertEqual(outcome({"result": "draw", "trophy_change": 5}), "draw")
+
+    async def test_inactivity_warning_tags_group_member_and_explains_privately(self):
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        obj.save_daily_skin_snapshots = Mock()
+        obj._get = Mock(side_effect=lambda table, params: ([{"chat_id": -123,
+            "inactivity_warn_days": 10, "inactivity_kick_days": 30}]
+            if table == "community_settings" else []))
+        member = {"telegram_user_id": 456, "display_name": "Giorgio <G>",
+                  "last_seen_at": (datetime.now(timezone.utc) - timedelta(days=12)).isoformat()}
+        obj.inactivity_rows = Mock(return_value=[(member, 12, False)])
+        obj._patch = Mock()
+        context = SimpleNamespace(bot=SimpleNamespace(send_message=AsyncMock()))
+        await obj.scheduled_jobs(context)
+        self.assertEqual(context.bot.send_message.await_count, 2)
+        group, private = [call.kwargs for call in context.bot.send_message.await_args_list]
+        self.assertEqual(group["chat_id"], -123)
+        self.assertIn('tg://user?id=456', group["text"])
+        self.assertIn("Giorgio &lt;G&gt;", group["text"])
+        self.assertEqual(group["parse_mode"], "HTML")
+        self.assertEqual(private["chat_id"], 456)
+        self.assertIn("soglia di inattività è 30 giorni", private["text"])
+        obj._patch.assert_called_once()
+
+        from telegram.error import Forbidden
+        context.bot.send_message = AsyncMock(side_effect=[None, Forbidden("private chat unavailable")])
+        obj._patch.reset_mock()
+        await obj.scheduled_jobs(context)
+        self.assertEqual(context.bot.send_message.await_count, 2)
+        obj._patch.assert_called_once()  # Public notice is not repeated if private chat is closed.
+
     def test_dashboard_direct_link_says_apri_la_classifica(self):
         url = "https://telegra.ph/classifica-oggi"
         nodes = self.make_features()._telegraph_nodes(["CLASSIFICHE — OGGI", f"[[URL:{url}|Apri]]"])
@@ -563,6 +624,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
              "trophy_change": 8, "result": "victory"},
             {"player_tag": "2GU9UV2RG", "brawler_trophies_before": 508,
              "trophy_change": -7, "result": "defeat"},
+            {"player_tag": "2GU9UV2RG", "brawler_trophies_before": 508,
+             "trophy_change": 4, "result": None, "placement": 2},
             {"player_tag": "2GUPY9V", "brawler_trophies_before": 500,
              "trophy_change": 8, "result": "victory"},
             {"player_tag": "2GU9UV2RG", "brawler_trophies_before": 508,
@@ -579,10 +642,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(obj._get.call_count, 1)
         titani = obj._publish_telegraph.call_args_list[0].args[1]
         tamarri = obj._publish_telegraph.call_args_list[1].args[1]
-        self.assertIn("🎮 Battaglie osservate: 2", titani)
-        self.assertIn("✅ Vittorie osservate: 1", titani)
+        self.assertIn("🎮 Battaglie osservate: 3", titani)
+        self.assertIn("✅ Vittorie osservate: 2", titani)
         self.assertIn("❌ Sconfitte osservate: 1", titani)
-        self.assertIn("📈 Win rate osservato: 50,0%", titani)
+        self.assertNotIn("Altri risultati osservati", titani)
+        self.assertIn("📈 Win rate sulle 3 partite con esito: 66,7%", titani)
         self.assertIn("🎮 Battaglie osservate: 1", tamarri)
         self.assertIn("❌ Sconfitte osservate: 0", tamarri)
 
@@ -1189,7 +1253,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         payload = obj.progression_detail_text("2GU9UV2RG", 0)
         self.assertEqual(payload["report_url"], "https://telegra.ph/progressione-oggi")
         self.assertIn("Partite osservate valide: 1", payload["text"])
-        self.assertIn("Vittorie: 0 · Sconfitte: 0 · Win rate: n.d.", payload["text"])
+        self.assertIn("Vittorie: 1 · Sconfitte: 0 · Win rate: 100,0%", payload["text"])
         self.assertIn("Data:", payload["fallback"])
         self.assertIn("🦸 Nita", payload["fallback"])
         self.assertIn("[[URL:https://telegra.ph/progressione-oggi|Apri]]", payload["fallback"])
