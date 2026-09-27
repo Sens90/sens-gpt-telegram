@@ -723,6 +723,24 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             str(child.get("attrs", {}).get("href", "")).endswith("#GIOCATORE-2GU9UV2RG")
             for child in node.get("children", []) if isinstance(child, dict)) for node in nodes))
 
+    def test_compact_club_results_use_net_saldo_without_publishing_four_pages(self):
+        obj = self.make_features()
+        obj._get = Mock(return_value=[
+            {"player_tag": "2GU9UV2RG", "brawler_trophies_before": 500,
+             "trophy_change": 10, "result": "victory"},
+            {"player_tag": "2GU9UV2RG", "brawler_trophies_before": 510,
+             "trophy_change": -5, "result": "defeat"},
+        ])
+        obj._publish_telegraph = Mock(side_effect=AssertionError("compact detail must not create extra pages"))
+        details = obj._club_battle_detail_links({"TITANI ABUSIVI": {
+            "tags": ["2GU9UV2RG"], "players": 1, "roster": 2, "delta": 5,
+            "coefficient_sum": 1.2, "coefficient_players": 1,
+        }}, 0, publish=False)["TITANI ABUSIVI"]
+        self.assertIn("🎮 Battaglie osservate: 2", details)
+        self.assertIn("⚡ Bonus Progressione: +1", details)
+        self.assertIn("🔥 Progressione netta: +6", details)
+        self.assertIn("🧮 Coeff. medio membri: 1,2000 (1/2 con coppe positive)", details)
+
     def test_large_compact_ranking_rewrites_anchors_to_direct_detail_pages(self):
         obj = self.make_features()
         pages = {}
