@@ -686,7 +686,9 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             "CLASSIFICHE", "Aggiornato: ora", "[[DASH:dash_t_1_7|Apri]]",
             "[[DASH:dash_t_2_7|Apri]]", "[[DASH:dash_p_2_7|Apri]]"])
         obj._player_detail_pages = Mock(side_effect=AssertionError("no dossier publication"))
-        obj._club_battle_detail_links = Mock(side_effect=AssertionError("no club publication"))
+        obj._club_battle_detail_links = Mock(return_value={"TITANI ABUSIVI": [
+            "🏆 TITANI ABUSIVI — 7 GIORNI", "📅 Periodo", "", "📋 RISULTATI DEL ROSTER COMPLETO",
+            "🎮 Battaglie osservate: 3", "🧮 Coeff. medio membri: 1,5000 (1/2 con coppe positive)"]})
         obj.periodic_report_text = Mock(return_value=("REPORT", [
             "REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI",
             "[[PLAYER:#GIOCATORE-2GU9UV2RG|1|Tony|+12 🏆]]", "🔥 CLASSIFICA PROGRESSIONE",
@@ -702,17 +704,42 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("PLAYERHEADING:2GU9UV2RG" in row for title, lines in published.items()
                             if title.startswith("Dettagli Trofei Globali") for row in lines))
         clubs = published["Classifica 4 Club — 7 GIORNI"]
+        self.assertFalse(any("Coeff. medio" in row for row in clubs))
         self.assertTrue(any("https://telegra.ph/page-" in row and "#CLUB-TITANI-ABUSIVI" in row
                             for row in clubs))
         self.assertFalse(any("CLUBHEADING:" in row for row in clubs))
         self.assertTrue(any("CLUBHEADING:TITANI-ABUSIVI" in row
                             for row in published["Dettagli 4 Club — 7 GIORNI"]))
+        details = published["Dettagli 4 Club — 7 GIORNI"]
+        self.assertIn("📋 RISULTATI DEL ROSTER COMPLETO", details)
+        self.assertIn("🎮 Battaglie osservate: 3", details)
+        self.assertTrue(any("Coeff. medio membri" in row for row in details))
+        obj._club_battle_detail_links.assert_called_once()
+        self.assertFalse(obj._club_battle_detail_links.call_args.kwargs["publish"])
         self.assertEqual(obj.periodic_report_text.call_args.kwargs["inline_player_details"], True)
         self.assertEqual(obj.coefficient_ranking_text.call_args.kwargs["inline_player_details"], True)
         nodes = obj._telegraph_nodes(trophies)
         self.assertTrue(any(node.get("tag") == "p" and any(
             str(child.get("attrs", {}).get("href", "")).endswith("#GIOCATORE-2GU9UV2RG")
             for child in node.get("children", []) if isinstance(child, dict)) for node in nodes))
+
+    def test_compact_club_results_use_net_saldo_without_publishing_four_pages(self):
+        obj = self.make_features()
+        obj._get = Mock(return_value=[
+            {"player_tag": "2GU9UV2RG", "brawler_trophies_before": 500,
+             "trophy_change": 10, "result": "victory"},
+            {"player_tag": "2GU9UV2RG", "brawler_trophies_before": 510,
+             "trophy_change": -5, "result": "defeat"},
+        ])
+        obj._publish_telegraph = Mock(side_effect=AssertionError("compact detail must not create extra pages"))
+        details = obj._club_battle_detail_links({"TITANI ABUSIVI": {
+            "tags": ["2GU9UV2RG"], "players": 1, "roster": 2, "delta": 5,
+            "coefficient_sum": 1.2, "coefficient_players": 1,
+        }}, 0, publish=False)["TITANI ABUSIVI"]
+        self.assertIn("🎮 Battaglie osservate: 2", details)
+        self.assertIn("⚡ Bonus Progressione: +1", details)
+        self.assertIn("🔥 Progressione netta: +6", details)
+        self.assertIn("🧮 Coeff. medio membri: 1,2000 (1/2 con coppe positive)", details)
 
     def test_large_compact_ranking_rewrites_anchors_to_direct_detail_pages(self):
         obj = self.make_features()
