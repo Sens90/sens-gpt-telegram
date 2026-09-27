@@ -153,7 +153,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("OGGI · 7 · 15 · 30", payload["text"])
         self.assertIn("📋 RESOCONTO", obj.rankings_dashboard_text(-1001, 0)["text"])
         self.assertIs(payload, obj.rankings_dashboard_text(-1001))
-        self.assertEqual(obj._publish_telegraph.call_count, 13)
+        self.assertEqual(obj._publish_telegraph.call_count, 17)
         lines = obj._publish_telegraph.call_args.args[1]
         links = [line for line in lines if line.startswith("[[URL:")]
         self.assertEqual(len(links), 12)
@@ -580,7 +580,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         lines = published["Classifica 4 Club — 7 GIORNI"]
         self.assertIn("[[PLAYER:https://telegra.ph/titani-battaglie|1|TITANI ABUSIVI|+12 (1/2 giocatori)]]", lines)
 
-    def test_compact_period_links_club_and_player_inside_published_pages(self):
+    def test_compact_period_links_to_separate_club_and_player_pages(self):
         obj = self.make_features()
         published = {}
         def publish(title, lines):
@@ -601,16 +601,22 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progressione"})
         obj._direct_dashboard_snapshot(-1001, 7, None, compact=True)
         trophies = published["Trofei Globali 4 Club — 7 GIORNI"]
-        self.assertTrue(any("#GIOCATORE-2GU9UV2RG" in row for row in trophies))
-        self.assertTrue(any("PLAYERHEADING:2GU9UV2RG" in row for row in trophies))
+        self.assertTrue(any("https://telegra.ph/page-" in row and "#GIOCATORE-2GU9UV2RG" in row
+                            for row in trophies))
+        self.assertFalse(any("PLAYERHEADING:" in row for row in trophies))
+        self.assertTrue(any("PLAYERHEADING:2GU9UV2RG" in row for title, lines in published.items()
+                            if title.startswith("Dettagli Trofei Globali") for row in lines))
         clubs = published["Classifica 4 Club — 7 GIORNI"]
-        self.assertTrue(any("#CLUB-TITANI-ABUSIVI" in row for row in clubs))
-        self.assertTrue(any("CLUBHEADING:TITANI-ABUSIVI" in row for row in clubs))
+        self.assertTrue(any("https://telegra.ph/page-" in row and "#CLUB-TITANI-ABUSIVI" in row
+                            for row in clubs))
+        self.assertFalse(any("CLUBHEADING:" in row for row in clubs))
+        self.assertTrue(any("CLUBHEADING:TITANI-ABUSIVI" in row
+                            for row in published["Dettagli 4 Club — 7 GIORNI"]))
         self.assertEqual(obj.periodic_report_text.call_args.kwargs["inline_player_details"], True)
         self.assertEqual(obj.coefficient_ranking_text.call_args.kwargs["inline_player_details"], True)
         nodes = obj._telegraph_nodes(trophies)
         self.assertTrue(any(node.get("tag") == "p" and any(
-            child.get("attrs", {}).get("href") == "#GIOCATORE-2GU9UV2RG"
+            str(child.get("attrs", {}).get("href", "")).endswith("#GIOCATORE-2GU9UV2RG")
             for child in node.get("children", []) if isinstance(child, dict)) for node in nodes))
 
     def test_large_compact_ranking_rewrites_anchors_to_direct_detail_pages(self):
@@ -665,9 +671,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.coefficient_ranking_text(123, "community", 0, publish_player_details=False,
                                      inline_player_details=True)
         lines = obj._publish_telegraph.call_args.args[1]
-        self.assertIn("[[PLAYER:#GIOCATORE-2GU9UV2RG|1|Tony|🔥 Progressione: +15]]", lines)
-        self.assertIn("[[PLAYERHEADING:2GU9UV2RG|Tony]]", lines)
-        self.assertTrue(any("🏆 +12 coppe · ⚡ +3 bonus · 🔥 +15 · 🧮 1,2500" in row for row in lines))
+        self.assertIn("[[PLAYER:https://telegra.ph/progressione#GIOCATORE-2GU9UV2RG|1|Tony|🔥 Progressione: +15]]", lines)
+        self.assertFalse(any("PLAYERHEADING:" in row for row in lines))
+        details = obj._publish_telegraph.call_args_list[0].args[1]
+        self.assertIn("[[PLAYERHEADING:2GU9UV2RG|Tony]]", details)
+        self.assertTrue(any("🏆 +12 coppe · ⚡ +3 bonus · 🔥 +15 · 🧮 1,2500" in row for row in details))
 
     def test_direct_trophy_ranking_links_names_without_showing_marker_in_telegram(self):
         obj = self.make_features()
@@ -716,7 +724,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             links = [line for line in lines if line.startswith("[[URL:")]
             self.assertEqual(len(links), count)
             self.assertTrue(all(line.endswith("|Apri]]") for line in links))
-            self.assertEqual(obj._publish_telegraph.call_count, 3 * ((0, 7, 15, 30).index(days) + 1))
+            self.assertEqual(obj._publish_telegraph.call_count, 4 * ((0, 7, 15, 30).index(days) + 1))
         self.assertEqual(obj.dashboard_command("dash_t_0_7"), "classifica della community 7")
 
     def test_command_guide_describes_current_period_hubs(self):

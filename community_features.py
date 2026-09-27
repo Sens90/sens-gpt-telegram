@@ -4891,10 +4891,7 @@ class CommunityFeatures:
         return links
 
     def _publish_inline_ranking(self, title, lines):
-        """Keep ranking anchors on the same page, or link bounded detail pages."""
-        json_module = __import__("json")
-        if len(json_module.dumps(self._telegraph_nodes(lines), ensure_ascii=False).encode("utf-8")) <= 45000:
-            return self._publish_telegraph(title, lines)
+        """Publish a clean ranking linked to bounded player detail pages."""
         if "👤 DETTAGLI GIOCATORI" not in lines:
             return self._publish_telegraph(title, lines)
         index = lines.index("👤 DETTAGLI GIOCATORI")
@@ -4955,6 +4952,17 @@ class CommunityFeatures:
                 club_lines.extend(["", f"[[CLUBHEADING:{anchor}|{name}]]",
                                    f"👥 Giocatori: {result['players']}/{result.get('roster', result['players'])}",
                                    f"🏆 Saldo Trofei: +{self.number_formatter(result['delta'])}"])
+            first_detail = next((i for i, row in enumerate(club_lines)
+                                 if row.startswith("[[CLUBHEADING:")), None)
+            if first_detail is not None:
+                club_url = self._publish_telegraph(f"Dettagli 4 Club — {label}",
+                                                    ["🛡️ DETTAGLI DEI 4 CLUB", *club_lines[first_detail:]])
+                if not club_url:
+                    LOG.warning("CLASSIFICHE LIVE TELEGRAPH UNAVAILABLE: days=%s stage=club_details", days)
+                    return _report + "\n\n⚠️ Telegraph temporaneamente limitato; questo Resoconto è calcolato adesso."
+                club_lines = [re.sub(r"\[\[PLAYER:#(CLUB-[A-Z0-9-]+)\|",
+                                     lambda match: f"[[PLAYER:{club_url}#{match.group(1)}|", row)
+                              for row in club_lines[:first_detail]]
         links[f"dash_t_1_{days}"] = self._publish_telegraph(f"Classifica 4 Club — {label}", club_lines)
         trophy_start = report_lines.index("🏆 CLASSIFICA TROFEI")
         trophy_end = report_lines.index("🔥 CLASSIFICA PROGRESSIONE", trophy_start)
