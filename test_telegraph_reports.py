@@ -302,7 +302,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         obj._get = Mock(return_value=[{"payload": {
             "report_url": "https://telegra.ph/periodo",
-            "cached_at": (datetime.now(timezone.utc) - timedelta(seconds=119)).isoformat(),
+            "cached_at": (datetime.now(timezone.utc) - timedelta(seconds=89)).isoformat(),
             "cache_revision": 10,
         }}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse saved period"))
@@ -323,7 +323,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         fresh = {"text": "fresh", "report_url": "https://telegra.ph/fresh", "fallback": "fresh"}
         obj._direct_dashboard_snapshot = Mock(return_value=fresh)
         self.assertEqual(obj.rankings_dashboard_text(-123, 0), fresh)
-        obj._direct_dashboard_snapshot.assert_called_once()
+        obj._direct_dashboard_snapshot.assert_called_once_with(-123, 0, None, compact=True)
         self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 10)
 
     @patch("community_features.requests.post")
