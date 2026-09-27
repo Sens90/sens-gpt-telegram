@@ -197,7 +197,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                 lines.extend(["🏆 Classifica", f"[[URL:https://telegra.ph/{days}-{index}|Apri]]", ""])
             return [{"payload": {"report_url": f"https://telegra.ph/period-{days}",
                                  "fallback": "\n".join(lines), "cached_at": timestamp,
-                                 "cache_revision": 14}}]
+                                 "cache_revision": 15}}]
         obj._get = Mock(side_effect=get)
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/indice")
         payload = obj.rankings_dashboard_text(-1001)
@@ -285,7 +285,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         payload = {"text": "📋 RESOCONTO\n🏆 Coppe totali reali: 100", "report_url": "https://telegra.ph/periodo-7",
-                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 14}
+                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 15}
         obj._get = Mock(return_value=[{"payload": payload}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse the exact period"))
         result = obj.rankings_dashboard_text(-123, 7)
@@ -304,7 +304,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._get = Mock(return_value=[{"payload": {
             "report_url": "https://telegra.ph/periodo",
             "cached_at": (datetime.now(timezone.utc) - timedelta(seconds=89)).isoformat(),
-            "cache_revision": 14,
+            "cache_revision": 15,
         }}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse saved period"))
         with patch("community_features.time.monotonic", return_value=1000):
@@ -325,7 +325,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._direct_dashboard_snapshot = Mock(return_value=fresh)
         self.assertEqual(obj.rankings_dashboard_text(-123, 0), fresh)
         obj._direct_dashboard_snapshot.assert_called_once_with(-123, 0, None, compact=False)
-        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 14)
+        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 15)
 
     @patch("community_features.requests.post")
     def test_global_roster_uses_observed_nonregistered_snapshots_at_period_boundary(self, post):
@@ -380,7 +380,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         ]
         for days in (0, 7, 15, 30):
             with self.subTest(days=days):
-                obj.coefficient_ranking_text(123, "community", days)
+                obj.coefficient_ranking_text(123, "community", days,
+                                             trophy_delta_by_tag={"AAA": 9, "BBB": 0})
                 published = "\n".join(obj._publish_telegraph.call_args.args[1])
                 self.assertIn("Active", published)
                 self.assertNotIn("Zero", published)
@@ -743,7 +744,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/ranking")
         post.return_value.json.return_value = [{"player_tag": "2GU9UV2RG", "progression_value": 15,
                                                  "positive_trophies": 12, "battle_count": 2, "coefficient": 1}]
-        payload = obj.coefficient_ranking_text(123, "community", 0)
+        payload = obj.coefficient_ranking_text(123, "community", 0,
+                                               trophy_delta_by_tag={"2GU9UV2RG": 12})
         lines = obj._publish_telegraph.call_args.args[1]
         self.assertEqual(len([line for line in lines if "Tony" in line]), 1)
         self.assertIn("[[PLAYER:https://telegra.ph/player#GIOCATORE-2GU9UV2RG|1|Tony|🔥 Progressione: +15]]", lines)
@@ -760,7 +762,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         post.return_value.json.return_value = [{"player_tag": "2GU9UV2RG", "progression_value": 15,
                                                  "positive_trophies": 12, "battle_count": 2, "coefficient": 1}]
         obj.coefficient_ranking_text(123, "community", 0, publish_player_details=False,
-                                     inline_player_details=True)
+                                     inline_player_details=True,
+                                     trophy_delta_by_tag={"2GU9UV2RG": 12})
         lines = obj._publish_telegraph.call_args.args[1]
         self.assertIn("[[PLAYER:https://telegra.ph/progressione#GIOCATORE-2GU9UV2RG|1|Tony|🔥 Progressione: +15]]", lines)
         self.assertFalse(any("PLAYERHEADING:" in row for row in lines))
@@ -781,6 +784,28 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("[[PLAYER:", payload["text"])
 
     @patch("community_features.requests.post")
+    def test_net_trophy_saldo_is_base_for_weighted_progression(self, post):
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        obj._get = Mock(side_effect=lambda table, params: [
+            {"player_tag": "2LVRCLV8LV", "player_name": "Giorgio", "club_name": "TITANI ABUSIVI"}
+        ] if table == "community_members" else [])
+        obj.history_fetcher = Mock(return_value=[{"trophies": 110003}])
+        obj.change_calculator = Mock(return_value={"today": 982})
+        post.return_value.raise_for_status.return_value = None
+        post.return_value.json.return_value = [{"player_tag": "2LVRCLV8LV", "player_name": "Giorgio",
+                                                "progression_value": 1121, "positive_trophies": 1015,
+                                                "battle_count": 89}]
+        _summary, full, _clubs, deltas = obj.periodic_report_text(
+            123, "community", 0, return_full=True, return_deltas=True, publish=False)
+        self.assertEqual(deltas["2LVRCLV8LV"], 982)
+        self.assertIn("🏆 Saldo Trofei: +982", full)
+        self.assertIn("⚡ Bonus Progressione: +106", full)
+        self.assertIn("🔥 Progressione complessiva: +1.088", full)
+        self.assertTrue(any("Giorgio" in line and "Progressione: +1.088" in line for line in full))
+        self.assertIn("🧮 Coeff. medio Progressione: 1,1044", full)
+
+    @patch("community_features.requests.post")
     def test_report_reuses_one_player_link_for_trophies_and_progression(self, post):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
@@ -797,7 +822,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(links), 2)
         self.assertTrue(all("https://telegra.ph/player#GIOCATORE-2GU9UV2RG" in line for line in links))
         self.assertTrue(all("TA · Tony" in line for line in links))
-        self.assertIn("🔥 Progressione: +15", links[1])
+        self.assertIn("🔥 Progressione: +13", links[1])
         self.assertNotIn("[[PLAYER:", summary)
 
     def test_each_period_index_contains_only_its_own_reports(self):
@@ -1262,6 +1287,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
 
     def test_progressione_oggi_builds_report_payload(self):
         obj = self.make_features()
+        obj.history_fetcher = Mock(return_value=[{"trophies": 110003}])
+        obj.change_calculator = Mock(return_value={"today": 982})
         obj._get = Mock(return_value=[{
             "player_name": "Sens",
             "battle_time": datetime.now(timezone.utc).isoformat(),
@@ -1277,6 +1304,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["report_url"], "https://telegra.ph/progressione-oggi")
         self.assertIn("Partite osservate valide: 1", payload["text"])
         self.assertIn("Vittorie: 1 · Sconfitte: 0 · Win rate: 100,0%", payload["text"])
+        self.assertIn("Saldo Trofei account: +982", payload["text"])
+        self.assertIn("Progressione netta: +982", payload["text"])
         self.assertIn("Data:", payload["fallback"])
         self.assertIn("🦸 Nita", payload["fallback"])
         self.assertIn("[[URL:https://telegra.ph/progressione-oggi|Apri]]", payload["fallback"])
