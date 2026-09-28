@@ -2302,11 +2302,12 @@ class CommunityFeatures:
     def _window_history_days(start):
         return max(10, (datetime.now(timezone.utc) - start.astimezone(timezone.utc)).days + 3)
 
-    def _player_trophy_window(self, tag, start, end):
+    def _player_trophy_window(self, tag, start, end, history=None):
         """Use the same midnight attribution as every report and leaderboard."""
         tag = str(tag or "").strip().lstrip("#").upper()
-        history = (self.history_fetcher(tag, days=self._window_history_days(start)) or []
-                   if callable(getattr(self, "history_fetcher", None)) else [])
+        if history is None:
+            history = (self.history_fetcher(tag, days=self._window_history_days(start)) or []
+                       if callable(getattr(self, "history_fetcher", None)) else [])
         roster = self._roster_trophy_histories([tag], start, end).get(tag, [])
         battles = self._boundary_battle_history([tag], start, end).get(tag, [])
         return self._window_trophy_values([*history, *roster], start, end, battles)
@@ -2666,13 +2667,6 @@ class CommunityFeatures:
             """Wins use the highest Brawler trophy value in the team; losses score zero."""
             return float(weighted_progression_delta(row))
 
-        def weight_at(trophies):
-            value = max(0, int(trophies or 0))
-            for start, end, weight in TROPHY_COEFFICIENT_BANDS:
-                if start <= value < end:
-                    return float(weight)
-            return 1.0
-
         brawler_name_it = self._brawler_name_translator()
 
         def team_context(row):
@@ -2813,14 +2807,20 @@ class CommunityFeatures:
             max_trophies, team = team_context(row)
             reference = progression_reference_trophies(row)
             points = weighted_delta(row)
+            band = next(((lo, hi, weight) for lo, hi, weight in TROPHY_COEFFICIENT_BANDS
+                         if lo <= reference < hi), None)
+            band_label = (f"{band[0]}–{band[1] - 1} ×{band[2]:.4f}".replace(".", ",")
+                          if band else "3000+ ×1,0000")
+            outcome = self._progression_result_it(row.get("result"), row.get("placement"))
             lines += [
                 "",
-                f"{index}. {dt_local(row['battle_time']):%H:%M} — {self._progression_mode_it(row.get('mode'))}",
-                f"Brawler: {brawler_name_it(row.get('brawler_name'))}",
-                f"Coppe: {t0} → {t1} ({'+' if delta > 0 else ''}{delta})",
-                f"Risultato: {self._progression_result_it(row.get('result'), row.get('placement'))}",
-                f"Valore di riferimento: {reference} 🏆",
-                f"Peso fascia di riferimento: ×{weight_at(reference):.4f}".replace(".", ","),
+                f"📅 {index}. {dt_local(row['battle_time']):%d/%m/%Y %H:%M}",
+                f"🦸 Brawler: {brawler_name_it(row.get('brawler_name'))} · 🏆 {t1} coppe dopo la battaglia",
+                f"🎮 Modalità: {self._progression_mode_it(row.get('mode'))}",
+                f"Risultato: {outcome} · {'+' if delta > 0 else ''}{delta} 🏆",
+                f"Fascia: {band_label}",
+                (f"👥 Team Value di riferimento: {reference} 🏆" if isinstance(team, list) and team else
+                 f"🎯 Valore di riferimento Brawler: {reference} 🏆"),
                 ("Punti Progressione: 0 (sconfitta non conteggiata)" if delta < 0 else
                  f"Punti Progressione: {'+' if points > 0 else ''}{points:.2f}".replace(".", ",")),
             ]
@@ -3128,13 +3128,6 @@ class CommunityFeatures:
         def local_dt(value):
             return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(ROME)
 
-        def weight_at(trophies):
-            t = max(0, int(trophies))
-            for start, end, weight in TROPHY_COEFFICIENT_BANDS:
-                if start <= t < end:
-                    return float(weight)
-            return 1.0
-
         def points(row):
             """Positive Progressione uses the highest Brawler trophy value in the team."""
             return float(weighted_progression_delta(row))
@@ -3183,6 +3176,7 @@ class CommunityFeatures:
         positive = sum(max(0, int(x.get("trophy_change") or 0)) for x in matches)
         lost = sum(min(0, int(x.get("trophy_change") or 0)) for x in matches)
         bonus = pts - positive
+        net_brawler = raw + bonus
         wins = sum(self._observed_battle_outcome(x) == "victory" for x in matches)
         losses = sum(self._observed_battle_outcome(x) == "defeat" for x in matches)
         draws = sum(1 for x in matches if str(x.get("result") or "").casefold() == "draw")
@@ -3205,7 +3199,8 @@ class CommunityFeatures:
             f"Coppe perse: {lost}",
             f"Saldo trofei: {'+' if raw > 0 else ''}{raw}",
             f"Bonus: {'+' if bonus > 0 else ''}{bonus:.2f}".replace(".", ","),
-            f"Progressione: {'+' if pts > 0 else ''}{pts:.2f}".replace(".", ","),
+            f"Progressione netta Brawler: {'+' if net_brawler > 0 else ''}{net_brawler:.2f}".replace(".", ","),
+            f"Punti ponderati delle coppe positive: +{pts:.2f}".replace(".", ","),
             f"Coeff. Progressione: {progression_coefficient:.6f}".replace(".", ","),
             f"Trofei inizio periodo: {start_trophies}",
             f"Trofei ultimo dato osservato: {current_trophies}",
@@ -3219,20 +3214,25 @@ class CommunityFeatures:
             p = points(row)
             max_t, team = team_context(row)
             reference_trophies = progression_reference_trophies(row)
-            w = weight_at(reference_trophies)
             expected = row.get("expected_base_delta")
             extra = row.get("observed_extra")
             mode = self._progression_mode_it(row.get("mode"))
             result = row.get("result")
             placement = row.get("placement")
             outcome = self._progression_result_it(result, placement)
+            band = next(((lo, hi, weight) for lo, hi, weight in TROPHY_COEFFICIENT_BANDS
+                         if lo <= reference_trophies < hi), None)
+            band_label = (f"{band[0]}–{band[1] - 1} ×{band[2]:.4f}".replace(".", ",")
+                          if band else "3000+ ×1,0000")
             lines += [
                 "",
-                f"{index}. {local_dt(row['battle_time']):%H:%M} — {mode}",
-                f"Coppe: {t0} → {t1} ({'+' if d > 0 else ''}{d})",
-                f"Risultato: {outcome}",
-                f"Valore di riferimento: {reference_trophies} 🏆",
-                f"Peso fascia di riferimento: ×{w:.4f}".replace(".", ","),
+                f"📅 {index}. {local_dt(row['battle_time']):%d/%m/%Y %H:%M}",
+                f"🦸 Brawler: {brawler} · 🏆 {t1} coppe dopo la battaglia",
+                f"🎮 Modalità: {mode}",
+                f"Risultato: {outcome} · {'+' if d > 0 else ''}{d} 🏆",
+                f"Fascia: {band_label}",
+                (f"👥 Team Value di riferimento: {reference_trophies} 🏆" if isinstance(team, list) and team else
+                 f"🎯 Valore di riferimento Brawler: {reference_trophies} 🏆"),
                 ("Punti Progressione: 0 (sconfitta non conteggiata)" if d < 0 else
                  f"Punti Progressione: {'+' if p > 0 else ''}{p:.2f}".replace(".", ",")),
             ]
@@ -3267,7 +3267,7 @@ class CommunityFeatures:
                 "Periodo: OGGI",
                 f"Partite osservate valide: {len(matches)}",
                 "Coppe nette: " + ("+" if raw > 0 else "") + str(raw),
-                "Punti Progressione: " + ("+" if pts > 0 else "") + f"{pts:.2f}".replace(".", ","),
+                "Progressione netta Brawler: " + ("+" if net_brawler > 0 else "") + f"{net_brawler:.2f}".replace(".", ","),
             ]
             return self._telegraph_reply(summary, report_url, lines)
         return "\n".join(lines)
@@ -3396,8 +3396,9 @@ class CommunityFeatures:
                 weighted = int(row.get("progression_value") or 0)
                 row["_bonus"] = weighted - cups
                 row["_weighted"] = weighted
-                row["value"] = ((trophy_delta_by_tag or {})[tag] + row["_bonus"]
-                                if tag in (trophy_delta_by_tag or {}) else None)
+                row["_trophy_delta"] = (trophy_delta_by_tag or {}).get(tag)
+                row["value"] = (int(row["_trophy_delta"]) + row["_bonus"]
+                                if row["_trophy_delta"] is not None else None)
         rows = [row for row in rows if row.get("value") is not None
                 and (days is None or int(row["value"]) > 0)]
         rows.sort(
@@ -3412,6 +3413,8 @@ class CommunityFeatures:
             return f"{title}\n\nStorico non ancora disponibile per questo periodo."
         period = "ATTUALE" if days is None else ("OGGI" if days == 0 else f"{days} GIORNI")
         lines = [f"{title} — {period}", f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}", ""]
+        if days is not None:
+            lines.extend(["🏆 Base: saldo della Classifica Trofei + bonus delle coppe positive.", ""])
         detail_urls = (self._player_detail_pages(rows[:200], days, window)
                        if days is not None and publish_player_details else {})
         if inline_player_details:
@@ -3444,6 +3447,7 @@ class CommunityFeatures:
                 lines.extend([f"[[PLAYERHEADING:{tag}|{self._player_link_name(row['name'])}]]",
                               f"⏱️ Tempo di gioco: {seconds // 3600}h {(seconds % 3600) // 60:02d}m",
                               f"🎮 Partite osservate: {int(row.get('battle_count') or 0)}",
+                              f"🏆 Saldo Classifica Trofei: {'+' if int(row['_trophy_delta']) > 0 else ''}{self.number_formatter(row['_trophy_delta'])}",
                               f"🏆 Coppe positive: +{self.number_formatter(cups)}",
                               f"⚡ Bonus Progressione: +{self.number_formatter(row.get('_bonus') or 0)}",
                               f"🔥 Progressione: +{self.number_formatter(value)}",
@@ -4382,8 +4386,9 @@ class CommunityFeatures:
             row["_cups"] = int(row.get("positive_trophies") or 0)
             row["_bonus"] = row["_weighted"] - row["_cups"]
             tag = str(row.get("player_tag") or "").lstrip("#").upper()
-            row["_value"] = (trophy_delta_by_tag[tag] + row["_bonus"]
-                             if tag in trophy_delta_by_tag else None)
+            row["_trophy_delta"] = trophy_delta_by_tag.get(tag)
+            row["_value"] = (int(row["_trophy_delta"]) + row["_bonus"]
+                             if row["_trophy_delta"] is not None else None)
             row["_coeff"] = (row["_weighted"] / row["_cups"]) if row["_cups"] > 0 else 0.0
         progression_rows = [r for r in progression_rows if int(r.get("battle_count") or 0) > 0]
         progression_rows.sort(key=lambda r: (r["_value"] if r["_value"] is not None else -10**12,
@@ -4414,6 +4419,7 @@ class CommunityFeatures:
         if scope_key == "global_clubs":
             full.extend(["", f"📌 Storico Trofei disponibile: {len(trophy_rows)} su {len(tags)} giocatori del roster."])
         full.extend(["", "🔥 CLASSIFICA PROGRESSIONE"])
+        full.append("🏆 Base: saldo della Classifica Trofei + bonus delle coppe positive.")
         if visible_progression_rows:
             for i, r in enumerate(visible_progression_rows, 1):
                 tag = str(r.get("player_tag") or "").lstrip("#").upper()
@@ -4465,7 +4471,7 @@ class CommunityFeatures:
                              f"🏆 Trofei attuali: {self.number_formatter(row['current'])}",
                              f"📈 Saldo Trofei: {self.number_formatter(row['delta'])}",
                              f"🎮 Battaglie osservate: {int(progress.get('battle_count') or 0)}",
-                             f"🏆 Coppe positive: +{self.number_formatter(cups)}",
+                             f"🏆 Coppe positive osservate: +{self.number_formatter(cups)}",
                              f"⚡ Bonus Progressione: +{self.number_formatter(progress.get('_bonus') or 0)}",
                              f"🔥 Progressione: {self.number_formatter(value) if value is not None else 'n.d.'}",
                              f"🧮 Coeff. Progressione: {ratio}"])
@@ -4810,7 +4816,9 @@ class CommunityFeatures:
         brawler_name_it = self._brawler_name_translator()
         name = (progression.get("player_name") or
                 next((r.get("player_name") for r in reversed(rows) if r.get("player_name")), tag))
-        delta = (ending[1] - baseline[1]) if baseline and ending else None
+        # Match the Classifica Trofei calendar boundary and its battle evidence.
+        trophy_start, trophy_end = self._player_trophy_window(tag, start, end, history=history)
+        delta = trophy_end - trophy_start if trophy_start is not None and trophy_end is not None else None
         wins = sum(self._observed_battle_outcome(r) == "victory" for r in rows)
         losses = sum(self._observed_battle_outcome(r) == "defeat" for r in rows)
         grouped = {}
@@ -4905,17 +4913,17 @@ class CommunityFeatures:
             "select": "player_name,battle_time,brawler_name,brawler_trophies_before,trophy_change,result,placement,mode,bonus_type,team_max_brawler_trophies,team_composition",
             "player_tag": f"eq.{tag}",
             "and": f"(battle_time.gte.{start.astimezone(timezone.utc).isoformat()},battle_time.lt.{end.astimezone(timezone.utc).isoformat()})",
-            "order": "battle_time.desc", "limit": "101", "offset": str(int(page) * 100),
+            "order": "battle_time.desc", "limit": "31", "offset": str(int(page) * 30),
         }) or []
-        next_page = len(rows) > 100
-        rows = rows[:100]
+        next_page = len(rows) > 30
+        rows = rows[:30]
         name = next((row.get("player_name") for row in rows if row.get("player_name")), tag)
         translate = self._brawler_name_translator()
         lines = [f"LOG BATTAGLIE — {name}",
                  f"Periodo: {start.astimezone(ROME):%d/%m/%Y %H:%M} – {end.astimezone(ROME):%d/%m/%Y %H:%M}",
                  f"Pagina {int(page) + 1} · risultati più recenti per primi", "", "🎮 BATTAGLIE OSSERVATE"]
         valid = 0
-        for index, row in enumerate(rows, int(page) * 100 + 1):
+        for index, row in enumerate(rows, int(page) * 30 + 1):
             try:
                 moment = datetime.fromisoformat(str(row["battle_time"]).replace("Z", "+00:00")).astimezone(ROME)
                 before, delta = int(row["brawler_trophies_before"]), int(row["trophy_change"])
@@ -4928,11 +4936,18 @@ class CommunityFeatures:
                          if lo <= reference < hi), None)
             band_label = (f"{band[0]}–{band[1] - 1} ×{band[2]:.4f}".replace(".", ",")
                           if band else "3000+ ×1,0000")
-            lines.append(f"{index}. {moment:%d/%m %H:%M} · {translate(row.get('brawler_name'))} · "
-                         f"{self._progression_result_it(self._observed_battle_outcome(row), row.get('placement'))} · "
-                         f"{self._progression_mode_it(row.get('mode'))} · "
-                         f"🎯 {band_label} ({reference} 🏆 riferimento; {before} 🏆 propri) · "
-                         f"{'+' if delta > 0 else ''}{delta} 🏆")
+            outcome = self._progression_result_it(self._observed_battle_outcome(row), row.get("placement"))
+            lines.extend([
+                "",
+                f"📅 {index}. {moment:%d/%m/%Y %H:%M}",
+                f"🦸 Brawler: {translate(row.get('brawler_name'))} · 🏆 {max(0, before + delta)} coppe dopo la battaglia",
+                f"🎮 Modalità: {self._progression_mode_it(row.get('mode'))}",
+                f"{'✅' if outcome == 'Vittoria' else '❌' if outcome == 'Sconfitta' else '📍'} "
+                f"{outcome} · {'+' if delta > 0 else ''}{delta} 🏆",
+                f"🎯 Fascia: {band_label}",
+                (f"👥 Team Value: {reference} 🏆" if row.get("team_max_brawler_trophies") is not None
+                 else f"🎯 Riferimento Brawler: {reference} 🏆"),
+            ])
             team = row.get("team_composition")
             if isinstance(team, list) and team:
                 lines.append("👥 Squadra:")
@@ -4945,7 +4960,6 @@ class CommunityFeatures:
                 lines.append("👤 Modalità Solo")
             else:
                 lines.append("👥 Squadra non disponibile nel battle log")
-            lines.append("")
             valid += 1
         if not valid:
             lines.append("Nessuna battaglia osservata valida in questa pagina.")
@@ -5044,9 +5058,16 @@ class CommunityFeatures:
             progression = sum(weighted_progression_delta(r) for r in observed)
             bonus = int(item.get("_bonus") if item.get("_bonus") is not None else
                         round(progression) - trophies)
-            value = int(item.get("_value") if item.get("_value") is not None else
-                        item.get("value") if item.get("value") is not None else
-                        sum(int(r["trophy_change"]) for r in observed) + bonus)
+            # Use the exact Classifica Trofei snapshot, including changes outside
+            # the limited battle log. Observed positive cups only determine bonus.
+            saldo = item.get("_trophy_delta")
+            if saldo is None:
+                saldo = item.get("delta")
+            if saldo is None and item.get("_value") is not None and item.get("_bonus") is not None:
+                saldo = int(item["_value"]) - int(item["_bonus"])
+            if saldo is None and item.get("value") is not None:
+                saldo = int(item["value"]) - bonus
+            value = int(saldo) + bonus if saldo is not None else None
             cups = int(item.get("_cups") if item.get("_cups") is not None else
                        item.get("positive_trophies") if item.get("positive_trophies") is not None else trophies)
             sessions = []
@@ -5076,11 +5097,14 @@ class CommunityFeatures:
                          if wins + losses else "📈 Win rate: n.d. (nessun esito vittoria/sconfitta)")]
                        if battle_log_available else []),
                      f"🦸 Brawler più usato: {brawler if battle_log_available else 'n.d. (log incompleto)'}",
-                     f"🏆 Coppe: +{self.number_formatter(cups)}",
+                     (f"🏆 Saldo Classifica Trofei: {'+' if int(saldo) > 0 else ''}{self.number_formatter(saldo)}"
+                      if saldo is not None else "🏆 Saldo Classifica Trofei: storico insufficiente"),
+                     f"🏆 Coppe positive osservate: +{self.number_formatter(cups)}",
                      f"⚡ Bonus: +{self.number_formatter(bonus)}",
-                     f"🔥 Progressione: {'+' if value > 0 else ''}{self.number_formatter(value)}",
-                     f"🧮 Coeff. Progressione: {ratio}", "", "🎮 BATTAGLIE OSSERVATE"]
-            for index, r in enumerate(observed, 1):
+                     (f"🔥 Progressione netta: {'+' if value > 0 else ''}{self.number_formatter(value)}"
+                      if value is not None else "🔥 Progressione netta: storico insufficiente"),
+                     f"🧮 Coeff. Progressione: {ratio}", "", "🎮 ULTIME BATTAGLIE OSSERVATE"]
+            for index, r in enumerate(observed[-5:], max(1, len(observed) - 4)):
                 when = datetime.fromisoformat(str(r["battle_time"]).replace("Z", "+00:00")).astimezone(ROME)
                 delta = int(r["trophy_change"])
                 before = int(r["brawler_trophies_before"])
@@ -5090,17 +5114,26 @@ class CommunityFeatures:
                 band_label = (f"{band[0]}–{band[1] - 1} ×{band[2]:.4f}".replace(".", ",")
                               if band else "3000+ ×1,0000")
                 points = round(weighted_progression_delta(r))
-                reference_note = (f"{before} 🏆 prima" if reference == before else
-                                  f"team {reference} 🏆; propri {before} 🏆 prima")
-                lines.append(f"{index}. {when:%d/%m %H:%M} · {brawler_name_it(r.get('brawler_name'))} · "
-                             f"{self._progression_result_it(self._observed_battle_outcome(r), r.get('placement'))} · "
-                             f"{self._progression_mode_it(r.get('mode'))} · "
-                             f"🎯 Fascia iniziale: {band_label} ({reference_note}) · "
-                             f"{'+' if delta > 0 else ''}{delta} 🏆 · +{points} 🔥")
+                outcome = self._progression_result_it(self._observed_battle_outcome(r), r.get("placement"))
+                lines.extend([
+                    "",
+                    f"📅 {index}. {when:%d/%m/%Y %H:%M}",
+                    f"🦸 Brawler: {brawler_name_it(r.get('brawler_name'))} · 🏆 {max(0, before + delta)} coppe dopo la battaglia",
+                    f"🎮 Modalità: {self._progression_mode_it(r.get('mode'))}",
+                    f"Risultato: {outcome} · {'+' if delta > 0 else ''}{delta} 🏆",
+                    f"🎯 Fascia iniziale: {band_label} ({before} 🏆 prima)",
+                    (f"👥 Team Value: {reference} 🏆" if r.get("team_max_brawler_trophies") is not None
+                     else f"🎯 Riferimento Brawler: {reference} 🏆"),
+                    f"🔥 Punti ponderati: +{points}",
+                ])
             if not battle_log_available:
                 lines.append("Battaglie temporaneamente non disponibili o incomplete.")
             elif not observed:
                 lines.append("Nessuna battaglia osservata valida nel periodo.")
+            if battle_log_available and observed:
+                battle_link = self._battle_log_link(tag, start, end)
+                if battle_link:
+                    lines.extend(["", f"[[BATTLE:{battle_link}|Apri il log battaglie]]"])
             return tag, lines
 
         sections = [make_section(tag, players[tag]) for tag in sorted(players)]

@@ -95,9 +95,10 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(obj.player_battle_log_page("2GU9UV2RG", start, end),
                              "https://telegra.ph/Battaglie-Giorgio")
         lines = obj._publish_telegraph.call_args.args[1]
-        self.assertEqual(sum("Semino" in line for line in lines), 100)
+        self.assertEqual(sum("Semino" in line for line in lines), 30)
         self.assertTrue(any("1000–1099" in line for line in lines))
         self.assertTrue(any("[[BATTLE:https://" in line for line in lines))
+        self.assertEqual(obj._get.call_args.args[1]["limit"], "31")
         obj._get.assert_called_once()
 
     def test_battle_log_shows_team_and_uses_highest_teammate_band(self):
@@ -121,6 +122,34 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("2000–2199 ×1,5500", page)
         self.assertIn("Compagno · SURGE · 2000 🏆", page)
         self.assertLess(page.index("Compagno · SURGE"), page.index("Anna · NITA"))
+        self.assertLess(page.index("📅 1."), page.index("🦸 Brawler: NITA"))
+        self.assertLess(page.index("🦸 Brawler: NITA"), page.index("🎮 Modalità:"))
+        self.assertLess(page.index("🎮 Modalità:"), page.index("Vittoria · +10 🏆"))
+        self.assertLess(page.index("Vittoria · +10 🏆"), page.index("🎯 Fascia:"))
+        self.assertLess(page.index("🎯 Fascia:"), page.index("👥 Team Value: 2000 🏆"))
+        self.assertLess(page.index("👥 Team Value: 2000 🏆"), page.index("👥 Squadra:"))
+
+    def test_battle_log_defeat_keeps_each_fact_on_its_own_line(self):
+        obj = self.make_features()
+        start = datetime.now(timezone.utc) - timedelta(hours=1)
+        end = datetime.now(timezone.utc)
+        obj._get = Mock(return_value=[{
+            "player_name": "Anna", "battle_time": start.isoformat(),
+            "brawler_name": "EMZ", "brawler_trophies_before": 1800,
+            "team_max_brawler_trophies": 2000, "trophy_change": -8,
+            "result": "defeat", "mode": "gemGrab",
+            "team_composition": [{"name": "Anna", "brawler_name": "EMZ", "brawler_trophies": 1800},
+                                 {"name": "Compagno", "brawler_name": "NITA", "brawler_trophies": 2000}],
+        }])
+        obj._brawler_name_translator = Mock(return_value=lambda name: name)
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/Battaglie-Anna")
+        obj.player_battle_log_page("2LVRCLV8LV", start, end)
+        lines = obj._publish_telegraph.call_args.args[1]
+        self.assertTrue(any("Brawler: EMZ · 🏆 1792 coppe dopo la battaglia" in line for line in lines))
+        self.assertIn("❌ Sconfitta · -8 🏆", lines)
+        self.assertIn("🎯 Fascia: 2000–2199 ×1,5500", lines)
+        self.assertIn("👥 Team Value: 2000 🏆", lines)
+        self.assertIn("👥 Squadra:", lines)
 
     def test_compact_player_detail_renders_prominent_name_and_clickable_battle_log(self):
         obj = self.make_features()
@@ -541,6 +570,10 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             {"recorded_at": (midnight + timedelta(hours=23, minutes=59)).isoformat(), "trophies": 110},
             {"recorded_at": (midnight + timedelta(days=1, hours=1)).isoformat(), "trophies": 900},
         ])
+        obj._roster_trophy_histories = Mock(return_value={})
+        obj._boundary_battle_history = Mock(return_value={"2GU9UV2RG": [
+            {"battle_time": (midnight + timedelta(hours=12)).isoformat(), "trophy_change": 10},
+        ]})
         obj._get = Mock(return_value=[])
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/personale")
         rpc = Mock()
@@ -575,6 +608,38 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(obj._player_detail_pages([{"tag": "2GU9UV2RG", "name": "Tony"}], 0), urls)
         obj._publish_telegraph.assert_called_once()
         self.assertEqual(obj._player_link_name("TA | Tony [EU]"), "TA · Tony (EU)")
+
+    def test_player_dossier_progression_starts_at_trophy_ranking_saldo(self):
+        from community_features import _PLAYER_DETAIL_PAGE_CACHE
+        _PLAYER_DETAIL_PAGE_CACHE.clear()
+        obj = self.make_features()
+        obj._get = Mock(return_value=[{
+            "player_tag": "2GU9UV2RG", "battle_time": datetime.now(timezone.utc).isoformat(),
+            "brawler_name": "NITA", "brawler_trophies_before": 2000,
+            "team_max_brawler_trophies": 2000, "trophy_change": 10, "result": "victory",
+        }])
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/giocatore")
+        obj._player_detail_pages([{"tag": "2GU9UV2RG", "name": "Tony", "delta": 982}], 0)
+        detail = "\n".join(obj._publish_telegraph.call_args.args[1])
+        self.assertIn("🏆 Saldo Classifica Trofei: +982", detail)
+        self.assertIn("🏆 Coppe positive osservate: +10", detail)
+        self.assertIn("⚡ Bonus: +6", detail)
+        self.assertIn("🔥 Progressione netta: +988", detail)
+
+    @patch("community_features.requests.post")
+    def test_progression_ranking_uses_trophy_saldo_when_positive_cups_differ(self, post):
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        obj._get = Mock(return_value=[{"player_tag": "2GU9UV2RG", "player_name": "Giorgio"}])
+        obj._player_detail_pages = Mock(return_value={})
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/progressione")
+        post.return_value.json.return_value = [{"player_tag": "2GU9UV2RG", "progression_value": 1130,
+                                                 "positive_trophies": 1015, "battle_count": 89, "coefficient": 1}]
+        obj.coefficient_ranking_text(123, "community", 7, trophy_delta_by_tag={"2GU9UV2RG": 982})
+        lines = obj._publish_telegraph.call_args.args[1]
+        self.assertIn("1. Giorgio — 🔥 Progressione: +1.097", lines)
+        row = obj._player_detail_pages.call_args.args[0][0]
+        self.assertEqual((row["_trophy_delta"], row["_bonus"], row["value"]), (982, 115, 1097))
 
     def test_player_battle_dossier_uses_pre_battle_trophy_band_at_boundaries(self):
         from community_features import _PLAYER_DETAIL_PAGE_CACHE
@@ -1627,8 +1692,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Sessioni osservate: 1", detail)
         self.assertEqual(detail.index("Sessioni osservate: 1"), next(i for i, line in enumerate(detail) if line.startswith("Fasce:")) + 1)
         self.assertIn("LOG BATTAGLIE", detail)
-        self.assertIn("Brawler: Nita", detail)
-        self.assertIn("Risultato: Risultato non disponibile", detail)
+        self.assertTrue(any("Brawler: Nita" in line for line in detail))
+        self.assertTrue(any("Risultato: Risultato non disponibile" in line for line in detail))
         self.assertIs(obj.progression_detail_text("2GU9UV2RG", 0), payload)
         self.assertEqual(obj._publish_telegraph.call_count, 2)
         self.assertEqual(obj._get.call_count, 2)
@@ -1659,7 +1724,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.progression_detail_text("2LVRCLV8LV")
         emz = obj._publish_telegraph.call_args_list[0].args[1]
         logs = emz[emz.index("LOG BATTAGLIE") + 1:]
-        numbers = [line.split(".", 1)[0] for line in logs if line[:1].isdigit() and ". " in line]
+        numbers = [line.split(". ", 1)[0].removeprefix("📅 ") for line in logs if line.startswith("📅 ")]
         self.assertEqual(numbers, ["1", "2", "3"])
         nodes = obj._telegraph_nodes(emz)
         self.assertFalse(any(node.get("tag") == "h3" and node.get("children") == ["👥 SQUADRA"] for node in nodes))
@@ -1721,7 +1786,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(node.get("tag") == "p" and any(isinstance(child, dict) and child.get("children") == ["👥 Squadra:"] for child in node.get("children", [])) for node in nodes))
         self.assertIn("Squadra: Modalità Solo", report)
         self.assertIn("Punti Progressione: 0 (sconfitta non conteggiata)", report)
-        self.assertIn("Valore di riferimento: 2000 🏆", report)
+        self.assertIn("Team Value di riferimento: 2000 🏆", report)
         self.assertIn("Punti Progressione: +20,15", report)
         self.assertIn("🦸 EL PRIMO", payload["fallback"])
         self.assertIn("🦸 NITA", payload["fallback"])
