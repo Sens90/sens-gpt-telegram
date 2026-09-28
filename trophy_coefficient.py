@@ -62,6 +62,22 @@ def score_brawler_trophies(trophies):
     return Decimal(score_units) / WEIGHT_SCALE
 
 
+def progression_reference_trophies(row):
+    """Use the highest Brawler trophies in the player's actual team when saved."""
+    own = max(0, int(row.get("brawler_trophies_before") or 0))
+    team = row.get("team_max_brawler_trophies")
+    return max(own, int(team)) if team is not None else own
+
+
+def weighted_progression_delta(row):
+    """Weight a positive trophy change at the team's pre-battle reference."""
+    delta = int(row.get("trophy_change") or 0)
+    if delta <= 0:
+        return Decimal(0)
+    reference = progression_reference_trophies(row)
+    return score_brawler_trophies(reference + delta) - score_brawler_trophies(reference)
+
+
 def calculate_trophy_coefficient(brawler_trophies, official_total=None):
     """Return score/coefficient from the current per-Brawler distribution."""
     rows = brawler_trophies if isinstance(brawler_trophies, list) else []

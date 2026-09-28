@@ -100,6 +100,28 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("[[BATTLE:https://" in line for line in lines))
         obj._get.assert_called_once()
 
+    def test_battle_log_shows_team_and_uses_highest_teammate_band(self):
+        obj = self.make_features()
+        start = datetime.now(timezone.utc) - timedelta(hours=1)
+        end = datetime.now(timezone.utc)
+        obj._get = Mock(return_value=[{
+            "player_name": "Anna", "battle_time": start.isoformat(),
+            "brawler_name": "NITA", "brawler_trophies_before": 1800,
+            "team_max_brawler_trophies": 2000, "trophy_change": 10,
+            "result": "victory", "mode": "gemGrab",
+            "team_composition": [
+                {"name": "Anna", "brawler_name": "NITA", "brawler_trophies": 1800},
+                {"name": "Compagno", "brawler_name": "SURGE", "brawler_trophies": 2000},
+            ],
+        }])
+        obj._brawler_name_translator = Mock(return_value=lambda name: name)
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/Battaglie-Anna")
+        obj.player_battle_log_page("2GU9UV2RG", start, end)
+        page = "\n".join(obj._publish_telegraph.call_args.args[1])
+        self.assertIn("2000–2199 ×1,5500", page)
+        self.assertIn("Compagno · SURGE · 2000 🏆", page)
+        self.assertLess(page.index("Compagno · SURGE"), page.index("Anna · NITA"))
+
     def test_compact_player_detail_renders_prominent_name_and_clickable_battle_log(self):
         obj = self.make_features()
         start = datetime.now(timezone.utc) - timedelta(hours=1)
@@ -1699,6 +1721,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(node.get("tag") == "p" and any(isinstance(child, dict) and child.get("children") == ["👥 Squadra:"] for child in node.get("children", [])) for node in nodes))
         self.assertIn("Squadra: Modalità Solo", report)
         self.assertIn("Punti Progressione: 0 (sconfitta non conteggiata)", report)
+        self.assertIn("Valore di riferimento: 2000 🏆", report)
+        self.assertIn("Punti Progressione: +20,15", report)
         self.assertIn("🦸 EL PRIMO", payload["fallback"])
         self.assertIn("🦸 NITA", payload["fallback"])
 
