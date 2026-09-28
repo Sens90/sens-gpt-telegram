@@ -32,7 +32,7 @@ _SKIN_CATEGORY_URLS = {}
 _SKIN_CATEGORY_URLS_LOCK = threading.Lock()
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_FORMAT_REVISION = 16
+_DASHBOARD_FORMAT_REVISION = 17
 _DASHBOARD_SOURCE_MARKER = "Liste: saldo Classifica Trofei + bonus Progressione · schede e log battaglia cliccabili."
 _PROGRESSION_DETAIL_CACHE = {}
 _PROGRESSION_DETAIL_LOCK = threading.Lock()
@@ -175,16 +175,16 @@ Sinonimo di Classifica: apre lo stesso indice generale.
 📅 ACCESSI RAPIDI PER PERIODO
 Nelle classifiche Trofei e Progressione tocca il nome del giocatore per aprire il Telegraph con Resoconto, Brawler più usato e tutte le battaglie osservate del periodo.
 [[CMDNAME:classifiche oggi]]
-Mostra il Resoconto di oggi in privato e nel Telegraph, nell'ordine: Trofei globali, Progressione Globale Club, 4 Club.
+Mostra il Resoconto di oggi in privato e nel Telegraph, nell'ordine: Trofei globali, Progressione Globale Club, Ranked Globale Club, 4 Club.
 
 [[CMDNAME:classifiche ieri]]
-Ripropone in privato il messaggio e il Telegraph inviati ieri alle 23:59. Anche classifica ieri, trofei ieri e progressione ieri aprono questa chiusura. Disponibile per le chiusure archiviate dopo l'aggiornamento.
+Ripropone in privato il messaggio e il Telegraph inviati ieri alle 23:59. Anche classifica ieri, trofei ieri e progressione ieri aprono questa chiusura. Le nuove chiusure includono Ranked. Disponibile per le chiusure archiviate dopo l'aggiornamento.
 
 [[CMDNAME:quanti trofei ho fatto ieri]]
 Mostra in privato il tuo Resoconto personale di ieri: trofei al rilevamento finale, saldo e Progressione netta, con battaglie osservate. Puoi chiedere anche «quanti trofei avevo ieri», «quanti trofei ho fatto oggi» o «resoconto personale oggi».
 
 [[CMDNAME:classifiche 7]]
-Mostra il Resoconto dei 7 giorni in privato e le tre classifiche cliccabili nello stesso ordine.
+Mostra il Resoconto dei 7 giorni in privato e le quattro classifiche cliccabili nello stesso ordine.
 
 [[CMDNAME:classifiche 15]]
 Mostra Resoconto e classifiche cliccabili dei 15 giorni.
@@ -198,7 +198,7 @@ Per le classifiche Trofei dei 4 Club si usa il roster completo: la crescita del 
 
 ⚡ COMANDI DIRETTI DI OGGI
 [[CMDNAME:classifica oggi]]
-Mostra in privato il Resoconto di oggi e apre il Telegraph giornaliero con le tre classifiche cliccabili.
+Mostra in privato il Resoconto di oggi e apre il Telegraph giornaliero con le quattro classifiche cliccabili.
 
 [[CMDNAME:progressione oggi]]
 Mostra subito in privato la tua Progressione di oggi, con dettaglio dei Brawler nel Telegraph. Funziona anche «Progressi oggi».
@@ -235,8 +235,8 @@ Ordina i giocatori per vittorie Sopravvivenza Duo.
 [[CMDNAME:classifica classificata / classifica ranked]]
 Mostra la classifica Ranked attuale.
 
-[[CMDNAME:classifica ranked oggi / 7 / 15 / 30]]
-Mostra la variazione Ranked/ELO osservata nel periodo.
+[[CMDNAME:classifica ranked ieri / oggi / 7 / 15 / 30]]
+Apre la classifica ELO dei roster completi dei quattro club nel Telegraph. Ogni variazione mostra gli orari dei rilevamenti; la chiusura di ieri è quella delle 23:59.
 
 [[CMDNAME:classifica ranked stagione]]
 Confronta il record Ranked della stagione corrente disponibile.
@@ -1883,7 +1883,7 @@ class CommunityFeatures:
             if is_dashboard and value.startswith("══ ") and value.endswith(" ══"):
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h3", "children": [value.strip("═ ")]}])
                 continue
-            if is_dashboard and re.match(r"^(?:🏆|🔥|📊) (?:Classifica|Progressione|Report)\b", value, re.I):
+            if is_dashboard and re.match(r"^(?:🏆|🔥|📊|🏅) (?:Classifica|Progressione|Report)\b", value, re.I):
                 prominence = "h3" if value.casefold().startswith("🏆 classifica trofei") else "h4"
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": prominence, "children": [value]}])
                 continue
@@ -1973,7 +1973,7 @@ class CommunityFeatures:
             if is_command_guide and value.startswith("⌨️ "):
                 nodes.append({"tag": "p", "children": [{"tag": "strong", "children": [value]}]})
                 continue
-            dashboard_link = re.fullmatch(r"\[\[DASH:(dash_[prt]_(?:[0-9]|10)_(?:0|7|15|30))\|Apri\]\]", value)
+            dashboard_link = re.fullmatch(r"\[\[DASH:(dash_[prtk]_(?:[0-9]|10)_(?:0|7|15|30))\|Apri\]\]", value)
             direct_link = re.fullmatch(r"\[\[URL:(https://telegra\.ph/[^\s|<>\[\]]+)\|Apri\]\]", value)
             player_link = re.fullmatch(
                 r"\[\[PLAYER:(https://telegra\.ph/[^\s|<>\[\]]+|#(?:GIOCATORE|CLUB)-[A-Z0-9-]+)\|(\d+)\|([^|\[\]]+)\|([^\[\]]*)\]\]", value,
@@ -2510,6 +2510,78 @@ class CommunityFeatures:
                 f"{rank_change} ({delta_text})"
             )
         return "\n".join(lines)
+
+    def ranked_window_ranking_text(self, start, end, label):
+        """Build a frozen Ranked page from roster and ELO snapshots, without live player calls."""
+        if start >= end:
+            raise ValueError("Invalid Ranked period")
+        season_start = self._current_ranked_season_start(end)
+        effective_start = max(start.astimezone(timezone.utc), season_start)
+        title = f"CLASSIFICA RANKED GLOBALE CLUB — {label}"
+        lines = [title,
+                 f"📅 Periodo: {start.astimezone(ROME):%d/%m/%Y %H:%M} – {end.astimezone(ROME):%d/%m/%Y %H:%M}",
+                 "🛡️ Roster completi dei quattro club ABUSIVI."]
+        if effective_start > start.astimezone(timezone.utc):
+            lines.append(f"⚠️ Cambio stagione Ranked: variazioni confrontabili dal {effective_start.astimezone(ROME):%d/%m/%Y %H:%M}.")
+        latest = self._get("club_roster_daily", {
+            "select": "snapshot_date", "order": "snapshot_date.desc", "limit": "1",
+        }) or []
+        snapshot_date = latest[0].get("snapshot_date") if latest else None
+        members = (self._get("club_roster_daily", {
+            "select": "player_tag,player_name,club_name", "snapshot_date": f"eq.{snapshot_date}",
+            "limit": "200",
+        }) or []) if snapshot_date else []
+        names = {str(member.get("player_tag") or "").lstrip("#").upper(): member
+                 for member in members if member.get("player_tag")}
+        if not names:
+            lines.append("Roster dei quattro club non disponibile per questa pubblicazione.")
+            return lines
+        history = []
+        for offset in range(0, 100000, 1000):
+            page = self._get("ranked_history", {
+                "select": "player_tag,ranked_current,ranked_current_elo,recorded_at",
+                "player_tag": f"in.({','.join(names)})", "ranked_current_elo": "not.is.null",
+                "recorded_at": f"gte.{season_start.isoformat()}",
+                "order": "recorded_at.asc", "limit": "1000", "offset": str(offset),
+            }) or []
+            history.extend(page)
+            if len(page) < 1000:
+                break
+        else:
+            raise RuntimeError("Ranked history exceeds pagination limit")
+        samples = {tag: [] for tag in names}
+        for row in history:
+            tag = str(row.get("player_tag") or "").lstrip("#").upper()
+            if tag not in samples:
+                continue
+            try:
+                instant = datetime.fromisoformat(str(row["recorded_at"]).replace("Z", "+00:00"))
+                elo = int(row["ranked_current_elo"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if instant <= end.astimezone(timezone.utc):
+                samples[tag].append((instant, elo, row.get("ranked_current")))
+        ranked = []
+        for tag, observations in samples.items():
+            if not observations:
+                continue
+            before = [sample for sample in observations if sample[0] <= effective_start]
+            baseline = before[-1] if before else next(
+                (sample for sample in observations if sample[0] >= effective_start), None)
+            final = observations[-1]
+            if baseline is None or final[0] <= baseline[0] or final[1] <= baseline[1]:
+                continue
+            ranked.append((final[1] - baseline[1], final[1], tag, baseline, final))
+        ranked.sort(reverse=True)
+        lines.extend(["", "🏅 VARIAZIONE ELO OSSERVATA"])
+        for position, (delta, current, tag, baseline, final) in enumerate(ranked, 1):
+            name = names[tag].get("player_name") or tag
+            lines.append(f"{position}. {name} — +{self.number_formatter(delta)} ELO · {self.number_formatter(current)} attuali")
+            lines.append(f"   🛡️ {names[tag].get('club_name') or 'Club non disponibile'} · 🏷️ #{tag} · "
+                         f"🕒 {baseline[0].astimezone(ROME):%d/%m %H:%M} → {final[0].astimezone(ROME):%d/%m %H:%M}")
+        if not ranked:
+            lines.append("Nessuna crescita ELO verificabile con due rilevamenti nel periodo.")
+        return lines
 
     CLUB_ALIASES = {
         "titani": "TITANI ABUSIVI", "titani abusivi": "TITANI ABUSIVI",
@@ -4582,7 +4654,7 @@ class CommunityFeatures:
             title = "Classifiche — TITANI ABUSIVI"
             now = datetime.now(ROME)
             lines = [title.upper(), f"Aggiornato: {now:%d/%m/%Y %H:%M}", "", _DASHBOARD_SOURCE_MARKER,
-                     "Tre classifiche cliccabili per periodo; i Resoconti sono nel messaggio Telegram."]
+                     "Quattro classifiche cliccabili per periodo; i Resoconti sono nel messaggio Telegram."]
             for period in (0, 7, 15, 30):
                 period_payload = self.rankings_dashboard_text(chat_id, period)
                 if not isinstance(period_payload, dict) or not period_payload.get("report_url"):
@@ -4671,7 +4743,7 @@ class CommunityFeatures:
             detail = period_lines[first:] if first is not None else []
             if (not detail or f"══ {label} ══" not in detail[0]
                     or len([line for line in detail if re.fullmatch(
-                        r"\[\[URL:https://telegra\.ph/[^\s|<>\[\]]+\|Apri\]\]", line)]) != 3):
+                        r"\[\[URL:https://telegra\.ph/[^\s|<>\[\]]+\|Apri\]\]", line)]) != 4):
                 LOG.warning("CLASSIFICHE INDEX PERIOD LINKS INVALID: days=%s", days)
                 return None
             try:
@@ -4731,7 +4803,7 @@ class CommunityFeatures:
                                 visit(child)
                     for node in nodes:
                         visit(node)
-                    if len(hrefs) != 12 or any(not re.fullmatch(r"https://telegra\.ph/[^\s|<>\[\]]+", href) for href in hrefs):
+                    if len(hrefs) != 16 or any(not re.fullmatch(r"https://telegra\.ph/[^\s|<>\[\]]+", href) for href in hrefs):
                         continue
                     if not all(period in values for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")):
                         continue
@@ -4768,13 +4840,46 @@ class CommunityFeatures:
 
     def yesterday_ranking_snapshot(self, chat_id):
         """Return only the archived 23:59 delivery for yesterday in Rome."""
-        yesterday = (datetime.now(ROME).date() - timedelta(days=1)).isoformat()
+        yesterday_day = datetime.now(ROME).date() - timedelta(days=1)
+        yesterday = yesterday_day.isoformat()
         saved = self._get("scheduled_dashboard_delivery", {
             "select": "payload", "chat_id": f"eq.{int(chat_id)}",
             "slot": f"eq.daily:2359:{yesterday}", "limit": "1",
         })
         payload = saved[0].get("payload") if saved else None
         if isinstance(payload, dict) and payload.get("report_url") and payload.get("text"):
+            # Older frozen closures contain three direct links. Present their
+            # existing pages alongside a new Ranked page without rewriting the
+            # sent message, its checkpoint, or the frozen payload.
+            original = str(payload.get("fallback") or "").splitlines()
+            if (len([row for row in original if row.startswith("[[URL:")]) == 3
+                    and "🏆 Classifica dei 4 Club — OGGI" in original):
+                cache_key = (int(chat_id), f"yesterday:{yesterday}")
+                with _DASHBOARD_CACHE_LOCK:
+                    cached = _DASHBOARD_CACHE.get(cache_key)
+                    if cached and cached[0] > time.monotonic():
+                        return cached[1]
+                start = datetime.combine(yesterday_day, datetime.min.time(), ROME)
+                end = start.replace(hour=23, minute=59)
+                ranked = self.ranked_window_ranking_text(start, end, "IERI")
+                ranked_url = self._publish_telegraph("Classifica Ranked — IERI", ranked)
+                if not ranked_url:
+                    return payload
+                index = original.index("🏆 Classifica dei 4 Club — OGGI")
+                lines = ["CLASSIFICHE — IERI", original[1], "",
+                         "Trofei globali, Progressione Globale Club, Ranked Globale Club e 4 Club.",
+                         *original[4:index],
+                         "🏅 Classifica Ranked Globale Club — IERI",
+                         "Variazione ELO osservata fino alle 23:59, con orari dei rilevamenti.",
+                         f"[[URL:{ranked_url}|Apri]]", "", *original[index:]]
+                lines = [line.replace("— OGGI", "— IERI").replace("══ OGGI ══", "══ IERI ══") for line in lines]
+                url = self._publish_telegraph("Classifiche — IERI", lines)
+                if url:
+                    result = {**payload, "report_url": url, "fallback": "\n".join(lines),
+                              "text": str(payload["text"]).replace("CLASSIFICHE — OGGI", "CLASSIFICHE — IERI")}
+                    with _DASHBOARD_CACHE_LOCK:
+                        _DASHBOARD_CACHE[cache_key] = (time.monotonic() + 3600, result)
+                    return result
             return payload
         return (f"La chiusura delle 23:59 del {yesterday[8:10]}/{yesterday[5:7]}/{yesterday[:4]} "
                 "non è disponibile nell'archivio. Non posso ricostruire il messaggio inviato.")
@@ -5412,13 +5517,15 @@ class CommunityFeatures:
             if window:
                 raise RuntimeError("The global progression page is unavailable")
             return _report + "\n\n⚠️ Telegraph temporaneamente limitato; questo Resoconto è calcolato adesso."
+        ranked_lines = self.ranked_window_ranking_text(*report_window, label)
+        links[f"dash_k_2_{days}"] = self._publish_telegraph(f"Ranked Globale 4 Club — {label}", ranked_lines)
         if any(not url for url in links.values()):
             LOG.warning("CLASSIFICHE LIVE TELEGRAPH UNAVAILABLE: days=%s stage=rankings", days)
             if window:
                 raise RuntimeError("A global dashboard Telegraph page is unavailable")
             return _report + "\n\n⚠️ Telegraph temporaneamente limitato; questo Resoconto è calcolato adesso."
         for i, line in enumerate(lines):
-            match = re.fullmatch(r"\[\[DASH:(dash_[prt]_(?:[0-9]|10)_(?:0|7|15|30))\|Apri\]\]", line)
+            match = re.fullmatch(r"\[\[DASH:(dash_[prtk]_(?:[0-9]|10)_(?:0|7|15|30))\|Apri\]\]", line)
             if match:
                 lines[i] = f"[[URL:{links[match.group(1)]}|Apri]]"
         if any("[[DASH:" in line for line in lines):
@@ -5448,7 +5555,7 @@ class CommunityFeatures:
             title.upper(),
             f"Aggiornato: {now:%d/%m/%Y %H:%M}",
             "",
-            "Tre classifiche per periodo: Trofei globali, Progressione Globale Club e 4 Club. Si usano i roster completi. Il Resoconto è nel messaggio Telegram.",
+            "Quattro classifiche per periodo: Trofei globali, Progressione Globale Club, Ranked Globale Club e 4 Club. Si usano i roster completi. Il Resoconto è nel messaggio Telegram.",
         ]
         for days, label in periods:
             lines.extend(["", f"══ {label} ══", ""])
@@ -5459,6 +5566,9 @@ class CommunityFeatures:
                 f"🔥 Progressione Globale Club — {label}",
                 "Tutti i giocatori dei quattro club; Progressione calcolata battaglia per battaglia.",
                 f"[[DASH:dash_p_2_{days}|Apri]]", "",
+                f"🏅 Classifica Ranked Globale Club — {label}",
+                "Variazione ELO osservata nei roster completi, con orari dei rilevamenti e cambio stagione indicato.",
+                f"[[DASH:dash_k_2_{days}|Apri]]", "",
                 f"🏆 Classifica dei 4 Club — {label}",
                 "Confronto fra TITANI, TAMARRI, TORNADI e TALENTI con i roster completi.",
                 f"[[DASH:dash_t_1_{days}|Apri]]", "",
@@ -5596,6 +5706,15 @@ class CommunityFeatures:
                 await message.reply_text("Registra prima il tuo account nel gruppo con registrami #TAG.")
                 return True
             payload = await asyncio.to_thread(self.personal_daily_report, registered["player_tag"], int(personal_day.group(1) == "ieri"))
+            await self._send_ranking_message(context, _ranking_reply_chat_id, payload)
+            return True
+        if re.fullmatch(r"classific(?:a|he)\s+(?:elo\s+)?(?:ranked|classificata)\s+ieri", q0l):
+            yesterday = datetime.now(ROME).date() - timedelta(days=1)
+            start = datetime.combine(yesterday, datetime.min.time(), ROME)
+            end = start.replace(hour=23, minute=59)
+            lines = await asyncio.to_thread(self.ranked_window_ranking_text, start, end, "IERI")
+            url = await asyncio.to_thread(self._publish_telegraph, "Classifica Ranked — IERI", lines)
+            payload = self._telegraph_reply(["🏅 CLASSIFICA RANKED — IERI", "Apri la classifica ELO del giorno concluso alle 23:59."], url, lines) if url else "\n".join(lines)
             await self._send_ranking_message(context, _ranking_reply_chat_id, payload)
             return True
         if re.fullmatch(r"(?:classifica|classifiche|classiche|trofei|coppe|progressione|report)(?:\s+(?:di|dei))?\s+ieri", q0l):
@@ -6872,7 +6991,17 @@ class CommunityFeatures:
             club_name = self.CLUB_ALIASES.get(club_key.lower()) if club_key else None
             period = ranked_delta.group(2) or "oggi"
             days = 0 if period.lower() == "oggi" else int(period)
-            await _ranking_reply(self.ranked_elo_ranking_text(_ranking_chat_id, days, club_name))
+            if club_name:
+                await _ranking_reply(self.ranked_elo_ranking_text(_ranking_chat_id, days, club_name))
+            else:
+                end = datetime.now(ROME)
+                start = (end.replace(hour=0, minute=0, second=0, microsecond=0)
+                         if days == 0 else end - timedelta(days=days))
+                label = "OGGI" if days == 0 else f"{days} GIORNI"
+                lines = await asyncio.to_thread(self.ranked_window_ranking_text, start, end, label)
+                url = await asyncio.to_thread(self._publish_telegraph, f"Classifica Ranked — {label}", lines)
+                payload = self._telegraph_reply([f"🏅 CLASSIFICA RANKED — {label}", "Apri la classifica ELO del periodo."], url, lines) if url else "\n".join(lines)
+                await self._send_ranking_message(context, _ranking_reply_chat_id, payload)
             return True
 
         if re.search(r"\bclassific(?:a|he)\b", ql) and re.search(r"\b(?:classificata|ranked)\b", ql):
