@@ -16,6 +16,7 @@ import os
 import requests
 import re
 import threading
+import time
 from urllib.parse import urlsplit, urlunsplit, quote
 
 from flask import Flask
@@ -2772,10 +2773,11 @@ def save_complete_roster_daily(club_name, club_tag, roster, source="brawlify"):
         return 0
 
 
-def refresh_complete_club_rosters():
+def refresh_complete_club_rosters(require_all=False):
     """Refresh all four complete rosters. Brawlify is fallback while official proxy is WAF-blocked."""
     import time
     total = 0
+    missing = []
     for club_name, club_tag in community.CLUB_TAGS.items():
         roster = fetch_supercell_proxy_club_roster(club_name, club_tag)
         source = "supercell_proxy"
@@ -2796,8 +2798,31 @@ def refresh_complete_club_rosters():
                 time.sleep(1)
                 saved = save_complete_roster_daily(club_name, club_tag, roster, source=source)
             total += saved
+        else:
+            missing.append(club_name)
+        if roster and not saved:
+            missing.append(club_name)
     print("COMPLETE CLUB ROSTER REFRESH: saved=", total, flush=True)
+    if require_all and missing:
+        raise RuntimeError("Complete roster refresh incomplete: " + ", ".join(missing))
     return total
+
+
+_RANKING_ROSTER_REFRESH_LOCK = threading.Lock()
+_RANKING_ROSTER_REFRESHED_AT = 0.0
+
+
+def refresh_rosters_for_rankings():
+    """Sample all four rosters before calculating any new live ranking."""
+    global _RANKING_ROSTER_REFRESHED_AT
+    with _RANKING_ROSTER_REFRESH_LOCK:
+        if time.monotonic() - _RANKING_ROSTER_REFRESHED_AT < 90:
+            return
+        count = refresh_complete_club_rosters(require_all=True)
+        if count == 0:
+            raise RuntimeError("No complete roster was refreshed for rankings")
+        _RANKING_ROSTER_REFRESHED_AT = time.monotonic()
+        print("CLASSIFICHE LIVE ROSTERS REFRESHED:", count, flush=True)
 
 
 def automatic_trophy_monitor():
@@ -3156,6 +3181,7 @@ community = CommunityFeatures(
     format_trophy_change,
     save_trophy_snapshot,
 )
+community.roster_refresher = refresh_rosters_for_rankings
 
 
 async def telegram_report_send(operation, label):
@@ -5660,8 +5686,15 @@ async def _send_auto_ranking_slot(context, slot, frozen_only=False):
                 # delivery can then resume after midnight without recalculating
                 # "oggi" against the new calendar day.
                 start = slot.replace(hour=0, minute=0, second=0, microsecond=0)
+                snapshot_end = slot
+                current_rome = datetime.now(ROME)
+                if (slot.hour, slot.minute) != (23, 59) and current_rome.date() == slot.date() and current_rome > slot:
+                    # Sample the full rosters before setting the live cutoff.
+                    # Keep 23:59 frozen at its scheduled boundary for catchup.
+                    await asyncio.to_thread(refresh_rosters_for_rankings)
+                    snapshot_end = datetime.now(ROME)
                 dashboard = await asyncio.to_thread(
-                    community.scheduled_dashboard_snapshot, chat_id, 0, (start, slot)
+                    community.scheduled_dashboard_snapshot, chat_id, 0, (start, snapshot_end)
                 )
                 payloads = [("classifiche e report", dashboard)]
                 pending = {"slot": key, "payloads": payloads, "next_index": 0}
