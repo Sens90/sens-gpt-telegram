@@ -97,7 +97,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                 return [
                     {"player_tag": "2LVRCLV8LV", "ranked_current_elo": 1000,
                      "recorded_at": (start - timedelta(minutes=10)).isoformat()},
-                    {"player_tag": "2LVRCLV8LV", "ranked_current_elo": 1040,
+                    {"player_tag": "2LVRCLV8LV", "ranked_current_elo": 1040, "ranked_current": "Mythic 2",
                      "recorded_at": (end - timedelta(minutes=9)).isoformat()},
                     {"player_tag": "2LVRCLV8LV", "ranked_current_elo": 1090,
                      "recorded_at": (end + timedelta(minutes=10)).isoformat()},
@@ -108,10 +108,20 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._get = Mock(side_effect=get)
         lines = CommunityFeatures.ranked_window_ranking_text(obj, start, end, "IERI")
         rendered = "\n".join(lines)
-        self.assertIn("Giorgio — +40 ELO · 1.040 attuali", rendered)
-        self.assertIn("🛡️ TAMARRI ABUSIVI", rendered)
+        self.assertIn("[[PLAYER:#TAG-%232LVRCLV8LV|1|Giorgio|🏅 Mito II · 1.040 ELO attuali · +40 ELO]]", rendered)
+        self.assertIn("[[PLAYERHEADING:2LVRCLV8LV|Giorgio]]", rendered)
+        self.assertIn("🛡️ Club: TAMARRI ABUSIVI", rendered)
+        self.assertEqual(sum("🛡️ Club:" in row for row in lines), 1)
+        self.assertEqual(CommunityFeatures._ranked_label_it("Epic 2"), "Epico II")
         self.assertNotIn("Tony —", rendered)
         self.assertNotIn("+90 ELO", rendered)
+        published = []
+        obj._publish_telegraph = Mock(side_effect=lambda title, content: (
+            published.append((title, content)) or f"https://telegra.ph/ranked-{len(published)}"))
+        url = CommunityFeatures._publish_inline_ranking(obj, "Ranked IERI", lines)
+        self.assertEqual(url, "https://telegra.ph/ranked-2")
+        self.assertTrue(any("[[PLAYER:https://telegra.ph/ranked-1#TAG-%232LVRCLV8LV|1|Giorgio|" in row
+                            for row in published[1][1]))
 
     async def test_ranked_yesterday_command_opens_direct_telegraph(self):
         obj = self.make_features()

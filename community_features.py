@@ -2426,6 +2426,26 @@ class CommunityFeatures:
             third_thursday = prev_first + timedelta(days=days_to_thursday + 14)
         return third_thursday.astimezone(timezone.utc)
 
+    @staticmethod
+    def _ranked_label_it(value):
+        """Display the recorded Ranked tier without inferring a tier from ELO."""
+        label = str(value or "").strip()
+        if not label:
+            return "Grado non disponibile"
+        tiers = {
+            "bronze": "Bronzo", "silver": "Argento", "gold": "Oro",
+            "diamond": "Diamante", "mythic": "Mito", "legendary": "Leggenda",
+            "epic": "Epico", "masters": "Maestro", "master": "Maestro",
+        }
+        match = re.fullmatch(r"([A-Za-zÀ-ÿ]+)(?:\s+([1-3]|I{1,3}))?", label, re.I)
+        if not match:
+            return label
+        tier = tiers.get(match.group(1).casefold(), match.group(1).capitalize())
+        division = match.group(2)
+        if division and division.isdigit():
+            division = "I" * int(division)
+        return f"{tier} {division}" if division else tier
+
     def ranked_elo_ranking(self, chat_id, days=0, club_name=None):
         """Rank current-season ELO movement without counting the monthly reset as a loss."""
         now = datetime.now(timezone.utc)
@@ -2475,6 +2495,7 @@ class CommunityFeatures:
             rows.append({
                 "name": player.get("name") or member.get("player_name") or member.get("display_name") or tag,
                 "tag": tag,
+                "club": actual_club,
                 "current": current,
                 "delta": delta,
                 "rank": player.get("ranked_current") or member.get("ranked_current"),
@@ -2494,23 +2515,26 @@ class CommunityFeatures:
         if not rows:
             return f"Nessun ELO Classificata disponibile per {scope}."
         lines = [f"CLASSIFICA {scope} - ELO CLASSIFICATA {period}", ""]
+        details = []
         for index, row in enumerate(rows[:60], 1):
             delta = row["delta"]
             delta_text = (
                 ("+" if delta > 0 else "") + self.number_formatter(delta)
                 if delta is not None else "storico non ancora disponibile"
             )
-            rank_now = row.get("rank") or "Non disponibile"
-            rank_before = row.get("previous_rank")
-            rank_change = ""
-            if rank_before and rank_now and rank_before.casefold() != rank_now.casefold():
-                rank_change = f" - {rank_before} ↑ {rank_now}" if (delta or 0) > 0 else f" - {rank_before} ↓ {rank_now}"
-            else:
-                rank_change = f" - {rank_now}"
-            lines.append(
-                f"{index}. {row['name']} - {self.number_formatter(row['current'])} ELO"
-                f"{rank_change} ({delta_text})"
-            )
+            rank_now = self._ranked_label_it(row.get("rank"))
+            rank_before = self._ranked_label_it(row.get("previous_rank")) if row.get("previous_rank") else None
+            tag = str(row["tag"]).lstrip("#").upper()
+            score = (f"🏅 {rank_now} · {self.number_formatter(row['current'])} ELO attuali "
+                     f"· {delta_text} ELO")
+            lines.append(f"[[PLAYER:#TAG-%23{tag}|{index}|{self._player_link_name(row['name'])}|{score}]]")
+            details.extend([f"[[PLAYERHEADING:{tag}|{self._player_link_name(row['name'])}]]",
+                            f"🛡️ Club: {row.get('club') or 'non disponibile'}",
+                            f"🏅 Grado attuale: {rank_now}",
+                            f"🏅 ELO attuale: {self.number_formatter(row['current'])}",
+                            f"📈 Variazione ELO: {delta_text}",
+                            *([f"🏅 Grado precedente: {rank_before}"] if rank_before else [])])
+        lines.extend(["", "👤 DETTAGLI GIOCATORI", *details])
         return "\n".join(lines)
 
     def ranked_window_ranking_text(self, start, end, label):
@@ -2578,11 +2602,22 @@ class CommunityFeatures:
         lines.extend(["", "🏅 VARIAZIONE ELO OSSERVATA"])
         for position, (delta, current, tag, baseline, final) in enumerate(ranked, 1):
             name = names[tag].get("player_name") or tag
-            lines.append(f"{position}. {name} — +{self.number_formatter(delta)} ELO · {self.number_formatter(current)} attuali")
-            lines.append(f"   🛡️ {names[tag].get('club_name') or 'Club non disponibile'} · 🏷️ #{tag} · "
-                         f"🕒 {baseline[0].astimezone(ROME):%d/%m %H:%M} → {final[0].astimezone(ROME):%d/%m %H:%M}")
+            score = (f"🏅 {self._ranked_label_it(final[2])} · "
+                     f"{self.number_formatter(current)} ELO attuali · +{self.number_formatter(delta)} ELO")
+            lines.append(f"[[PLAYER:#TAG-%23{tag}|{position}|{self._player_link_name(name)}|{score}]]")
         if not ranked:
             lines.append("Nessuna crescita ELO verificabile con due rilevamenti nel periodo.")
+        else:
+            lines.extend(["", "👤 DETTAGLI GIOCATORI"])
+            for delta, current, tag, baseline, final in ranked:
+                name = names[tag].get("player_name") or tag
+                lines.extend([f"[[PLAYERHEADING:{tag}|{self._player_link_name(name)}]]",
+                              f"🛡️ Club: {names[tag].get('club_name') or 'non disponibile'}",
+                              f"🏅 Grado attuale: {self._ranked_label_it(final[2])}",
+                              f"🏅 ELO attuale: {self.number_formatter(current)}",
+                              f"📈 Variazione ELO: +{self.number_formatter(delta)}",
+                              f"🕒 Rilevamenti: {baseline[0].astimezone(ROME):%d/%m %H:%M} → "
+                              f"{final[0].astimezone(ROME):%d/%m %H:%M}"])
         return lines
 
     CLUB_ALIASES = {
@@ -4864,7 +4899,7 @@ class CommunityFeatures:
                 start = datetime.combine(yesterday_day, datetime.min.time(), ROME)
                 end = start.replace(hour=23, minute=59)
                 ranked = self.ranked_window_ranking_text(start, end, "IERI")
-                ranked_url = self._publish_telegraph("Classifica Ranked — IERI", ranked)
+                ranked_url = self._publish_inline_ranking("Classifica Ranked — IERI", ranked)
                 if not ranked_url:
                     return payload
                 index = original.index("🏆 Classifica dei 4 Club — OGGI")
@@ -5520,7 +5555,7 @@ class CommunityFeatures:
                 raise RuntimeError("The global progression page is unavailable")
             return _report + "\n\n⚠️ Telegraph temporaneamente limitato; questo Resoconto è calcolato adesso."
         ranked_lines = self.ranked_window_ranking_text(*report_window, label)
-        links[f"dash_k_2_{days}"] = self._publish_telegraph(f"Ranked Globale 4 Club — {label}", ranked_lines)
+        links[f"dash_k_2_{days}"] = self._publish_inline_ranking(f"Ranked Globale 4 Club — {label}", ranked_lines)
         if any(not url for url in links.values()):
             LOG.warning("CLASSIFICHE LIVE TELEGRAPH UNAVAILABLE: days=%s stage=rankings", days)
             if window:
@@ -5752,7 +5787,7 @@ class CommunityFeatures:
             start = datetime.combine(yesterday, datetime.min.time(), ROME)
             end = start.replace(hour=23, minute=59)
             lines = await asyncio.to_thread(self.ranked_window_ranking_text, start, end, "IERI")
-            url = await asyncio.to_thread(self._publish_telegraph, "Classifica Ranked — IERI", lines)
+            url = await asyncio.to_thread(self._publish_inline_ranking, "Classifica Ranked — IERI", lines)
             payload = self._telegraph_reply(["🏅 CLASSIFICA RANKED — IERI", "Apri la classifica ELO del giorno concluso alle 23:59."], url, lines) if url else "\n".join(lines)
             await self._send_ranking_message(context, _ranking_reply_chat_id, payload)
             return True
@@ -7014,14 +7049,19 @@ class CommunityFeatures:
             period = ranked_delta.group(2) or "oggi"
             days = 0 if period.lower() == "oggi" else int(period)
             if club_name:
-                await _ranking_reply(self.ranked_elo_ranking_text(_ranking_chat_id, days, club_name))
+                lines = await asyncio.to_thread(self.ranked_elo_ranking_text, _ranking_chat_id, days, club_name)
+                url = await asyncio.to_thread(self._publish_inline_ranking,
+                                              f"Classifica Ranked {club_name} — {period.upper()}", lines.splitlines())
+                payload = self._telegraph_reply([f"🏅 CLASSIFICA RANKED {club_name} — {period.upper()}"],
+                                                url, lines.splitlines()) if url else lines
+                await self._send_ranking_message(context, _ranking_reply_chat_id, payload)
             else:
                 end = datetime.now(ROME)
                 start = (end.replace(hour=0, minute=0, second=0, microsecond=0)
                          if days == 0 else end - timedelta(days=days))
                 label = "OGGI" if days == 0 else f"{days} GIORNI"
                 lines = await asyncio.to_thread(self.ranked_window_ranking_text, start, end, label)
-                url = await asyncio.to_thread(self._publish_telegraph, f"Classifica Ranked — {label}", lines)
+                url = await asyncio.to_thread(self._publish_inline_ranking, f"Classifica Ranked — {label}", lines)
                 payload = self._telegraph_reply([f"🏅 CLASSIFICA RANKED — {label}", "Apri la classifica ELO del periodo."], url, lines) if url else "\n".join(lines)
                 await self._send_ranking_message(context, _ranking_reply_chat_id, payload)
             return True
