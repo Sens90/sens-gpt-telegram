@@ -1071,6 +1071,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         }))
         obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progression"})
         obj._direct_dashboard_snapshot(-1001, 7, None)
+        trophy_window = obj.periodic_report_text.call_args.kwargs["window"]
+        progression_kwargs = obj.coefficient_ranking_text.call_args.kwargs
+        self.assertEqual(progression_kwargs["window"], trophy_window)
+        self.assertEqual(progression_kwargs["trophy_delta_by_tag"], {})
+        self.assertEqual(trophy_window[1] - trophy_window[0], timedelta(days=7))
         clubs = next(lines for title, lines in published if title == "Classifica 4 Club — 7 GIORNI")
         self.assertIn("1. TITANI ABUSIVI — +10 (2/30 giocatori)", clubs)
         self.assertNotIn("saldo", " ".join(clubs).casefold())
@@ -1476,6 +1481,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
 
     def test_progressione_oggi_builds_report_payload(self):
         obj = self.make_features()
+        obj._player_trophy_window = Mock(return_value=(500, 1482))
         obj.history_fetcher = Mock(return_value=[{"trophies": 110003}])
         obj.change_calculator = Mock(return_value={"today": 982})
         obj._get = Mock(return_value=[{
@@ -1522,6 +1528,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
 
     def test_interleaved_battles_are_numbered_per_brawler_and_separated(self):
         obj = self.make_features()
+        obj._player_trophy_window = Mock(return_value=(500, 510))
         start = datetime.now(timezone.utc).replace(hour=9, minute=0, second=0, microsecond=0)
         rows = []
         for index, brawler in enumerate(("Emz", "Emz", "Jessie", "Emz")):
@@ -1543,6 +1550,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
 
     def test_progressione_oggi_includes_localized_team_solo_loss_and_bonus(self):
         obj = self.make_features()
+        obj._player_trophy_window = Mock(return_value=(500, 510))
         now = datetime.now(timezone.utc).isoformat()
         team_battle = {
             "player_name": "Giorgio", "battle_time": now,
