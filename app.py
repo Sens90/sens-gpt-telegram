@@ -3219,7 +3219,10 @@ def resolve_player_battle_log(tag, params):
     except Exception as error:
         print("BATTLE LOG PUBLISH ERROR", type(error).__name__, flush=True)
         return None, 503
-    if not url or not re.fullmatch(r"https://telegra\.ph/[A-Za-z0-9_-]+", url):
+    parsed = urlsplit(url) if isinstance(url, str) else None
+    if (not parsed or parsed.scheme != "https" or parsed.netloc != "telegra.ph"
+            or not re.fullmatch(r"/[^/?#\s<>\[\]]+", parsed.path)
+            or parsed.query or parsed.fragment):
         return None, 503
     return url, 302
 
