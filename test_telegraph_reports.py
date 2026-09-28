@@ -1291,6 +1291,33 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("🏆 Coppe totali reali: 1.800", summary)
         self.assertEqual(sum(line.startswith(tuple(f"{i}. " for i in range(1, 19))) for line in full), 18)
 
+    @patch("community_features.requests.post")
+    def test_complete_roster_without_registered_history_skips_empty_batch(self, post):
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        members = [{"player_tag": f"TAG{i}", "player_name": f"Player {i}",
+                    "club_name": "TITANI ABUSIVI"} for i in range(20)]
+        def get(table, params):
+            if table == "club_roster_daily" and params.get("select") == "snapshot_date":
+                return [{"snapshot_date": "2026-09-28"}]
+            if table == "club_roster_daily" and params.get("select") == "player_tag,player_name,club_name":
+                return members if params.get("club_name") == "eq.TITANI ABUSIVI" else []
+            if table == "trophy_history":
+                raise AssertionError("No registered history requests are needed")
+            return []
+        obj._get = Mock(side_effect=get)
+        start = datetime(2026, 9, 21, tzinfo=timezone.utc)
+        end = datetime(2026, 9, 28, tzinfo=timezone.utc)
+        obj._roster_trophy_histories = Mock(return_value={m["player_tag"]: [
+            {"recorded_at": start.isoformat(), "trophies": 100},
+            {"recorded_at": (end - timedelta(minutes=1)).isoformat(), "trophies": 110},
+        ] for m in members})
+        obj._boundary_battle_history = Mock(return_value={})
+        post.return_value.json.return_value = []
+        summary = obj.periodic_report_text(-100, "global_clubs", 7, window=(start, end), publish=False)
+        self.assertIn("🏆 Saldo Trofei: +200", summary)
+        self.assertFalse(any(call.args[0] == "trophy_history" for call in obj._get.call_args_list))
+
     def test_large_ranking_keeps_member_results_with_parallel_history(self):
         from threading import Lock
         import time as clock

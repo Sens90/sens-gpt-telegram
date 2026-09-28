@@ -4293,16 +4293,19 @@ class CommunityFeatures:
                     if offset == 99000:
                         raise RuntimeError("trophy history batch exceeds pagination limit")
                 return result
-            try:
-                with ThreadPoolExecutor(max_workers=min(6, len(groups))) as executor:
-                    batches = list(executor.map(read_group, groups))
+            if not groups:
                 history_by_tag = {tag: [] for tag in tags}
-                for batch in batches:
-                    history_by_tag.update(batch)
-            except (requests.RequestException, RuntimeError) as exc:
-                LOG.warning("REPORT BATCH HISTORY FALLBACK: %s", type(exc).__name__)
-                with ThreadPoolExecutor(max_workers=min(6, len(tags))) as executor:
-                    history_by_tag = dict(zip(tags, executor.map(fetch_history, tags)))
+            else:
+                try:
+                    with ThreadPoolExecutor(max_workers=min(6, len(groups))) as executor:
+                        batches = list(executor.map(read_group, groups))
+                    history_by_tag = {tag: [] for tag in tags}
+                    for batch in batches:
+                        history_by_tag.update(batch)
+                except (requests.RequestException, RuntimeError) as exc:
+                    LOG.warning("REPORT BATCH HISTORY FALLBACK: %s", type(exc).__name__)
+                    with ThreadPoolExecutor(max_workers=min(6, len(tags))) as executor:
+                        history_by_tag = dict(zip(tags, executor.map(fetch_history, tags)))
 
         trophy_rows = []
         current_trophies_by_tag = {}
