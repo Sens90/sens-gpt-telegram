@@ -617,6 +617,28 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._publish_telegraph.assert_called_once()
         self.assertEqual(obj._player_link_name("TA | Tony [EU]"), "TA · Tony (EU)")
 
+    def test_player_detail_club_uses_latest_full_roster_for_unregistered_player(self):
+        from community_features import _PLAYER_DETAIL_PAGE_CACHE
+        _PLAYER_DETAIL_PAGE_CACHE.clear()
+        obj = self.make_features()
+        queries = []
+        def get(table, params):
+            queries.append((table, params))
+            if table == "club_roster_daily" and params.get("select") == "snapshot_date":
+                return [{"snapshot_date": "2026-09-28"}]
+            if table == "club_roster_daily":
+                return [{"player_tag": "2LVRCLV8LV", "club_name": "TAMARRI ABUSIVI"}]
+            return []
+        obj._get = Mock(side_effect=get)
+        obj._brawler_name_translator = Mock(return_value=lambda name: name)
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/dettagli")
+        urls = obj._player_detail_pages([{"tag": "2LVRCLV8LV", "name": "Giorgio", "delta": 8}], 0)
+        lines = obj._publish_telegraph.call_args.args[1]
+        heading = lines.index("[[PLAYERHEADING:2LVRCLV8LV|Giorgio]]")
+        self.assertEqual(lines[heading + 1], "🛡️ Club: TAMARRI ABUSIVI")
+        self.assertEqual(urls["2LVRCLV8LV"], "https://telegra.ph/dettagli#TAG-2LVRCLV8LV")
+        self.assertFalse(any(table == "community_members" for table, _ in queries))
+
     def test_player_dossier_progression_starts_at_trophy_ranking_saldo(self):
         from community_features import _PLAYER_DETAIL_PAGE_CACHE
         _PLAYER_DETAIL_PAGE_CACHE.clear()
@@ -750,8 +772,10 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/giocatori")
         urls = obj._player_detail_pages([{"tag": "2GU9UV2RG", "name": "Tony"},
                                          {"tag": "2GUPY9V", "name": "Altro"}], 7)
-        self.assertEqual(obj._get.call_count, 2)
-        self.assertEqual(obj._get.call_args.args[1]["player_tag"], "in.(2GU9UV2RG,2GUPY9V)")
+        battle_reads = [call for call in obj._get.call_args_list
+                        if call.args[0] == "observed_trophy_battles"]
+        self.assertEqual(len(battle_reads), 1)
+        self.assertEqual(battle_reads[0].args[1]["player_tag"], "in.(2GU9UV2RG,2GUPY9V)")
         self.assertEqual(set(urls), {"2GU9UV2RG", "2GUPY9V"})
         published = obj._publish_telegraph.call_args.args[1]
         first = published.index("[[PLAYERHEADING:2GU9UV2RG|Tony]]")
