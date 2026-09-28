@@ -816,6 +816,33 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any("[[PLAYER:#" in line for line in ranking))
         self.assertEqual(sum("[[PLAYER:https://telegra.ph/" in line for line in ranking), 125)
 
+    def test_multiline_player_details_stay_below_telegraph_split_limit(self):
+        obj = self.make_features()
+        pages = {}
+        def publish(title, lines):
+            pages[title] = lines
+            return f"https://telegra.ph/page-{len(pages)}"
+        obj._publish_telegraph = Mock(side_effect=publish)
+        rows = ["CLASSIFICA TROFEI — OGGI"]
+        tags = ["2" + "".join("0289"[(number // (4 ** place)) % 4]
+                              for place in (3, 2, 1, 0)) for number in range(90)]
+        rows.extend(f"[[PLAYER:#GIOCATORE-{tag}|{i}|Giocatore {i}|+12 🏆]]"
+                    for i, tag in enumerate(tags, 1))
+        rows.append("👤 DETTAGLI GIOCATORI")
+        for tag in tags:
+            rows.append(f"[[PLAYERHEADING:{tag}|Nome molto lungo del giocatore]]")
+            rows.extend(["🏆 Trofei attuali: 120.000", "📈 Saldo Trofei: +123",
+                         "🎮 Battaglie osservate: 300", "🏆 Coppe positive: +100",
+                         "⚡ Bonus Progressione: +13", "🔥 Progressione: +113",
+                         "🧮 Coeff. Progressione: 1,1300"])
+        obj._publish_inline_ranking("Trofei", rows)
+        detail_pages = [lines for title, lines in pages.items() if title.startswith("Dettagli ")]
+        self.assertGreater(len(detail_pages), 1)
+        for lines in detail_pages:
+            encoded = __import__("json").dumps(obj._telegraph_nodes(lines), ensure_ascii=False).encode("utf-8")
+            self.assertLess(len(encoded), 50000)
+        self.assertEqual(sum("[[PLAYER:https://telegra.ph/" in line for line in pages["Trofei"]), 90)
+
     @patch("community_features.requests.post")
     def test_progression_ranking_is_one_line_per_player_and_links_to_stats(self, post):
         obj = self.make_features()
