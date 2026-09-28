@@ -32,8 +32,8 @@ _SKIN_CATEGORY_URLS = {}
 _SKIN_CATEGORY_URLS_LOCK = threading.Lock()
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_FORMAT_REVISION = 15
-_DASHBOARD_SOURCE_MARKER = "Liste: valori positivi verificati · copertura club, coefficiente medio e schede giocatori cliccabili."
+_DASHBOARD_FORMAT_REVISION = 16
+_DASHBOARD_SOURCE_MARKER = "Liste: saldo Classifica Trofei + bonus Progressione · schede e log battaglia cliccabili."
 _PROGRESSION_DETAIL_CACHE = {}
 _PROGRESSION_DETAIL_LOCK = threading.Lock()
 _PROGRESSION_DETAIL_FLIGHTS = {}
@@ -193,7 +193,7 @@ Mostra Resoconto e classifiche cliccabili dei 15 giorni.
 Mostra Resoconto e classifiche cliccabili dei 30 giorni.
 
 Sono accettate anche le forme Classifica 7, Classifica 15 e Classifica 30. Gli invii automatici pubblicano Resoconto e indice con link Telegraph diretti alle 06:00, 12:00, 18:00 e 23:59 per oggi; ogni lunedì alle 06:00 per la settimana conclusa; il 16 alle 06:00 per i giorni 1–15; l'ultimo giorno del mese alle 23:59 per i giorni 16–fine mese; il 1° alle 06:00 per il mese solare precedente.
-La Progressione netta parte dal saldo Trofei dell'account e aggiunge il bonus ponderato delle battaglie positive. Il Coeff. medio dei bonus nel Resoconto divide i punti ponderati positivi per le coppe positive; senza coppe positive non è calcolabile.
+La Progressione netta parte esattamente dal saldo mostrato nella Classifica Trofei dello stesso periodo e ambito, poi aggiunge il bonus ponderato delle battaglie positive. Le coppe positive del log sono un dato separato, non la base della classifica. Il Coeff. medio dei bonus nel Resoconto divide i punti ponderati positivi per le coppe positive; senza coppe positive non è calcolabile.
 Per le classifiche Trofei dei 4 Club si usa il roster completo: la crescita del periodo si calcola solo quando esistono misure reali prima dell'inizio e alla fine. Ogni club indica quanti giocatori hanno uno storico sufficiente rispetto al roster completo. Nelle liste compaiono solo crescite positive.
 
 ⚡ COMANDI DIRETTI DI OGGI
@@ -407,17 +407,18 @@ In questo modo Sens GPT può conoscere progressivamente le persone della communi
 PROGRESSION_GUIDE_TEXT = """🔥 GUIDA PROGRESSIONE — TITANI ABUSIVI
 
 🏆 LA TUA PROGRESSIONE, BRAWLER PER BRAWLER
-Un sistema pensato per leggere quanto vale davvero la tua scalata: ogni battaglia osservata viene analizzata usando i trofei del singolo Brawler nel momento in cui giochi.
+Un sistema pensato per leggere quanto vale davvero la tua scalata: la base della Progressione netta è il saldo mostrato nella Classifica Trofei dello stesso periodo e ambito.
 
 ⚙️ COME FUNZIONA
-Ogni guadagno positivo di coppe viene pesato in base alla fascia trofei del Brawler usato.
+Ogni guadagno positivo di coppe viene pesato in base alla fascia del Brawler con più trofei nella squadra reale. Nelle modalità Solo, o quando il team non è disponibile, si usano i trofei del Brawler personale prima della battaglia.
 Più impegnativa è la fascia, maggiore può essere il peso applicato a quelle coppe.
 
-Le sconfitte restano registrate per partite, vittorie/sconfitte, saldo e analisi, ma non generano Progressione negativa.
-Alla fine vengono sommati i punti prodotti da tutti i Brawler giocati: non viene fatta la media dei loro coefficienti.
+Le sconfitte riducono il saldo Trofei dell'account, ma non aggiungono punti ponderati. Le coppe positive del log servono a calcolare il bonus: non sostituiscono il saldo della Classifica Trofei.
 
 🧮 FORMULA
-Coeff. Progressione = Progressione totale / Coppe positive totali
+Bonus Progressione = punti ponderati delle battaglie positive − coppe positive osservate.
+Progressione netta = saldo della Classifica Trofei + Bonus Progressione.
+Coeff. Progressione = punti ponderati delle battaglie positive / coppe positive osservate.
 
 Il Coeff. Progressione è dinamico e vale esclusivamente per il periodo selezionato.
 Non va confuso con il Coefficiente Abusivo, che misura invece la struttura complessiva dell'account.
