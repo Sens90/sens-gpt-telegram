@@ -98,6 +98,26 @@ class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(database_patch.call_args.kwargs["json"]["last_auto_ranking_slot"], "2026-09-23-2359")
         self.assertFalse(app._AUTO_RANKING_PENDING)
 
+    async def test_same_day_slot_samples_rosters_before_live_cutoff(self):
+        slot = datetime(2026, 9, 28, 6, 0, tzinfo=app.ROME)
+        first = datetime(2026, 9, 28, 6, 1, tzinfo=app.ROME)
+        cutoff = datetime(2026, 9, 28, 6, 2, tzinfo=app.ROME)
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = [{"chat_id": -100123}]
+        with (
+            patch.object(app, "datetime") as clock,
+            patch.object(app, "refresh_rosters_for_rankings") as refresh,
+            patch.object(app.community, "_get", return_value=self.settings),
+            patch.object(app.community, "scheduled_dashboard_snapshot", return_value={"text": "DASHBOARD", "report_url": "https://telegra.ph/dashboard"}) as snapshot,
+            patch.object(app.community, "_send_ranking_message", new=AsyncMock(return_value=True)),
+            patch.object(app.requests, "patch", return_value=response),
+        ):
+            clock.now.side_effect = lambda *_args: cutoff if refresh.called else first
+            await app._send_auto_ranking_slot(self.context, slot)
+        refresh.assert_called_once()
+        snapshot.assert_called_once_with(-100123, 0, (slot.replace(hour=0), cutoff))
+
     async def test_2359_restart_restores_frozen_reports_from_database(self):
         slot = datetime(2026, 9, 23, 23, 59, tzinfo=app.ROME)
         frozen = {"slot": "2026-09-23-2359", "payloads": [

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
-from community_features import CommunityFeatures, SkinBridgeBackoff
+from community_features import CommunityFeatures, SkinBridgeBackoff, ROME
 from coefficient_guide import coefficient_guide_lines
 
 
@@ -116,7 +116,13 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             {"player_tag": "BBB", "player_name": "Zero"},
             {"player_tag": "CCC", "player_name": "Loss"},
         ])
-        obj.history_fetcher = Mock(side_effect=lambda tag, days: [{"trophies": {"AAA": 110, "BBB": 100, "CCC": 90}[tag]}])
+        def snapshots(tag, days):
+            midnight = datetime.now(ROME).replace(hour=0, minute=0, second=0, microsecond=0)
+            return ([{"recorded_at": (midnight - timedelta(days=i)).isoformat(), "trophies": 100}
+                     for i in range(32, -1, -1)] +
+                    [{"recorded_at": (datetime.now(ROME) - timedelta(minutes=1)).isoformat(),
+                      "trophies": {"AAA": 110, "BBB": 100, "CCC": 90}[tag]}])
+        obj.history_fetcher = Mock(side_effect=snapshots)
         obj.change_calculator = Mock(side_effect=lambda history, current: {
             key: current - 100 for key in ("today", "7d", "15d", "30d")
         })
@@ -337,7 +343,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             {"player_tag": "BBB", "player_name": "Newcomer", "club_name": club},
         ]
         snapshots = [
-            {"player_tag": "AAA", "first_seen_at": "2026-09-17T00:00:00Z", "last_seen_at": "2026-09-25T12:00:00Z",
+            {"player_tag": "AAA", "first_seen_at": "2026-09-18T00:00:00Z", "last_seen_at": "2026-09-25T12:00:00Z",
              "first_trophies": 100, "last_trophies": 120},
             {"player_tag": "BBB", "first_seen_at": "2026-09-20T00:00:00Z", "last_seen_at": "2026-09-25T12:00:00Z",
              "first_trophies": 100, "last_trophies": 140},
@@ -828,7 +834,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._get = Mock(side_effect=lambda table, params: [
             {"player_tag": "2LVRCLV8LV", "player_name": "Giorgio", "club_name": "TITANI ABUSIVI"}
         ] if table == "community_members" else [])
-        obj.history_fetcher = Mock(return_value=[{"trophies": 110003}])
+        midnight = datetime.now(ROME).replace(hour=0, minute=0, second=0, microsecond=0)
+        obj.history_fetcher = Mock(return_value=[
+            {"recorded_at": midnight.isoformat(), "trophies": 109021},
+            {"recorded_at": (datetime.now(ROME) - timedelta(minutes=1)).isoformat(), "trophies": 110003},
+        ])
         obj.change_calculator = Mock(return_value={"today": 982})
         post.return_value.raise_for_status.return_value = None
         post.return_value.json.return_value = [{"player_tag": "2LVRCLV8LV", "player_name": "Giorgio",
@@ -848,7 +858,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         obj._get = Mock(return_value=[{"player_tag": "2GU9UV2RG", "player_name": "TA | Tony"}])
-        obj.history_fetcher = Mock(return_value=[{"trophies": 120}])
+        midnight = datetime.now(ROME).replace(hour=0, minute=0, second=0, microsecond=0)
+        obj.history_fetcher = Mock(return_value=[
+            {"recorded_at": midnight.isoformat(), "trophies": 110},
+            {"recorded_at": (datetime.now(ROME) - timedelta(minutes=1)).isoformat(), "trophies": 120},
+        ])
         obj.change_calculator = Mock(return_value={"today": 10})
         obj._player_detail_pages = Mock(return_value={"2GU9UV2RG": "https://telegra.ph/player#GIOCATORE-2GU9UV2RG"})
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/report")
@@ -871,7 +885,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             {"player_tag": "2U9CJ0PG2C", "player_name": "Cannavacciuolo",
              "club_name": "TITANI ABUSIVI"}
         ] if table == "community_members" else [])
-        obj.history_fetcher = Mock(return_value=[{"trophies": 30595}])
+        midnight = datetime.now(ROME).replace(hour=0, minute=0, second=0, microsecond=0)
+        obj.history_fetcher = Mock(return_value=[
+            {"recorded_at": midnight.isoformat(), "trophies": 30510},
+            {"recorded_at": (datetime.now(ROME) - timedelta(minutes=1)).isoformat(), "trophies": 30595},
+        ])
         obj.change_calculator = Mock(return_value={"today": 85})
         post.return_value.raise_for_status.return_value = None
         post.return_value.json.return_value = []
@@ -915,7 +933,106 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             {"recorded_at": "2026-09-15T23:00:00Z", "trophies": 110},
             {"recorded_at": "2026-09-16T01:00:00Z", "trophies": 125},
         ]
-        self.assertEqual(obj._window_trophy_values(history, start, end), (100, 110))
+        self.assertEqual(obj._window_trophy_values(history, start, end), (110, 110))
+
+    def test_midnight_boundary_does_not_charge_yesterday_gain_to_today(self):
+        midnight = datetime(2026, 9, 28, 0, 0, tzinfo=ROME)
+        history = [
+            {"recorded_at": (midnight - timedelta(minutes=11)).isoformat(), "trophies": 30510},
+            {"recorded_at": (midnight + timedelta(minutes=6)).isoformat(), "trophies": 30595},
+            {"recorded_at": (midnight + timedelta(hours=6)).isoformat(), "trophies": 30595},
+        ]
+        # The log has all five wins before midnight, but the proxy's last
+        # trophy sample was stale. No +85 may appear in today's ranking.
+        battles = [
+            {"battle_time": (midnight - timedelta(minutes=15 - i)).isoformat(),
+             "trophy_change": 15 + i}
+            for i in range(5)
+        ]
+        self.assertEqual(self.make_features()._window_trophy_values(
+            history, midnight, midnight + timedelta(hours=6), battles), (30595, 30595))
+        self.assertEqual(self.make_features()._window_trophy_values(
+            history, midnight, midnight + timedelta(hours=6), []), (30595, 30595))
+
+    def test_midnight_evidence_keeps_only_verified_today_movement(self):
+        midnight = datetime(2026, 9, 28, 0, 0, tzinfo=ROME)
+        history = [
+            {"recorded_at": (midnight - timedelta(minutes=3)).isoformat(), "trophies": 100},
+            {"recorded_at": (midnight + timedelta(minutes=3)).isoformat(), "trophies": 115},
+            {"recorded_at": (midnight + timedelta(hours=6)).isoformat(), "trophies": 120},
+        ]
+        battles = [
+            {"battle_time": (midnight - timedelta(minutes=1)).isoformat(), "trophy_change": 10},
+            {"battle_time": (midnight + timedelta(minutes=2)).isoformat(), "trophy_change": 5},
+        ]
+        self.assertEqual(self.make_features()._window_trophy_values(
+            history, midnight, midnight + timedelta(hours=7), battles), (110, 120))
+        # Without the pre-midnight win in the log, the unexplained part is
+        # excluded; the verified post-midnight +5 remains.
+        self.assertEqual(self.make_features()._window_trophy_values(
+            history, midnight, midnight + timedelta(hours=7), battles[1:]), (110, 120))
+
+    def test_closed_week_recovers_verified_wins_from_stale_proxy_snapshot(self):
+        end = datetime(2026, 9, 28, 0, 0, tzinfo=ROME)
+        start = end - timedelta(days=7)
+        history = [
+            {"recorded_at": start.isoformat(), "trophies": 29000},
+            {"recorded_at": (end - timedelta(hours=2, minutes=42)).isoformat(), "trophies": 30510},
+            {"recorded_at": (end - timedelta(minutes=11)).isoformat(), "trophies": 30510},
+            {"recorded_at": (end + timedelta(minutes=6)).isoformat(), "trophies": 30595},
+        ]
+        battles = [
+            {"battle_time": (end - timedelta(minutes=15 - i)).isoformat(),
+             "trophy_change": 15 + i}
+            for i in range(5)
+        ]
+        self.assertEqual(self.make_features()._window_trophy_values(
+            history, start, end, battles), (29000, 30595))
+        self.assertEqual(self.make_features()._window_trophy_values(
+            history, start, end, []), (29000, 30510))
+
+    @patch("community_features.requests.post")
+    def test_all_report_families_share_the_verified_midnight_boundary(self, post):
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        members = [
+            {"player_tag": tag, "player_name": name, "club_name": club}
+            for tag, name, club in (
+                ("2U9CJ0PG2C", "Cannavacciuolo", "TITANI ABUSIVI"),
+                ("2GU9UV2RG", "Tamarro", "TAMARRI ABUSIVI"),
+                ("2GUPY9V", "Tornado", "TORNADI ABUSIVI"),
+                ("2GUPY9U", "Talento", "TALENTI ABUSIVI"),
+            )
+        ]
+        midnight = datetime(2026, 9, 28, 0, 0, tzinfo=ROME)
+        snapshots = [
+            {"recorded_at": (midnight - timedelta(minutes=11)).isoformat(), "trophies": 30510},
+            {"recorded_at": (midnight + timedelta(minutes=6)).isoformat(), "trophies": 30595},
+            {"recorded_at": (midnight + timedelta(hours=6)).isoformat(), "trophies": 30595},
+        ]
+        obj.history_fetcher = Mock(return_value=snapshots)
+        obj._roster_trophy_histories = Mock(side_effect=lambda tags, *_: {
+            tag: snapshots for tag in tags})
+        obj._boundary_battle_history = Mock(side_effect=lambda tags, *_: {
+            tag: [] for tag in tags})
+        obj._get = Mock(side_effect=lambda table, params: (
+            members if table == "community_members" else
+            [{"snapshot_date": "2026-09-28"}] if params.get("select") == "snapshot_date" else
+            [m for m in members if m["club_name"] == params.get("club_name", "").removeprefix("eq.")]
+            if table == "club_roster_daily" else []))
+        post.return_value.json.return_value = []
+        post.return_value.raise_for_status.return_value = None
+        for scope in ("community", "community_club", "global_clubs",
+                      "titani", "tamarri", "tornadi", "talenti",
+                      "global_single:titani", "global_single:tamarri",
+                      "global_single:tornadi", "global_single:talenti"):
+            with self.subTest(scope=scope):
+                summary, _full, _clubs, deltas = obj.periodic_report_text(
+                    123, scope, 0, window=(midnight, midnight + timedelta(hours=7)),
+                    return_full=True, return_deltas=True, publish=False)
+                self.assertTrue(deltas, scope)
+                self.assertTrue(all(delta == 0 for delta in deltas.values()), scope)
+                self.assertIn("🏆 Saldo Trofei: 0", summary)
 
     def test_scheduled_index_links_open_telegraph_directly(self):
         from datetime import timezone
@@ -1052,7 +1169,15 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                 return roster if params.get("club_name") == "eq.TITANI ABUSIVI" else []
             return []
         obj._get = Mock(side_effect=get_rows)
-        obj.history_fetcher = Mock(side_effect=lambda tag, days: [{"trophies": {"AAA": 100, "BBB": 200, "CCC": 300}[tag]}])
+        def history(tag, days):
+            current = {"AAA": 100, "BBB": 200, "CCC": 300}[tag]
+            baseline = 100 if tag == "AAA" else current - 10
+            return [
+                {"recorded_at": (datetime.now(ROME) - timedelta(days=8)).isoformat(), "trophies": baseline},
+                {"recorded_at": (datetime.now(ROME) - timedelta(days=6)).isoformat(), "trophies": baseline},
+                {"recorded_at": (datetime.now(ROME) - timedelta(minutes=1)).isoformat(), "trophies": current},
+            ]
+        obj.history_fetcher = Mock(side_effect=history)
         obj.change_calculator = Mock(side_effect=lambda history, current: {"7d": None if current == 100 else 10})
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/full")
         post.return_value.json.return_value = [{
@@ -1092,7 +1217,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(line.startswith("1. Unregistered") for line in trophy_section[:-2]))
         self.assertIn("🔥 CLASSIFICA PROGRESSIONE", full)
         self.assertIn("📊 RESOCONTO", full)
-        self.assertEqual(club_totals["TITANI ABUSIVI"]["players"], 1)
+        self.assertEqual(club_totals["TITANI ABUSIVI"]["players"], 2)
 
         # The same three scopes use the exact calendar boundaries and retain
         # their own current-roster membership instead of sharing a tag set.
@@ -1119,8 +1244,16 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             if table == "community_members":
                 return members
             if table == "trophy_history":
-                return [{"player_tag": member["player_tag"], "trophies": 100,
-                         "recorded_at": datetime.now(timezone.utc).isoformat()} for member in members]
+                return [
+                    {"player_tag": member["player_tag"], "trophies": trophies,
+                     "recorded_at": instant.isoformat()}
+                    for member in members
+                    for instant, trophies in (
+                        (datetime.now(timezone.utc) - timedelta(days=8), 95),
+                        (datetime.now(timezone.utc) - timedelta(days=6), 95),
+                        (datetime.now(timezone.utc) - timedelta(minutes=1), 100),
+                    )
+                ]
             return []
         obj._get = Mock(side_effect=get)
         obj.history_fetcher = Mock(side_effect=AssertionError("per-player history must not be requested"))
