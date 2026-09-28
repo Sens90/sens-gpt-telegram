@@ -1,6 +1,7 @@
 import os
 import base64
 import hashlib
+import hmac
 import re
 import logging
 import io
@@ -38,6 +39,8 @@ _PROGRESSION_DETAIL_LOCK = threading.Lock()
 _PROGRESSION_DETAIL_FLIGHTS = {}
 _PLAYER_DETAIL_PAGE_CACHE = {}
 _PLAYER_DETAIL_PAGE_LOCK = threading.Lock()
+_PLAYER_BATTLE_LOG_CACHE = {}
+_PLAYER_BATTLE_LOG_LOCK = threading.Lock()
 _TELEGRAPH_PAGE_LOCK = threading.Lock()
 _TELEGRAPH_BACKOFF_UNTIL = 0.0
 
@@ -1999,6 +2002,14 @@ class CommunityFeatures:
                     "children": [label],
                 }]})
                 continue
+            battle_link = re.fullmatch(
+                r"\[\[BATTLE:(https://sens-gpt-telegram\.onrender\.com/battaglie/[0289PYLQGRJCUV]{3,15}\?s=\d{9,12}&e=\d{9,12}&p=\d{1,3}&sig=[a-f0-9]{32})\|Apri il log battaglie\]\]",
+                value,
+            )
+            if battle_link:
+                nodes.append({"tag": "p", "children": [{"tag": "a", "attrs": {"href": battle_link.group(1)},
+                                                      "children": ["🎮 Apri il log battaglie"]}]})
+                continue
             if dashboard_link:
                 nodes.append({"tag": "p", "children": [{
                     "tag": "a", "attrs": {"href": f"https://t.me/SensGPT_TitaniAbusiviBot?start={dashboard_link.group(1)}"},
@@ -3437,6 +3448,10 @@ class CommunityFeatures:
                               f"👤 {self._player_link_name(row['name'])} · ⏱️ {seconds // 3600}h {(seconds % 3600) // 60:02d}m · "
                               f"🎮 {int(row.get('battle_count') or 0)} partite · 🏆 +{self.number_formatter(cups)} coppe · "
                               f"⚡ +{self.number_formatter(row.get('_bonus') or 0)} bonus · 🔥 +{self.number_formatter(value)} · 🧮 {ratio}"])
+                if window:
+                    battle_link = self._battle_log_link(tag, *window)
+                    if battle_link:
+                        lines.append(f"[[BATTLE:{battle_link}|Apri il log battaglie]]")
         report_url = (self._publish_inline_ranking(f"{title} — {period}", lines)
                       if inline_player_details else self._publish_telegraph(f"{title} — {period}", lines))
         if report_url:
@@ -4278,16 +4293,19 @@ class CommunityFeatures:
                     if offset == 99000:
                         raise RuntimeError("trophy history batch exceeds pagination limit")
                 return result
-            try:
+            if not groups:
                 history_by_tag = {tag: [] for tag in tags}
-                if groups:
+            else:
+                try:
                     with ThreadPoolExecutor(max_workers=min(6, len(groups))) as executor:
-                        for batch in executor.map(read_group, groups):
-                            history_by_tag.update(batch)
-            except (requests.RequestException, RuntimeError) as exc:
-                LOG.warning("REPORT BATCH HISTORY FALLBACK: %s", type(exc).__name__)
-                with ThreadPoolExecutor(max_workers=min(6, len(tags))) as executor:
-                    history_by_tag = dict(zip(tags, executor.map(fetch_history, tags)))
+                        batches = list(executor.map(read_group, groups))
+                    history_by_tag = {tag: [] for tag in tags}
+                    for batch in batches:
+                        history_by_tag.update(batch)
+                except (requests.RequestException, RuntimeError) as exc:
+                    LOG.warning("REPORT BATCH HISTORY FALLBACK: %s", type(exc).__name__)
+                    with ThreadPoolExecutor(max_workers=min(6, len(tags))) as executor:
+                        history_by_tag = dict(zip(tags, executor.map(fetch_history, tags)))
 
         trophy_rows = []
         current_trophies_by_tag = {}
@@ -4447,6 +4465,9 @@ class CommunityFeatures:
                              f"👤 {self._player_link_name(row['name'])} · 🏆 {self.number_formatter(row['current'])} trofei · 📈 {self.number_formatter(row['delta'])} saldo · "
                              f"🎮 {int(progress.get('battle_count') or 0)} battaglie osservate · 🏆 +{self.number_formatter(cups)} coppe · "
                              f"⚡ +{self.number_formatter(progress.get('_bonus') or 0)} bonus · 🔥 {self.number_formatter(value) if value is not None else 'n.d.'} · 🧮 {ratio}"])
+                battle_link = self._battle_log_link(tag, period_start, period_end)
+                if battle_link:
+                    full.append(f"[[BATTLE:{battle_link}|Apri il log battaglie]]")
                 if row["delta"] and not int(progress.get("battle_count") or 0):
                     full.append("⚠️ Saldo dai rilevamenti Trofei; il log delle battaglie non copre questo intervallo.")
 
@@ -4848,6 +4869,76 @@ class CommunityFeatures:
         translate.canonical = {name.casefold(): english for english, name in names.items()}
 
         return translate
+
+    @staticmethod
+    def _battle_log_signature(tag, start_epoch, end_epoch, page):
+        secret = os.getenv("TELEGRAPH_ACCESS_TOKEN", "").strip()
+        if not secret:
+            return ""
+        payload = f"{tag}|{start_epoch}|{end_epoch}|{page}".encode("ascii")
+        return hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()[:32]
+
+    def _battle_log_link(self, tag, start, end, page=0):
+        tag = str(tag or "").strip().lstrip("#").upper()
+        if not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
+            return None
+        s, e, page = int(start.timestamp()), int(end.timestamp()), int(page)
+        signature = self._battle_log_signature(tag, s, e, page)
+        if not signature:
+            return None
+        return (f"https://sens-gpt-telegram.onrender.com/battaglie/{tag}"
+                f"?s={s}&e={e}&p={page}&sig={signature}")
+
+    def player_battle_log_page(self, tag, start, end, page=0):
+        """Publish one requested log slice without delaying the ranking index."""
+        from trophy_coefficient import TROPHY_COEFFICIENT_BANDS
+        key = (tag, int(start.timestamp()), int(end.timestamp()), int(page))
+        with _PLAYER_BATTLE_LOG_LOCK:
+            cached = _PLAYER_BATTLE_LOG_CACHE.get(key)
+            if cached and cached[0] > time.monotonic():
+                return cached[1]
+        rows = self._get("observed_trophy_battles", {
+            "select": "player_name,battle_time,brawler_name,brawler_trophies_before,trophy_change,result,placement,mode,bonus_type",
+            "player_tag": f"eq.{tag}",
+            "and": f"(battle_time.gte.{start.astimezone(timezone.utc).isoformat()},battle_time.lt.{end.astimezone(timezone.utc).isoformat()})",
+            "order": "battle_time.desc", "limit": "101", "offset": str(int(page) * 100),
+        }) or []
+        next_page = len(rows) > 100
+        rows = rows[:100]
+        name = next((row.get("player_name") for row in rows if row.get("player_name")), tag)
+        translate = self._brawler_name_translator()
+        lines = [f"LOG BATTAGLIE — {name}",
+                 f"Periodo: {start.astimezone(ROME):%d/%m/%Y %H:%M} – {end.astimezone(ROME):%d/%m/%Y %H:%M}",
+                 f"Pagina {int(page) + 1} · risultati più recenti per primi", "", "🎮 BATTAGLIE OSSERVATE"]
+        valid = 0
+        for index, row in enumerate(rows, int(page) * 100 + 1):
+            try:
+                moment = datetime.fromisoformat(str(row["battle_time"]).replace("Z", "+00:00")).astimezone(ROME)
+                before, delta = int(row["brawler_trophies_before"]), int(row["trophy_change"])
+            except (ValueError, TypeError, KeyError):
+                continue
+            if str(row.get("bonus_type") or "").startswith("excluded"):
+                continue
+            band = next(((lo, hi, weight) for lo, hi, weight in TROPHY_COEFFICIENT_BANDS
+                         if lo <= before < hi), None)
+            band_label = (f"{band[0]}–{band[1] - 1} ×{band[2]:.4f}".replace(".", ",")
+                          if band else "3000+ ×1,0000")
+            lines.append(f"{index}. {moment:%d/%m %H:%M} · {translate(row.get('brawler_name'))} · "
+                         f"{self._progression_result_it(self._observed_battle_outcome(row), row.get('placement'))} · "
+                         f"{self._progression_mode_it(row.get('mode'))} · "
+                         f"🎯 {band_label} ({before} 🏆 prima) · {'+' if delta > 0 else ''}{delta} 🏆")
+            valid += 1
+        if not valid:
+            lines.append("Nessuna battaglia osservata valida in questa pagina.")
+        if next_page:
+            next_link = self._battle_log_link(tag, start, end, int(page) + 1)
+            if next_link:
+                lines.extend(["", f"[[BATTLE:{next_link}|Apri il log battaglie]]"])
+        url = self._publish_telegraph(f"Battaglie {name} — {int(page) + 1}", lines)
+        if url:
+            with _PLAYER_BATTLE_LOG_LOCK:
+                _PLAYER_BATTLE_LOG_CACHE[key] = (time.monotonic() + 3600, url)
+        return url
 
     def _player_detail_pages(self, rows, days, window=None):
         """Publish grouped player dossiers; a single page serves several links."""

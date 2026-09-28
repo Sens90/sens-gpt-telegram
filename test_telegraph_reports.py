@@ -81,6 +81,25 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.number_formatter = lambda value: f"{int(value):,}".replace(",", ".")
         return obj
 
+    def test_battle_log_publishes_only_requested_page_with_band_and_next_link(self):
+        obj = self.make_features()
+        start = datetime.now(timezone.utc) - timedelta(hours=2)
+        end = datetime.now(timezone.utc) - timedelta(minutes=1)
+        rows = [{"player_name": "Giorgio", "battle_time": start.isoformat(),
+                 "brawler_name": "Sprout", "brawler_trophies_before": 1015,
+                 "trophy_change": 8, "result": "victory", "mode": "Gem Grab"}] * 101
+        obj._get = Mock(return_value=rows)
+        obj._brawler_name_translator = Mock(return_value=lambda name: "Semino" if name == "Sprout" else name)
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/Battaglie-Giorgio")
+        with patch.dict(os.environ, {"TELEGRAPH_ACCESS_TOKEN": "unit-test-token"}):
+            self.assertEqual(obj.player_battle_log_page("2GU9UV2RG", start, end),
+                             "https://telegra.ph/Battaglie-Giorgio")
+        lines = obj._publish_telegraph.call_args.args[1]
+        self.assertEqual(sum("Semino" in line for line in lines), 100)
+        self.assertTrue(any("1000–1099" in line for line in lines))
+        self.assertTrue(any("[[BATTLE:https://" in line for line in lines))
+        obj._get.assert_called_once()
+
     @patch("community_features.time.sleep")
     @patch("community_features.requests.get")
     def test_transient_supabase_read_retries_before_returning_rows(self, get, sleep):

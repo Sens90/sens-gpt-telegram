@@ -1,6 +1,7 @@
 import os
 import unittest
 from datetime import datetime
+from threading import Barrier
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -281,6 +282,48 @@ class AutomaticPeriodicReportTests(unittest.IsolatedAsyncioTestCase):
 
 
 class CompleteRosterRetryTests(unittest.TestCase):
+    def test_battle_log_link_is_signed_and_redirects_to_published_page(self):
+        from urllib.parse import urlsplit
+        from datetime import datetime, timedelta, timezone
+        start = datetime.now(timezone.utc) - timedelta(hours=1)
+        end = datetime.now(timezone.utc) - timedelta(minutes=1)
+        with patch.dict(os.environ, {"TELEGRAPH_ACCESS_TOKEN": "unit-test-token"}):
+            link = app.community._battle_log_link("2GU9UV2RG", start, end)
+            self.assertIsNotNone(link)
+            parsed = urlsplit(link)
+            client = app.app.test_client()
+            with patch.object(app.community, "player_battle_log_page", return_value="https://telegra.ph/Battaglie-09-28") as publish:
+                response = client.get(parsed.path + "?" + parsed.query)
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(response.headers["Location"], "https://telegra.ph/Battaglie-09-28")
+                publish.assert_called_once()
+                self.assertEqual(client.get(parsed.path + "?" + parsed.query.replace("sig=", "sig=x")).status_code, 403)
+                publish.assert_called_once()
+
+    def test_existing_player_rows_are_refreshed_concurrently_without_overwriting_first_sample(self):
+        players = [{"player_tag": tag, "player_name": tag, "trophies": 100 + i}
+                   for i, tag in enumerate(("AAA", "BBB", "CCC"))]
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = [{"player_tag": row["player_tag"], "first_trophies": 50}
+                                      for row in players]
+        barrier = Barrier(3)
+        def save(*_args, **_kwargs):
+            barrier.wait(timeout=3)
+            return response
+        with (
+            patch.object(app, "SUPABASE_URL", "https://example.supabase.co"),
+            patch.object(app, "SUPABASE_SERVICE_ROLE_KEY", "test-key"),
+            patch.object(app.requests, "get", return_value=response),
+            patch.object(app.requests, "patch", side_effect=save) as updates,
+            patch.object(app.requests, "post") as inserts,
+        ):
+            self.assertEqual(app.save_complete_roster_daily("TITANI ABUSIVI", "UG9Q8PC", players), 3)
+        self.assertEqual(updates.call_count, 3)
+        inserts.assert_not_called()
+        self.assertTrue(all("first_trophies" not in call.kwargs["json"]
+                            for call in updates.call_args_list))
+
     def test_transient_empty_save_is_retried_once(self):
         clubs = {"TITANI ABUSIVI": "UG9Q8PC"}
         roster = [{"player_tag": "ABC", "player_name": "Giocatore", "trophies": 100000}]
