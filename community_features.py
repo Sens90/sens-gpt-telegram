@@ -4279,11 +4279,11 @@ class CommunityFeatures:
                         raise RuntimeError("trophy history batch exceeds pagination limit")
                 return result
             try:
-                with ThreadPoolExecutor(max_workers=min(6, len(groups))) as executor:
-                    batches = list(executor.map(read_group, groups))
                 history_by_tag = {tag: [] for tag in tags}
-                for batch in batches:
-                    history_by_tag.update(batch)
+                if groups:
+                    with ThreadPoolExecutor(max_workers=min(6, len(groups))) as executor:
+                        for batch in executor.map(read_group, groups):
+                            history_by_tag.update(batch)
             except (requests.RequestException, RuntimeError) as exc:
                 LOG.warning("REPORT BATCH HISTORY FALLBACK: %s", type(exc).__name__)
                 with ThreadPoolExecutor(max_workers=min(6, len(tags))) as executor:
