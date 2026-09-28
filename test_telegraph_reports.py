@@ -212,7 +212,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             ])
         self.assertTrue(any(node.get("tag") == "h3" and node.get("children") == ["👤 Tony"]
                             for node in nodes))
-        self.assertTrue(any(node.get("tag") == "h4" and node.get("children") == ["TAG 2GU9UV2RG"]
+        self.assertTrue(any(node.get("tag") == "h4" and node.get("children") == [
+            {"tag": "code", "children": ["TAG #2GU9UV2RG"]}]
                             for node in nodes))
         self.assertFalse(any(node.get("tag") == "h3" and "GIOCATORE 2GU9UV2RG" in str(node)
                              for node in nodes))

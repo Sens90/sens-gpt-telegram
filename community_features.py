@@ -1990,7 +1990,8 @@ class CommunityFeatures:
             if player_heading:
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]},
                               {"tag": "h3", "children": [f"👤 {player_heading.group(2)}"]},
-                              {"tag": "h4", "children": [f"TAG {player_heading.group(1)}"]}])
+                              {"tag": "h4", "children": [{"tag": "code", "children": [
+                                  f"TAG #{player_heading.group(1)}"]}]}])
                 continue
             club_heading = re.fullmatch(r"\[\[CLUBHEADING:([A-Z-]+)\|([^\[\]]+)\]\]", value)
             if club_heading:
