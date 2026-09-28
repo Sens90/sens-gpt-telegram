@@ -575,6 +575,32 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.progression_detail_text.assert_called_once_with("2GU9UV2RG", 0)
         self.assertEqual(obj._send_ranking_message.await_args.args[1], 456)
 
+    async def test_slow_period_hub_delivers_the_completed_index_privately(self):
+        import asyncio
+        from community_features import _PENDING_MANUAL_DASHBOARD_DELIVERIES
+        obj = self.make_features()
+        def build(chat_id, days):
+            import time
+            time.sleep(0.03)
+            return {"text": "📊 CLASSIFICHE — OGGI", "report_url": "https://telegra.ph/complete"}
+        obj.rankings_dashboard_text = Mock(side_effect=build)
+        obj._send_ranking_message = AsyncMock(return_value=True)
+        message = SimpleNamespace(chat_id=-1001, chat=SimpleNamespace(type="supergroup"),
+                                  from_user=SimpleNamespace(id=456), reply_text=AsyncMock())
+        context = SimpleNamespace(user_data={"_registered_user": {"player_tag": "2GU9UV2RG"}})
+        async def timeout(_future, timeout):
+            raise asyncio.TimeoutError
+        with patch("community_features.asyncio.wait_for", side_effect=timeout):
+            self.assertTrue(await obj.handle_command(message, context, "classifica oggi"))
+        self.assertEqual(obj._send_ranking_message.await_count, 1)
+        self.assertIn("Sto preparando", obj._send_ranking_message.await_args.args[2])
+        await asyncio.wait_for(asyncio.gather(*_PENDING_MANUAL_DASHBOARD_DELIVERIES), timeout=2)
+        self.assertEqual(obj._send_ranking_message.await_count, 2)
+        self.assertEqual(obj._send_ranking_message.await_args.args[1], 456)
+        self.assertEqual(obj._send_ranking_message.await_args.args[2]["report_url"],
+                         "https://telegra.ph/complete")
+        message.reply_text.assert_not_awaited()
+
     async def test_yesterday_aliases_replay_archived_group_snapshot_privately(self):
         obj = self.make_features()
         archived = {"text": "Chiusura delle 23:59", "report_url": "https://telegra.ph/chiusura"}

@@ -32,6 +32,7 @@ _SKIN_CATEGORY_URLS = {}
 _SKIN_CATEGORY_URLS_LOCK = threading.Lock()
 _DASHBOARD_CACHE = {}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
+_PENDING_MANUAL_DASHBOARD_DELIVERIES = set()
 _DASHBOARD_FORMAT_REVISION = 17
 _DASHBOARD_SOURCE_MARKER = "Liste: saldo Classifica Trofei + bonus Progressione · schede e log battaglia cliccabili."
 _PROGRESSION_DETAIL_CACHE = {}
@@ -5685,6 +5686,43 @@ class CommunityFeatures:
                           chat_id, type(exc).__name__)
         LOG.error("RANKING TELEGRAM SEND EXHAUSTED chat=%s", chat_id); return False
 
+    async def _send_manual_dashboard(self, context, source_chat_id, recipient_id, days=None):
+        """Keep the eventual private delivery attached to a slow Telegraph build."""
+        label = "generale" if days is None else str(days)
+        worker = asyncio.create_task(asyncio.to_thread(
+            self.rankings_dashboard_text, source_chat_id, *((days,) if days is not None else ())))
+        try:
+            payload = await asyncio.wait_for(asyncio.shield(worker), timeout=12)
+        except asyncio.TimeoutError:
+            async def finish():
+                try:
+                    payload = await worker
+                    sent = await self._send_ranking_message(context, recipient_id, payload)
+                    LOG.info("CLASSIFICHE LATE DELIVERY %s source=%s recipient=%s period=%s",
+                             "DONE" if sent else "ERROR", source_chat_id, recipient_id, label)
+                except Exception as exc:
+                    LOG.exception("CLASSIFICHE LATE DELIVERY ERROR source=%s recipient=%s period=%s: %s",
+                                  source_chat_id, recipient_id, label, type(exc).__name__)
+                    await self._send_ranking_message(
+                        context, recipient_id, "Non sono riuscito a completare le classifiche. Riprova tra poco.")
+            delivery = asyncio.create_task(finish())
+            _PENDING_MANUAL_DASHBOARD_DELIVERIES.add(delivery)
+            delivery.add_done_callback(_PENDING_MANUAL_DASHBOARD_DELIVERIES.discard)
+            LOG.info("CLASSIFICHE LATE DELIVERY START source=%s recipient=%s period=%s",
+                     source_chat_id, recipient_id, label)
+            await self._send_ranking_message(
+                context, recipient_id, "⏳ Sto preparando le classifiche aggiornate. Ti invierò qui il link Telegraph appena pronto.")
+            return
+        except Exception as exc:
+            LOG.exception("CLASSIFICHE MANUAL BUILD ERROR source=%s recipient=%s period=%s: %s",
+                          source_chat_id, recipient_id, label, type(exc).__name__)
+            await self._send_ranking_message(
+                context, recipient_id, "Non sono riuscito a completare le classifiche. Riprova tra poco.")
+            return
+        sent = await self._send_ranking_message(context, recipient_id, payload)
+        LOG.info("CLASSIFICHE MANUAL DELIVERY %s source=%s recipient=%s period=%s",
+                 "DONE" if sent else "ERROR", source_chat_id, recipient_id, label)
+
     async def handle_command(self, message, context, question):
         q_skin = question.strip()
         # Deterministic community commands must be handled before Skin/AI-like parsing.
@@ -5742,30 +5780,13 @@ class CommunityFeatures:
             await self._send_ranking_message(context, _ranking_reply_chat_id, payload)
             return True
         if q0l in ("classifica", "classifiche", "classifiche e report", "dashboard classifiche", "dashboard classifiche e report"):
-            try:
-                payload = await asyncio.wait_for(
-                    asyncio.to_thread(self.rankings_dashboard_text, _ranking_chat_id),
-                    timeout=300,
-                )
-            except asyncio.TimeoutError:
-                LOG.error("CLASSIFICHE DASHBOARD TIMEOUT chat=%s", _ranking_chat_id)
-                await message.reply_text("La dashboard Classifiche & Report sta impiegando troppo tempo. Riprova tra poco.")
-                return True
-            await self._send_ranking_message(context, int(message.from_user.id), payload)
+            await self._send_manual_dashboard(context, _ranking_chat_id, int(message.from_user.id))
             return True
         period_hub = re.fullmatch(r"(?:classifica\s+(oggi|7|15|30)|classifiche\s+(oggi|7|15|30)|(?:trofei|coppe)\s+(oggi))(?:\s+giorni)?", q0l)
         if period_hub:
             requested = period_hub.group(1) or period_hub.group(2) or period_hub.group(3)
             days = 0 if requested == "oggi" else int(requested)
-            try:
-                payload = await asyncio.wait_for(
-                    asyncio.to_thread(self.rankings_dashboard_text, _ranking_chat_id, days), timeout=120,
-                )
-            except asyncio.TimeoutError:
-                LOG.error("CLASSIFICHE PERIOD HUB TIMEOUT chat=%s days=%s", _ranking_chat_id, days)
-                await message.reply_text("Le classifiche del periodo stanno impiegando troppo tempo. Riprova tra poco.")
-                return True
-            await self._send_ranking_message(context, int(message.from_user.id), payload)
+            await self._send_manual_dashboard(context, _ranking_chat_id, int(message.from_user.id), days)
             return True
 
         if q0l in ("elenco utenti", "elenco registrati", "registrati", "membri registrati", "account registrati"):
