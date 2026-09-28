@@ -79,7 +79,51 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
     def make_features(self):
         obj = CommunityFeatures.__new__(CommunityFeatures)
         obj.number_formatter = lambda value: f"{int(value):,}".replace(",", ".")
+        obj.ranked_window_ranking_text = Mock(return_value=["CLASSIFICA RANKED", "Nessuna crescita osservata."])
         return obj
+
+    def test_ranked_calendar_window_uses_full_roster_and_two_frozen_samples(self):
+        obj = self.make_features()
+        start = datetime(2026, 9, 28, tzinfo=ROME)
+        end = start.replace(hour=23, minute=59)
+        names = [("2LVRCLV8LV", "Giorgio"), ("2GU9UV2RG", "Tony")]
+        def get(table, params):
+            if table == "club_roster_daily" and params["select"] == "snapshot_date":
+                return [{"snapshot_date": "2026-09-28"}]
+            if table == "club_roster_daily":
+                return [{"player_tag": tag, "player_name": name, "club_name": "TAMARRI ABUSIVI"}
+                        for tag, name in names]
+            if table == "ranked_history":
+                return [
+                    {"player_tag": "2LVRCLV8LV", "ranked_current_elo": 1000,
+                     "recorded_at": (start - timedelta(minutes=10)).isoformat()},
+                    {"player_tag": "2LVRCLV8LV", "ranked_current_elo": 1040,
+                     "recorded_at": (end - timedelta(minutes=9)).isoformat()},
+                    {"player_tag": "2LVRCLV8LV", "ranked_current_elo": 1090,
+                     "recorded_at": (end + timedelta(minutes=10)).isoformat()},
+                    {"player_tag": "2GU9UV2RG", "ranked_current_elo": 1200,
+                     "recorded_at": (end - timedelta(minutes=20)).isoformat()},
+                ]
+            return []
+        obj._get = Mock(side_effect=get)
+        lines = CommunityFeatures.ranked_window_ranking_text(obj, start, end, "IERI")
+        rendered = "\n".join(lines)
+        self.assertIn("Giorgio — +40 ELO · 1.040 attuali", rendered)
+        self.assertIn("🛡️ TAMARRI ABUSIVI", rendered)
+        self.assertNotIn("Tony —", rendered)
+        self.assertNotIn("+90 ELO", rendered)
+
+    async def test_ranked_yesterday_command_opens_direct_telegraph(self):
+        obj = self.make_features()
+        obj._publish_telegraph = Mock(return_value="https://telegra.ph/ranked-ieri")
+        obj._send_ranking_message = AsyncMock(return_value=True)
+        message = SimpleNamespace(chat_id=-1001, chat=SimpleNamespace(type="supergroup"),
+                                  from_user=SimpleNamespace(id=456), reply_text=AsyncMock())
+        context = SimpleNamespace(user_data={})
+        self.assertTrue(await obj.handle_command(message, context, "classifica ranked ieri"))
+        payload = obj._send_ranking_message.call_args.args[2]
+        self.assertEqual(payload["report_url"], "https://telegra.ph/ranked-ieri")
+        self.assertEqual(obj._send_ranking_message.call_args.args[1], 456)
 
     def test_battle_log_publishes_only_requested_page_with_band_and_next_link(self):
         obj = self.make_features()
@@ -255,10 +299,10 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("OGGI · 7 · 15 · 30", payload["text"])
         self.assertIn("📋 RESOCONTO", obj.rankings_dashboard_text(-1001, 0)["text"])
         self.assertIs(payload, obj.rankings_dashboard_text(-1001))
-        self.assertEqual(obj._publish_telegraph.call_count, 17)
+        self.assertEqual(obj._publish_telegraph.call_count, 21)
         lines = obj._publish_telegraph.call_args.args[1]
         links = [line for line in lines if line.startswith("[[URL:")]
-        self.assertEqual(len(links), 12)
+        self.assertEqual(len(links), 16)
         self.assertIn("[[URL:https://telegra.ph/progressione|Apri]]", links)
         self.assertNotIn("[[URL:https://telegra.ph/report|Apri]]", links)
         self.assertFalse(any("[[DASH:" in line for line in lines))
@@ -273,11 +317,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                          "https://t.me/SensGPT_TitaniAbusiviBot?start=dash_r_10_30")
         direct_nodes = obj._telegraph_nodes(lines)
         self.assertEqual(sum(node.get("tag") == "h3" and node.get("children") == ["OGGI"] for node in direct_nodes), 1)
-        self.assertEqual(sum(node.get("tag") == "h4" for node in direct_nodes), 8)
+        self.assertEqual(sum(node.get("tag") == "h4" for node in direct_nodes), 12)
         self.assertEqual(sum(node.get("tag") == "h3" and "Classifica Trofei" in str(node.get("children"))
                              for node in direct_nodes), 4)
         self.assertEqual(sum(node.get("tag") == "a" and node.get("attrs", {}).get("href", "").startswith("https://telegra.ph/")
-                             for item in direct_nodes for node in item.get("children", []) if isinstance(node, dict)), 12)
+                             for item in direct_nodes for node in item.get("children", []) if isinstance(node, dict)), 16)
         self.assertEqual(obj.periodic_report_text.call_count, 4)
         self.assertTrue(all(call.args[1] == "global_clubs" and call.kwargs.get("return_full") and call.kwargs.get("publish") is False for call in obj.periodic_report_text.call_args_list))
         self.assertTrue(all(call.args[1] == "global_clubs" for call in obj.coefficient_ranking_text.call_args_list))
@@ -295,11 +339,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             days = int(params["slot"].split(":")[-1])
             label = labels[days]
             lines = [f"CLASSIFICHE — {label}", "Aggiornato", "", f"══ {label} ══", ""]
-            for index in range(3):
+            for index in range(4):
                 lines.extend(["🏆 Classifica", f"[[URL:https://telegra.ph/{days}-{index}|Apri]]", ""])
             return [{"payload": {"report_url": f"https://telegra.ph/period-{days}",
                                  "fallback": "\n".join(lines), "cached_at": timestamp,
-                                 "cache_revision": 16}}]
+                                 "cache_revision": 17}}]
         obj._get = Mock(side_effect=get)
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/indice")
         payload = obj.rankings_dashboard_text(-1001)
@@ -307,7 +351,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(obj._get.call_count, 8)
         published = obj._publish_telegraph.call_args.args[1]
         self.assertFalse(any(line.startswith(("Indice creato:", "Liste:", "Ogni periodo")) for line in published))
-        self.assertEqual(sum(line.startswith("[[URL:") for line in published), 12)
+        self.assertEqual(sum(line.startswith("[[URL:") for line in published), 16)
         self.assertEqual(sum(line.startswith("Ultimo aggiornamento:") for line in published), 4)
         self.assertFalse(any("[[DASH:" in line for line in published))
 
@@ -323,7 +367,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(compact)
             label = "OGGI" if days == 0 else f"{days} GIORNI"
             lines = [f"CLASSIFICHE — {label}", "Aggiornato adesso", "", f"══ {label} ══"]
-            lines += [f"[[URL:https://telegra.ph/{days}-{index}|Apri]]" for index in range(3)]
+            lines += [f"[[URL:https://telegra.ph/{days}-{index}|Apri]]" for index in range(4)]
             return {"text": "Dati aggiornati", "report_url": f"https://telegra.ph/periodo-{days}",
                     "fallback": "\n".join(lines)}
         obj._direct_dashboard_snapshot = Mock(side_effect=snapshot)
@@ -349,7 +393,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         nodes = [{"tag": "p", "children": [updated]},
                  {"tag": "p", "children": ["Liste: saldo Classifica Trofei + bonus Progressione · schede e log battaglia cliccabili."]}]
         nodes += [{"tag": "h3", "children": [period]} for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")]
-        nodes += [{"tag": "a", "attrs": {"href": f"https://telegra.ph/Classifica-{i}-09-25"}, "children": ["Apri"]} for i in range(12)]
+        nodes += [{"tag": "a", "attrs": {"href": f"https://telegra.ph/Classifica-{i}-09-25"}, "children": ["Apri"]} for i in range(16)]
         get.return_value.json.return_value = {"ok": True, "result": {"content": nodes}}
         payload = obj.rankings_dashboard_text(-123)
         self.assertEqual(payload["report_url"], url)
@@ -373,7 +417,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         nodes = [{"tag": "p", "children": [updated]},
                  {"tag": "p", "children": ["Liste: saldo Classifica Trofei + bonus Progressione · schede e log battaglia cliccabili."]}]
         nodes += [{"tag": "h3", "children": [period]} for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")]
-        nodes += [{"tag": "a", "attrs": {"href": f"https://telegra.ph/ranking-{i}"}, "children": ["Apri"]} for i in range(12)]
+        nodes += [{"tag": "a", "attrs": {"href": f"https://telegra.ph/ranking-{i}"}, "children": ["Apri"]} for i in range(16)]
         get.return_value.json.return_value = {"ok": True, "result": {"content": nodes}}
         with patch("community_features.time.monotonic", return_value=1000):
             obj.rankings_dashboard_text(-123)
@@ -387,7 +431,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         payload = {"text": "📋 RESOCONTO\n🏆 Coppe totali reali: 100", "report_url": "https://telegra.ph/periodo-7",
-                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 16}
+                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 17}
         obj._get = Mock(return_value=[{"payload": payload}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse the exact period"))
         result = obj.rankings_dashboard_text(-123, 7)
@@ -406,7 +450,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._get = Mock(return_value=[{"payload": {
             "report_url": "https://telegra.ph/periodo",
             "cached_at": (datetime.now(timezone.utc) - timedelta(seconds=89)).isoformat(),
-            "cache_revision": 16,
+            "cache_revision": 17,
         }}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse saved period"))
         with patch("community_features.time.monotonic", return_value=1000):
@@ -427,7 +471,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._direct_dashboard_snapshot = Mock(return_value=fresh)
         self.assertEqual(obj.rankings_dashboard_text(-123, 0), fresh)
         obj._direct_dashboard_snapshot.assert_called_once_with(-123, 0, None, compact=True)
-        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 16)
+        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 17)
 
     @patch("community_features.requests.post")
     def test_global_roster_uses_observed_nonregistered_snapshots_at_period_boundary(self, post):
@@ -552,6 +596,32 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("non è disponibile nell'archivio", result)
         self.assertEqual(obj._get.call_args.args[0], "scheduled_dashboard_delivery")
         self.assertTrue(obj._get.call_args.args[1]["slot"].startswith("eq.daily:2359:"))
+
+    def test_yesterday_archive_adds_ranked_without_changing_frozen_payload(self):
+        from community_features import _DASHBOARD_CACHE
+        _DASHBOARD_CACHE.clear()
+        obj = self.make_features()
+        archived = {"text": "📊 CLASSIFICHE — OGGI\n📋 RESOCONTO", "report_url": "https://telegra.ph/old",
+                    "fallback": "\n".join([
+                        "CLASSIFICHE — OGGI", "Periodo: ieri 00:00 – 23:59", "",
+                        "Tre classifiche", "", "══ OGGI ══", "",
+                        "🏆 Classifica Trofei Globale Club — OGGI", "Trofei",
+                        "[[URL:https://telegra.ph/trofei|Apri]]", "",
+                        "🔥 Progressione Globale Club — OGGI", "Progressione",
+                        "[[URL:https://telegra.ph/progressione|Apri]]", "",
+                        "🏆 Classifica dei 4 Club — OGGI", "Club",
+                        "[[URL:https://telegra.ph/club|Apri]]",
+                    ])}
+        obj._get = Mock(return_value=[{"payload": archived}])
+        obj._publish_telegraph = Mock(side_effect=["https://telegra.ph/ranked", "https://telegra.ph/new-index"])
+        result = obj.yesterday_ranking_snapshot(-1001)
+        self.assertEqual(result["report_url"], "https://telegra.ph/new-index")
+        self.assertEqual(len([line for line in result["fallback"].splitlines() if line.startswith("[[URL:")]), 4)
+        self.assertLess(result["fallback"].index("https://telegra.ph/progressione"), result["fallback"].index("https://telegra.ph/ranked"))
+        self.assertLess(result["fallback"].index("https://telegra.ph/ranked"), result["fallback"].index("https://telegra.ph/club"))
+        self.assertEqual(archived["report_url"], "https://telegra.ph/old")
+        self.assertEqual(obj.yesterday_ranking_snapshot(-1001), result)
+        self.assertEqual(obj._publish_telegraph.call_count, 2)
 
     async def test_personal_day_questions_use_requester_tag_and_stay_private(self):
         obj = self.make_features()
@@ -1094,13 +1164,13 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progressione"})
         report_full = ["REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI", "1. Utente +10", "", "🔥 CLASSIFICA PROGRESSIONE", "📊 RESOCONTO", "🏆 Coppe totali reali: 100"]
         obj.periodic_report_text = Mock(return_value=("📊 REPORT COMPLETO: https://telegra.ph/report", report_full, {"TITANI ABUSIVI": {"delta": 10, "players": 2}}))
-        for days, count in ((0, 3), (7, 3), (15, 3), (30, 3)):
+        for days, count in ((0, 4), (7, 4), (15, 4), (30, 4)):
             obj.rankings_dashboard_text(-1001, days)
             lines = obj._publish_telegraph.call_args.args[1]
             links = [line for line in lines if line.startswith("[[URL:")]
             self.assertEqual(len(links), count)
             self.assertTrue(all(line.endswith("|Apri]]") for line in links))
-            self.assertEqual(obj._publish_telegraph.call_count, 4 * ((0, 7, 15, 30).index(days) + 1))
+            self.assertEqual(obj._publish_telegraph.call_count, 5 * ((0, 7, 15, 30).index(days) + 1))
         self.assertEqual(obj.dashboard_command("dash_t_0_7"), "classifica della community 7")
 
     def test_command_guide_describes_current_period_hubs(self):
@@ -1236,8 +1306,10 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             patch.object(obj, "periodic_report_text", return_value=("REPORT", ["REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI", "1. player +10", "", "🔥 CLASSIFICA PROGRESSIONE", "📊 RESOCONTO", "🏆 Coppe totali reali: 100"], {"TITANI ABUSIVI": {"delta": 10, "players": 2}})),
         ):
             result = obj.scheduled_dashboard_snapshot(-1001, 15, (start, end))
-        self.assertEqual(result["report_url"], "https://telegra.ph/page-4")
-        self.assertEqual(sum("[[URL:" in row for row in captured[-1]), 3)
+        self.assertEqual(result["report_url"], "https://telegra.ph/page-5")
+        self.assertEqual(sum("[[URL:" in row for row in captured[-1]), 4)
+        obj.ranked_window_ranking_text.assert_called_once_with(start, end, "15 GIORNI")
+        self.assertIn("🏅 Classifica Ranked Globale Club — 15 GIORNI", captured[-1])
         self.assertIn("📋 RESOCONTO", result["text"])
         self.assertIn("🏆 Coppe totali reali: 100", result["text"])
         self.assertFalse(any("[[DASH:" in row for row in captured[-1]))
@@ -1303,6 +1375,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual([row for row in lines if row.startswith("[[DASH:")], [
                 f"[[DASH:dash_t_2_{period}|Apri]]",
                 f"[[DASH:dash_p_2_{period}|Apri]]",
+                f"[[DASH:dash_k_2_{period}|Apri]]",
                 f"[[DASH:dash_t_1_{period}|Apri]]",
             ])
             self.assertNotIn(f"[[DASH:dash_r_2_{period}|Apri]]", lines)
