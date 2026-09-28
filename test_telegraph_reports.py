@@ -291,7 +291,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                 lines.extend(["🏆 Classifica", f"[[URL:https://telegra.ph/{days}-{index}|Apri]]", ""])
             return [{"payload": {"report_url": f"https://telegra.ph/period-{days}",
                                  "fallback": "\n".join(lines), "cached_at": timestamp,
-                                 "cache_revision": 15}}]
+                                 "cache_revision": 16}}]
         obj._get = Mock(side_effect=get)
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/indice")
         payload = obj.rankings_dashboard_text(-1001)
@@ -339,7 +339,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         from datetime import datetime as _datetime
         updated = _datetime.now(ROME).strftime("Aggiornato: %d/%m/%Y %H:%M")
         nodes = [{"tag": "p", "children": [updated]},
-                 {"tag": "p", "children": ["Liste: valori positivi verificati · copertura club, coefficiente medio e schede giocatori cliccabili."]}]
+                 {"tag": "p", "children": ["Liste: saldo Classifica Trofei + bonus Progressione · schede e log battaglia cliccabili."]}]
         nodes += [{"tag": "h3", "children": [period]} for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")]
         nodes += [{"tag": "a", "attrs": {"href": f"https://telegra.ph/Classifica-{i}-09-25"}, "children": ["Apri"]} for i in range(12)]
         get.return_value.json.return_value = {"ok": True, "result": {"content": nodes}}
@@ -363,7 +363,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         ]}}
         updated = (datetime.now(ROME) - timedelta(minutes=4)).strftime("Aggiornato: %d/%m/%Y %H:%M")
         nodes = [{"tag": "p", "children": [updated]},
-                 {"tag": "p", "children": ["Liste: valori positivi verificati · copertura club, coefficiente medio e schede giocatori cliccabili."]}]
+                 {"tag": "p", "children": ["Liste: saldo Classifica Trofei + bonus Progressione · schede e log battaglia cliccabili."]}]
         nodes += [{"tag": "h3", "children": [period]} for period in ("OGGI", "7 GIORNI", "15 GIORNI", "30 GIORNI")]
         nodes += [{"tag": "a", "attrs": {"href": f"https://telegra.ph/ranking-{i}"}, "children": ["Apri"]} for i in range(12)]
         get.return_value.json.return_value = {"ok": True, "result": {"content": nodes}}
@@ -379,7 +379,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj = self.make_features()
         obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
         payload = {"text": "📋 RESOCONTO\n🏆 Coppe totali reali: 100", "report_url": "https://telegra.ph/periodo-7",
-                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 15}
+                   "fallback": "CLASSIFICHE — 7 GIORNI", "cached_at": datetime.now(timezone.utc).isoformat(), "cache_revision": 16}
         obj._get = Mock(return_value=[{"payload": payload}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse the exact period"))
         result = obj.rankings_dashboard_text(-123, 7)
@@ -398,7 +398,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._get = Mock(return_value=[{"payload": {
             "report_url": "https://telegra.ph/periodo",
             "cached_at": (datetime.now(timezone.utc) - timedelta(seconds=89)).isoformat(),
-            "cache_revision": 15,
+            "cache_revision": 16,
         }}])
         obj._direct_dashboard_snapshot = Mock(side_effect=AssertionError("must reuse saved period"))
         with patch("community_features.time.monotonic", return_value=1000):
@@ -419,7 +419,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._direct_dashboard_snapshot = Mock(return_value=fresh)
         self.assertEqual(obj.rankings_dashboard_text(-123, 0), fresh)
         obj._direct_dashboard_snapshot.assert_called_once_with(-123, 0, None, compact=True)
-        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 15)
+        self.assertEqual(obj._post.call_args.args[1]["payload"]["cache_revision"], 16)
 
     @patch("community_features.requests.post")
     def test_global_roster_uses_observed_nonregistered_snapshots_at_period_boundary(self, post):
@@ -1811,6 +1811,9 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any("t.me/" in str(node) for node in nodes))
         self.assertTrue(any(node.get("tag") == "h3" and node.get("children") == ["🏆 CLASSIFICHE & REPORT"] for node in nodes))
         self.assertTrue(any(node.get("tag") == "h3" and node.get("children") == ["📑 REPORT PERIODICI — TROFEI + PROGRESSIONE"] for node in nodes))
+        from community_features import PROGRESSION_GUIDE_TEXT
+        self.assertIn("Progressione netta = saldo della Classifica Trofei + Bonus Progressione", PROGRESSION_GUIDE_TEXT)
+        self.assertIn("fascia del Brawler con più trofei nella squadra reale", PROGRESSION_GUIDE_TEXT)
         self.assertIs(obj._publish_command_guide(), payload)
         self.assertEqual(len(published), 12)
 
