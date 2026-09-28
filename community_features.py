@@ -3449,6 +3449,7 @@ class CommunityFeatures:
                 seconds = int(row.get("play_seconds") or 0)
                 ratio = f"{row.get('_weighted', 0) / cups:.4f}".replace(".", ",") if cups else "n.d."
                 lines.extend([f"[[PLAYERHEADING:{tag}|{self._player_link_name(row['name'])}]]",
+                              f"🛡️ Club: {str(member_by_tag.get(tag, {}).get('club_name') or 'non disponibile').strip()}",
                               f"⏱️ Tempo di gioco: {seconds // 3600}h {(seconds % 3600) // 60:02d}m",
                               f"🎮 Partite osservate: {int(row.get('battle_count') or 0)}",
                               f"🏆 Saldo Classifica Trofei: {'+' if int(row['_trophy_delta']) > 0 else ''}{self.number_formatter(row['_trophy_delta'])}",
@@ -4339,6 +4340,7 @@ class CommunityFeatures:
                     trophy_rows.append({
                         "name": m.get("player_name") or m.get("display_name") or tag,
                         "tag": tag, "delta": current - baseline, "current": current,
+                        "club_name": m.get("club_name"),
                     })
                     continue
                 baseline, current = self._window_trophy_values(
@@ -4361,6 +4363,7 @@ class CommunityFeatures:
                 trophy_rows.append({
                     "name": m.get("player_name") or m.get("display_name") or tag,
                     "tag": tag, "delta": int(current) - int(baseline), "current": int(current),
+                    "club_name": m.get("club_name"),
                 })
             except Exception:
                 continue
@@ -4472,6 +4475,7 @@ class CommunityFeatures:
                 value = progress.get("_value")
                 ratio = f"{progress.get('_coeff', 0):.4f}".replace(".", ",") if cups else "n.d."
                 full.extend([f"[[PLAYERHEADING:{tag}|{self._player_link_name(row['name'])}]]",
+                             f"🛡️ Club: {str(by_tag.get(tag, {}).get('club_name') or 'non disponibile').strip()}",
                              f"🏆 Trofei attuali: {self.number_formatter(row['current'])}",
                              f"📈 Saldo Trofei: {self.number_formatter(row['delta'])}",
                              f"🎮 Battaglie osservate: {int(progress.get('battle_count') or 0)}",
@@ -5009,6 +5013,31 @@ class CommunityFeatures:
         players = {tag: row for tag, row in players.items() if tag not in known}
         if not players:
             return known
+        # The roster is authoritative for all four clubs, including players
+        # without a Telegram registration. Use registration only as a fallback.
+        clubs_by_tag = {}
+        try:
+            latest = self._get("club_roster_daily", {
+                "select": "snapshot_date", "order": "snapshot_date.desc", "limit": "1",
+            }) or []
+            latest_date = latest[0].get("snapshot_date") if latest else None
+            if latest_date:
+                roster = self._get("club_roster_daily", {
+                    "select": "player_tag,club_name", "snapshot_date": f"eq.{latest_date}",
+                    "player_tag": f"in.({','.join(players)})", "limit": "200",
+                }) or []
+                clubs_by_tag.update({str(row.get("player_tag") or "").lstrip("#").upper(): str(row["club_name"]).strip()
+                                     for row in roster if row.get("player_tag") and row.get("club_name")})
+            missing = [tag for tag in players if tag not in clubs_by_tag]
+            if missing:
+                registered = self._get("community_members", {
+                    "select": "player_tag,club_name", "player_tag": f"in.({','.join(missing)})",
+                    "is_active": "eq.true", "limit": "200",
+                }) or []
+                clubs_by_tag.update({str(row.get("player_tag") or "").lstrip("#").upper(): str(row["club_name"]).strip()
+                                     for row in registered if row.get("player_tag") and row.get("club_name")})
+        except requests.RequestException as exc:
+            LOG.warning("PLAYER CLUB LOOKUP UNAVAILABLE: error=%s", type(exc).__name__)
         brawler_name_it = self._brawler_name_translator()
 
         def fetch_battles(group):
@@ -5089,7 +5118,9 @@ class CommunityFeatures:
                 counts[key] = counts.get(key, 0) + 1
             brawler = brawler_name_it(max(counts, key=counts.get)) if counts else "n.d."
             ratio = f"{(cups + bonus) / cups:.6f}".replace(".", ",") if cups else "n.d."
+            club = clubs_by_tag.get(tag) or str(item.get("club_name") or "").strip()
             lines = [f"[[PLAYERHEADING:{tag}|{name}]]",
+                     f"🛡️ Club: {club or 'non disponibile'}",
                      f"⏱️ Tempo di gioco: {seconds // 3600}h {(seconds % 3600) // 60:02d}m",
                      f"🎮 Partite osservate: {len(observed) if battle_log_available else int(item.get('battle_count') or len(observed))}",
                      (f"✅ Vittorie: {wins} · ❌ Sconfitte: {losses}" if battle_log_available
