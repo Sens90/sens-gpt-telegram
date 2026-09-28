@@ -48,7 +48,7 @@ coalesce(w.positive_trophies,0),
 coalesce(w.battle_count,0),
 coalesce(pt.play_seconds,0),l.recorded_at
 from latest l left join weighted w using(player_tag) left join playtime pt using(player_tag);
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.coefficient_progression_rows_v2(p_player_tags text[], p_days integer DEFAULT NULL::integer)
  RETURNS TABLE(player_tag text, player_name text, club_name text, coefficient_value integer, coefficient numeric, baseline_value integer, progression_value integer, positive_trophies integer, battle_count integer, play_seconds integer, recorded_at timestamp with time zone)
@@ -99,4 +99,4 @@ case when p_days is null then 0 else coalesce(w.positive_trophies,0) end,
 case when p_days is null then 0 else coalesce(w.battle_count,0) end,
 case when p_days is null then 0 else coalesce(pt.play_seconds,0) end,l.recorded_at
 from latest l left join weighted w using(player_tag) left join playtime pt using(player_tag);
-$function$
+$function$;
