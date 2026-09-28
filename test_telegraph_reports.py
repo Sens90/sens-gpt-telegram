@@ -212,7 +212,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             ])
         self.assertTrue(any(node.get("tag") == "h3" and node.get("children") == ["👤 Tony"]
                             for node in nodes))
-        self.assertTrue(any(node.get("tag") == "h4" and node.get("children") == ["TAG 2GU9UV2RG"]
+        self.assertTrue(any(node.get("tag") == "h4" and node.get("children") == [
+            {"tag": "code", "children": ["TAG #2GU9UV2RG"]}]
                             for node in nodes))
         self.assertFalse(any(node.get("tag") == "h3" and "GIOCATORE 2GU9UV2RG" in str(node)
                              for node in nodes))
@@ -701,12 +702,12 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/giocatori")
         urls = obj._player_detail_pages([{"tag": "2GU9UV2RG", "name": "Tony", "value": 10,
                                           "positive_trophies": 8}], 0)
-        self.assertEqual(urls["2GU9UV2RG"], "https://telegra.ph/giocatori#TAG-2GU9UV2RG")
+        self.assertEqual(urls["2GU9UV2RG"], "https://telegra.ph/giocatori#TAG-%232GU9UV2RG")
         detail = obj._publish_telegraph.call_args.args[1]
         self.assertIn("[[PLAYERHEADING:2GU9UV2RG|Tony]]", detail)
         self.assertTrue(any("Emz" in line for line in detail))
         self.assertTrue(any("🎯 Fascia iniziale: 500–599 ×1,0590 (500 🏆 prima)" in line for line in detail))
-        nodes = obj._telegraph_nodes(["CLASSIFICA PROGRESSIONE", "[[PLAYER:https://telegra.ph/giocatori#TAG-2GU9UV2RG|1|Tony|🔥 Progressione: +10]]"])
+        nodes = obj._telegraph_nodes(["CLASSIFICA PROGRESSIONE", "[[PLAYER:https://telegra.ph/giocatori#TAG-%232GU9UV2RG|1|Tony|🔥 Progressione: +10]]"])
         self.assertTrue(any(node.get("children", [{}])[1].get("attrs", {}).get("href") == urls["2GU9UV2RG"]
                             for node in nodes if node.get("tag") == "p" and len(node.get("children", [])) > 1))
         self.assertEqual(obj._player_detail_pages([{"tag": "2GU9UV2RG", "name": "Tony"}], 0), urls)
@@ -732,7 +733,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         lines = obj._publish_telegraph.call_args.args[1]
         heading = lines.index("[[PLAYERHEADING:2LVRCLV8LV|Giorgio]]")
         self.assertEqual(lines[heading + 1], "🛡️ Club: TAMARRI ABUSIVI")
-        self.assertEqual(urls["2LVRCLV8LV"], "https://telegra.ph/dettagli#TAG-2LVRCLV8LV")
+        self.assertEqual(urls["2LVRCLV8LV"], "https://telegra.ph/dettagli#TAG-%232LVRCLV8LV")
         self.assertFalse(any(table == "community_members" for table, _ in queries))
 
     def test_player_dossier_progression_starts_at_trophy_ranking_saldo(self):
@@ -964,7 +965,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("PLAYERHEADING", result["text"])
         self.assertLess(len(result["text"]), 4096)
         trophies = published["Trofei Globali 4 Club — 7 GIORNI"]
-        self.assertTrue(any("https://telegra.ph/page-" in row and "#TAG-2GU9UV2RG" in row
+        self.assertTrue(any("https://telegra.ph/page-" in row and "#TAG-%232GU9UV2RG" in row
                             for row in trophies))
         self.assertFalse(any("PLAYERHEADING:" in row for row in trophies))
         self.assertTrue(any("PLAYERHEADING:2GU9UV2RG" in row for title, lines in published.items()
@@ -986,7 +987,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(obj.coefficient_ranking_text.call_args.kwargs["inline_player_details"], True)
         nodes = obj._telegraph_nodes(trophies)
         self.assertTrue(any(node.get("tag") == "p" and any(
-            str(child.get("attrs", {}).get("href", "")).endswith("#TAG-2GU9UV2RG")
+            str(child.get("attrs", {}).get("href", "")).endswith("#TAG-%232GU9UV2RG")
             for child in node.get("children", []) if isinstance(child, dict)) for node in nodes))
 
     def test_compact_club_results_use_net_saldo_without_publishing_four_pages(self):
@@ -1088,7 +1089,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                                      inline_player_details=True,
                                      trophy_delta_by_tag={"2GU9UV2RG": 12})
         lines = obj._publish_telegraph.call_args.args[1]
-        self.assertIn("[[PLAYER:https://telegra.ph/progressione#TAG-2GU9UV2RG|1|Tony|🔥 Progressione: +15]]", lines)
+        self.assertIn("[[PLAYER:https://telegra.ph/progressione#TAG-%232GU9UV2RG|1|Tony|🔥 Progressione: +15]]", lines)
         self.assertFalse(any("PLAYERHEADING:" in row for row in lines))
         details = obj._publish_telegraph.call_args_list[0].args[1]
         self.assertIn("[[PLAYERHEADING:2GU9UV2RG|Tony]]", details)

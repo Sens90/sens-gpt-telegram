@@ -1990,7 +1990,8 @@ class CommunityFeatures:
             if player_heading:
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]},
                               {"tag": "h3", "children": [f"👤 {player_heading.group(2)}"]},
-                              {"tag": "h4", "children": [f"TAG {player_heading.group(1)}"]}])
+                              {"tag": "h4", "children": [{"tag": "code", "children": [
+                                  f"TAG #{player_heading.group(1)}"]}]}])
                 continue
             club_heading = re.fullmatch(r"\[\[CLUBHEADING:([A-Z-]+)\|([^\[\]]+)\]\]", value)
             if club_heading:
@@ -3498,7 +3499,7 @@ class CommunityFeatures:
             for row in rows[:200]:
                 tag = str(row.get("player_tag") or "").lstrip("#").upper()
                 if re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
-                    detail_urls.setdefault(tag, f"#TAG-{tag}")
+                    detail_urls.setdefault(tag, f"#TAG-%23{tag}")
         for index, row in enumerate(rows[:200], 1):
             account_coefficient = f'{float(row["coefficient"]):.6f}'.replace(".", ",")
             value = int(row["value"])
@@ -4482,7 +4483,7 @@ class CommunityFeatures:
             for row in [*visible_trophy_rows, *visible_progression_rows]:
                 tag = str(row.get("tag") or row.get("player_tag") or "").lstrip("#").upper()
                 if re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
-                    detail_urls.setdefault(tag, f"#TAG-{tag}")
+                    detail_urls.setdefault(tag, f"#TAG-%23{tag}")
 
         title = f"🔥 REPORT {scope_label} — {'OGGI' if days == 0 else f'{days} GIORNI'}"
         full = [title, f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}", "", f"👥 Ambito: {scope_note}", ""]
@@ -5291,7 +5292,7 @@ class CommunityFeatures:
             url = self._publish_telegraph(f"Dettagli giocatori — {start.astimezone(ROME):%d-%m} · {index}",
                                            ["DETTAGLI GIOCATORI", f"Periodo: {start.astimezone(ROME):%d/%m/%Y} – {end.astimezone(ROME):%d/%m/%Y}", *content])
             if url:
-                result.update({tag: f"{url}#TAG-{tag}" for tag in page_tags})
+                result.update({tag: f"{url}#TAG-%23{tag}" for tag in page_tags})
             else:
                 LOG.warning("PLAYER DETAIL PUBLISH STOPPED: remaining_pages=%s", len(pages) - index)
                 break
@@ -5429,7 +5430,7 @@ class CommunityFeatures:
             for section in group:
                 match = re.fullmatch(r"\[\[PLAYERHEADING:([0289PYLQGRJCUV]{3,15})\|[^\[\]]+\]\]", section[0])
                 if match:
-                    anchor = f"#TAG-{match.group(1)}"
+                    anchor = f"#TAG-%23{match.group(1)}"
                     old_anchor = f"#GIOCATORE-{match.group(1)}"
                     ranking = [line.replace(f"[[PLAYER:{anchor}|", f"[[PLAYER:{page}{anchor}|")
                                .replace(f"[[PLAYER:{old_anchor}|", f"[[PLAYER:{page}{anchor}|")
