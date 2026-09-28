@@ -15,11 +15,13 @@ import matplotlib.dates as mdates
 import os
 import requests
 import re
+import hmac
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlsplit, urlunsplit, quote
 
-from flask import Flask
+from flask import Flask, request, redirect
 from google import genai
 from telegram import Update
 from telegram.error import TelegramError, TimedOut, NetworkError, RetryAfter, BadRequest
@@ -2743,9 +2745,10 @@ def save_complete_roster_daily(club_name, club_tag, roster, source="brawlify"):
         )
         existing_response.raise_for_status()
         existing = {str(x.get("player_tag") or "").upper(): x for x in existing_response.json()}
-        saved = 0
-        for player in roster:
-            tag = str(player["player_tag"]).upper().replace("#", "")
+        players = {str(player["player_tag"]).upper().replace("#", ""): player
+                   for player in roster if player.get("player_tag")}
+        def save_player(entry):
+            tag, player = entry
             trophies = int(player["trophies"])
             payload = {
                 "snapshot_date": day, "club_name": club_name, "club_tag": str(club_tag).upper(),
@@ -2758,7 +2761,6 @@ def save_complete_roster_daily(club_name, club_tag, roster, source="brawlify"):
                     f"{SUPABASE_URL}/rest/v1/club_roster_daily",
                     headers=_tracking_headers("return=minimal"), json=payload, timeout=15,
                 ).raise_for_status()
-                existing[tag] = {"player_tag": tag, "first_trophies": trophies}
             else:
                 requests.patch(
                     f"{SUPABASE_URL}/rest/v1/club_roster_daily",
@@ -2766,8 +2768,13 @@ def save_complete_roster_daily(club_name, club_tag, roster, source="brawlify"):
                     params={"snapshot_date": f"eq.{day}", "player_tag": f"eq.{tag}"},
                     json=payload, timeout=15,
                 ).raise_for_status()
-            saved += 1
-        return saved
+            return 1
+        # Each player owns a different snapshot_date/player_tag row. Bound the
+        # concurrent writes so a live ranking does not wait for 115 serial PATCHes.
+        if not players:
+            return 0
+        with ThreadPoolExecutor(max_workers=min(6, len(players))) as executor:
+            return sum(executor.map(save_player, players.items()))
     except Exception as exc:
         print("COMPLETE ROSTER SAVE ERROR:", club_name, repr(exc), flush=True)
         return 0
@@ -3182,6 +3189,37 @@ community = CommunityFeatures(
     save_trophy_snapshot,
 )
 community.roster_refresher = refresh_rosters_for_rankings
+
+
+@app.route("/battaglie/<tag>")
+def player_battle_log_redirect(tag):
+    """Resolve an authenticated player log only when a reader opens it."""
+    tag = tag.upper()
+    try:
+        start_epoch = int(request.args.get("s", ""))
+        end_epoch = int(request.args.get("e", ""))
+        page = int(request.args.get("p", ""))
+        start = datetime.fromtimestamp(start_epoch, timezone.utc)
+        end = datetime.fromtimestamp(end_epoch, timezone.utc)
+    except (ValueError, OverflowError, OSError):
+        return "Link non valido", 400
+    if (not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag)
+            or page < 0 or page > 999 or end <= start
+            or end - start > timedelta(days=32)
+            or end > datetime.now(timezone.utc) + timedelta(minutes=2)):
+        return "Link non valido", 400
+    signature = request.args.get("sig", "")
+    expected = community._battle_log_signature(tag, start_epoch, end_epoch, page)
+    if not expected or not hmac.compare_digest(expected, signature):
+        return "Link non valido", 403
+    try:
+        url = community.player_battle_log_page(tag, start, end, page)
+    except Exception as error:
+        print("BATTLE LOG PUBLISH ERROR", type(error).__name__, flush=True)
+        return "Log temporaneamente non disponibile", 503
+    if not url or not re.fullmatch(r"https://telegra\.ph/[A-Za-z0-9_-]+", url):
+        return "Log temporaneamente non disponibile", 503
+    return redirect(url, code=302)
 
 
 async def telegram_report_send(operation, label):
