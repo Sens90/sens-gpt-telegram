@@ -5217,9 +5217,24 @@ class CommunityFeatures:
                 sections.append([line])
             elif sections:
                 sections[-1].append(line)
-        for offset in range(0, len(sections), 60):
-            group = sections[offset:offset + 60]
-            page = self._publish_telegraph(f"Dettagli {title} · {offset // 60 + 1}",
+        groups = []
+        group = []
+        for section in sections:
+            candidate = [*group, section]
+            detail_lines = ["👤 DETTAGLI GIOCATORI", *[line for block in candidate for line in block]]
+            byte_count = len(__import__("json").dumps(self._telegraph_nodes(detail_lines),
+                                                     ensure_ascii=False).encode("utf-8"))
+            # Telegraph splits pages above 50 KB; an anchor to a split parent
+            # cannot reach a player heading inside its child page.
+            if group and (len(group) >= 60 or byte_count > 38000):
+                groups.append(group)
+                group = [section]
+            else:
+                group = candidate
+        if group:
+            groups.append(group)
+        for page_number, group in enumerate(groups, 1):
+            page = self._publish_telegraph(f"Dettagli {title} · {page_number}",
                                            ["👤 DETTAGLI GIOCATORI", *[line for section in group for line in section]])
             if not page:
                 return None
