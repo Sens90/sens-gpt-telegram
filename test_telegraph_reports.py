@@ -1070,7 +1070,9 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
             "TITANI ABUSIVI": {"delta": 10, "players": 2, "roster": 30},
         }))
         obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progression"})
+        obj.roster_refresher = Mock()
         obj._direct_dashboard_snapshot(-1001, 7, None)
+        obj.roster_refresher.assert_called_once()
         trophy_window = obj.periodic_report_text.call_args.kwargs["window"]
         progression_kwargs = obj.coefficient_ranking_text.call_args.kwargs
         self.assertEqual(progression_kwargs["window"], trophy_window)
