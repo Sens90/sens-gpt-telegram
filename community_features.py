@@ -2195,27 +2195,113 @@ class CommunityFeatures:
             return None
 
     @staticmethod
-    def _window_trophy_values(history, start, end):
-        """Use snapshots at the boundaries; never include a later calendar period."""
+    def _window_trophy_values(history, start, end, battles=None):
+        """Attribute boundary movement only when battle evidence resolves its date."""
         snapshots = []
         for row in history or []:
             try:
                 instant = datetime.fromisoformat(str(row["recorded_at"]).replace("Z", "+00:00"))
+                if instant.tzinfo is None:
+                    continue
                 snapshots.append((instant, int(row["trophies"])))
             except (KeyError, ValueError, TypeError):
                 continue
         snapshots.sort()
-        before = [value for instant, value in snapshots if instant <= start]
-        in_window = [(instant, value) for instant, value in snapshots if start <= instant < end]
-        baseline = before[-1] if before else (in_window[0][1] if in_window else None)
-        ending = next((value for instant, value in reversed(snapshots) if instant < end), None)
+        before = next(((instant, value) for instant, value in reversed(snapshots) if instant <= start), None)
+        first = next(((instant, value) for instant, value in snapshots if start <= instant < end), None)
+        last = next(((instant, value) for instant, value in reversed(snapshots) if instant < end), None)
+        after = next(((instant, value) for instant, value in snapshots if instant >= end), None)
+        if first is None:
+            return None, None
+        if before is None and first[0] > start and end - start >= timedelta(days=1):
+            # A newcomer cannot be compared across an entire period that
+            # started before the first observation of their account.
+            return None, last[1]
+        evidence = []
+        for row in battles or []:
+            try:
+                moment = datetime.fromisoformat(str(row["battle_time"]).replace("Z", "+00:00"))
+                if moment.tzinfo is not None:
+                    evidence.append((moment, int(row["trophy_change"])))
+            except (KeyError, TypeError, ValueError):
+                continue
+        baseline = first[1]
+        if before:
+            crossed = [(instant, delta) for instant, delta in evidence
+                       if before[0] < instant <= first[0]]
+            if (crossed and sum(delta for _, delta in crossed) == first[1] - before[1]) or before[1] == first[1]:
+                baseline = before[1] + sum(delta for instant, delta in crossed if instant < start)
+            else:
+                # Battlelog can omit matches; never assign the unknown portion
+                # of a cross-midnight snapshot change to the new period.
+                baseline = first[1] - sum(delta for instant, delta in crossed if instant >= start)
+        ending = last[1]
+        if after and last[0] < end:
+            crossed = [(instant, delta) for instant, delta in evidence
+                       if last[0] < instant <= after[0]]
+            if crossed and sum(delta for _, delta in crossed) == after[1] - last[1]:
+                ending += sum(delta for instant, delta in crossed if instant < end)
+            else:
+                # A proxy snapshot can lag the battlelog while preserving the
+                # old trophy total. Try an earlier snapshot with that same
+                # total before discarding the final minutes of a closed period.
+                for anchor, value in reversed(snapshots):
+                    if (anchor >= last[0] or anchor < end - timedelta(hours=8)
+                            or value != last[1]):
+                        continue
+                    observed = [(instant, delta) for instant, delta in evidence
+                                if anchor < instant <= after[0]]
+                    if observed and sum(delta for _, delta in observed) == after[1] - value:
+                        ending = value + sum(delta for instant, delta in observed if instant < end)
+                        break
         return baseline, ending
+
+    def _boundary_battle_history(self, tags, start, end):
+        """Read battle timestamps near calendar edges once for the full scope."""
+        result = {tag: [] for tag in tags}
+        margin = timedelta(hours=8)
+        ranges = ([(start - margin, end + margin)] if end - start < margin * 2 else
+                  [(start - margin, start + margin), (end - margin, end + margin)])
+        for lower, upper in ranges:
+            for offset_tags in range(0, len(tags), 20):
+                group = tags[offset_tags:offset_tags + 20]
+                if not group:
+                    continue
+                for offset in range(0, 100000, 1000):
+                    try:
+                        rows = self._get("observed_trophy_battles", {
+                            "select": "player_tag,battle_time,trophy_change,bonus_type",
+                            "player_tag": f"in.({','.join(group)})",
+                            "and": f"(battle_time.gte.{lower.isoformat()},battle_time.lt.{upper.isoformat()})",
+                            "trophy_change": "not.is.null",
+                            "order": "battle_time.asc", "limit": "1000", "offset": str(offset),
+                        }) or []
+                    except requests.RequestException as exc:
+                        LOG.warning("TROPHY BOUNDARY BATTLE READ FAILED: %s", type(exc).__name__)
+                        break
+                    for row in rows:
+                        tag = str(row.get("player_tag") or "").lstrip("#").upper()
+                        if tag in result and not str(row.get("bonus_type") or "").startswith("excluded"):
+                            result[tag].append(row)
+                    if len(rows) < 1000:
+                        break
+                    if offset == 99000:
+                        LOG.warning("TROPHY BOUNDARY BATTLE READ TRUNCATED")
+        return result
 
     @staticmethod
     def _window_history_days(start):
         return max(10, (datetime.now(timezone.utc) - start.astimezone(timezone.utc)).days + 3)
 
     def ranking(self, chat_id, days=7, window=None):
+        use_report = days in (0, 7, 15, 30) and getattr(self, "supabase_url", None) and getattr(self, "supabase_key", None)
+        if use_report:
+            report = self.periodic_report_text(
+                chat_id, "community", days, window=window, return_full=True,
+                return_deltas=True, return_trophy_rows=True, publish=False,
+                link_players=False,
+            )
+            return report[4]
         members = self.members(chat_id)
         def rank_member(member):
             tag = member.get("player_tag")
@@ -3611,7 +3697,16 @@ class CommunityFeatures:
         """Rank the four community clubs by summed trophy movement from stored snapshots."""
         clubs = list(self.CLUB_TAGS.keys())
         totals = {club: {"delta": 0, "players": 0} for club in clubs}
-        for member in self.members(chat_id):
+        use_report = days in (0, 7, 15, 30) and getattr(self, "supabase_url", None) and getattr(self, "supabase_key", None)
+        if use_report:
+            _summary, _full, club_totals = self.periodic_report_text(
+                chat_id, "community_club", days, window=window, return_full=True,
+                publish=False, link_players=False,
+            )
+            for club, result in club_totals.items():
+                if club in totals:
+                    totals[club] = {"delta": result["delta"], "players": result["players"]}
+        for member in ([] if use_report else self.members(chat_id)):
             club = str(member.get("club_name") or "").strip().upper()
             if club not in totals or not member.get("player_tag"):
                 continue
@@ -4043,11 +4138,14 @@ class CommunityFeatures:
         return "\n".join(lines)
 
     def periodic_report_text(self, chat_id, scope="community", days=7, window=None, return_full=False, publish=True,
-                             link_players=None, inline_player_details=False, return_deltas=False):
+                             link_players=None, inline_player_details=False, return_deltas=False,
+                             return_trophy_rows=False):
         """Combined Trophy + Progressione report. Telegram gets Top 5; Telegraph keeps the full lists."""
         days = int(days)
         if days not in (0, 7, 15, 30):
             return "I report periodici sono disponibili per 7, 15 o 30 giorni."
+        if getattr(self, "roster_refresher", None):
+            self.roster_refresher()
 
         scope_key = str(scope or "community").strip().casefold()
         global_scope = scope_key == "global_clubs" or scope_key.startswith("global_single:")
@@ -4116,8 +4214,10 @@ class CommunityFeatures:
             period_end.astimezone(ROME).replace(hour=0, minute=0, second=0, microsecond=0)
             if days == 0 else period_end - timedelta(days=days)
         )
-        roster_histories = (self._roster_trophy_histories(tags, period_start, period_end)
-                            if global_scope else {})
+        # Registered members can also belong to a complete club roster. The
+        # roster samples the midnight boundary more often than trophy_history.
+        roster_histories = self._roster_trophy_histories(tags, period_start, period_end)
+        boundary_battles = self._boundary_battle_history(tags, period_start, period_end)
         registered_tags = set()
         if global_scope and roster_histories:
             registered_tags = {
@@ -4185,19 +4285,13 @@ class CommunityFeatures:
                 if history_by_tag is not None and history is None:
                     continue
                 roster_history = roster_histories.get(tag, [])
-                # Do not fabricate a full period from the first snapshot after its start.
-                roster_has_baseline = any(
-                    datetime.fromisoformat(row["recorded_at"]) <= period_start
-                    for row in roster_history
-                )
+                combined_history = [*(history or []), *roster_history]
                 if window:
-                    baseline, current = self._window_trophy_values(history, *window)
-                    if (baseline is None or current is None) and roster_has_baseline:
-                        roster_baseline, roster_current = self._window_trophy_values(roster_history, *window)
-                        if roster_baseline is not None and roster_current is not None:
-                            baseline, current = roster_baseline, roster_current
+                    baseline, current = self._window_trophy_values(
+                        combined_history, *window, boundary_battles.get(tag))
                     if current is None:
-                        _, current = self._window_trophy_values(roster_history, *window)
+                        _, current = self._window_trophy_values(
+                            roster_history, *window, boundary_battles.get(tag))
                     if current is None:
                         continue
                     current_trophies_by_tag[tag] = current
@@ -4208,14 +4302,13 @@ class CommunityFeatures:
                         "tag": tag, "delta": current - baseline, "current": current,
                     })
                     continue
-                current = None
-                if history:
-                    last = history[-1] if isinstance(history, list) else None
-                    if isinstance(last, dict):
-                        current = last.get("trophies")
-                if current is None:
-                    if roster_history:
-                        current = roster_history[-1]["trophies"]
+                baseline, current = self._window_trophy_values(
+                    combined_history, period_start, period_end + timedelta(microseconds=1),
+                    boundary_battles.get(tag))
+                if current is None and history:
+                    current = history[-1].get("trophies")
+                if current is None and roster_history:
+                    current = roster_history[-1].get("trophies")
                 if current is None:
                     state = self._get("player_tracking_state", {
                         "select": "trophies", "player_tag": f"eq.{tag}", "limit": "1",
@@ -4224,19 +4317,11 @@ class CommunityFeatures:
                 if current is None:
                     continue
                 current_trophies_by_tag[tag] = int(current)
-                changes = self.change_calculator(history, int(current))
-                delta = changes.get("today" if days == 0 else {7: "7d", 15: "15d", 30: "30d"}[days])
-                if delta is None and (roster_has_baseline or days == 0):
-                    roster_baseline, roster_current = self._window_trophy_values(
-                        roster_history, period_start, period_end + timedelta(microseconds=1)
-                    )
-                    if roster_baseline is not None and roster_current is not None:
-                        delta = roster_current - roster_baseline
-                if delta is None:
+                if baseline is None:
                     continue
                 trophy_rows.append({
                     "name": m.get("player_name") or m.get("display_name") or tag,
-                    "tag": tag, "delta": int(delta), "current": int(current),
+                    "tag": tag, "delta": int(current) - int(baseline), "current": int(current),
                 })
             except Exception:
                 continue
@@ -4392,6 +4477,8 @@ class CommunityFeatures:
                     club_totals[club]["coefficient_sum"] += row["_coeff"]
                     club_totals[club]["coefficient_players"] += 1
             if return_deltas:
+                if return_trophy_rows:
+                    return "\n".join(summary), full, club_totals, trophy_delta_by_tag, trophy_rows
                 return "\n".join(summary), full, club_totals, trophy_delta_by_tag
             return "\n".join(summary), full, club_totals
         return "\n".join(summary)
