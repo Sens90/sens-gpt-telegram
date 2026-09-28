@@ -2293,6 +2293,15 @@ class CommunityFeatures:
     def _window_history_days(start):
         return max(10, (datetime.now(timezone.utc) - start.astimezone(timezone.utc)).days + 3)
 
+    def _player_trophy_window(self, tag, start, end):
+        """Use the same midnight attribution as every report and leaderboard."""
+        tag = str(tag or "").strip().lstrip("#").upper()
+        history = (self.history_fetcher(tag, days=self._window_history_days(start)) or []
+                   if callable(getattr(self, "history_fetcher", None)) else [])
+        roster = self._roster_trophy_histories([tag], start, end).get(tag, [])
+        battles = self._boundary_battle_history([tag], start, end).get(tag, [])
+        return self._window_trophy_values([*history, *roster], start, end, battles)
+
     def ranking(self, chat_id, days=7, window=None):
         use_report = days in (0, 7, 15, 30) and getattr(self, "supabase_url", None) and getattr(self, "supabase_key", None)
         if use_report:
@@ -2714,15 +2723,12 @@ class CommunityFeatures:
         weighted_total = int(Decimal(str(sum(weighted_delta(r) for r in rows))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
         bonus_total = weighted_total - positive_total
         account_saldo = None
-        if callable(getattr(self, "history_fetcher", None)):
-            try:
-                history = self.history_fetcher(tag, days=max(int(days) + 2, 10)) or []
-                current = history[-1].get("trophies") if history else None
-                if current is not None:
-                    account_saldo = self.change_calculator(history, int(current)).get(
-                        "today" if int(days) == 0 else {7: "7d", 15: "15d", 30: "30d"}.get(int(days)))
-            except (ValueError, TypeError, KeyError, requests.RequestException) as exc:
-                LOG.warning("PROGRESSION ACCOUNT SALDO UNAVAILABLE: tag=%s error=%s", tag, type(exc).__name__)
+        try:
+            baseline, current = self._player_trophy_window(tag, start_local, now_local)
+            if baseline is not None and current is not None:
+                account_saldo = current - baseline
+        except (ValueError, TypeError, KeyError, AttributeError, requests.RequestException) as exc:
+            LOG.warning("PROGRESSION ACCOUNT SALDO UNAVAILABLE: tag=%s error=%s", tag, type(exc).__name__)
         net_progression = int(account_saldo) + bonus_total if account_saldo is not None else None
         def signed(value):
             return ("+" if value > 0 else "") + self.number_formatter(value)
@@ -3261,6 +3267,11 @@ class CommunityFeatures:
     def coefficient_ranking_text(self, chat_id, scope="community", days=None, window=None,
                                  publish_player_details=True, inline_player_details=False,
                                  trophy_delta_by_tag=None):
+        if days in (0, 7, 15, 30) and window is None and getattr(self, "supabase_url", None):
+            end = datetime.now(ROME)
+            start = (end.replace(hour=0, minute=0, second=0, microsecond=0)
+                     if days == 0 else end - timedelta(days=days))
+            window = (start, end)
         scope = str(scope or "community").strip().casefold()
         club_name = None
         registered_only = False
@@ -5124,12 +5135,18 @@ class CommunityFeatures:
 
     def _direct_dashboard_snapshot(self, chat_id, days, window, compact=False):
         """Create direct detail links for one period; optional fixed scheduler window."""
+        report_window = window
+        if window is None:
+            end = datetime.now(ROME)
+            start = (end.replace(hour=0, minute=0, second=0, microsecond=0)
+                     if days == 0 else end - timedelta(days=days))
+            report_window = (start, end)
         label = "OGGI" if days == 0 else f"{days} GIORNI"
         title = f"Classifiche — {label}"
         lines = self._build_rankings_dashboard_text(days, publish=False, include_today_reports=True)
         links = {}
         _report, report_lines, club_totals = self.periodic_report_text(
-            chat_id, "global_clubs", days, window=window, return_full=True, publish=False,
+            chat_id, "global_clubs", days, window=report_window, return_full=True, publish=False,
             link_players=not compact, inline_player_details=compact,
         )
         club_lines = [f"CLASSIFICA 4 CLUB — {label}",
@@ -5138,9 +5155,9 @@ class CommunityFeatures:
         measured = sum(result["players"] for result in club_totals.values())
         roster = sum(result.get("roster", result["players"]) for result in club_totals.values())
         positive_clubs = [(name, result) for name, result in ranked_clubs if result["delta"] > 0]
-        club_detail_lines = (self._club_battle_detail_links(club_totals, days, window, publish=False)
+        club_detail_lines = (self._club_battle_detail_links(club_totals, days, report_window, publish=False)
                              if compact else {})
-        club_detail_links = {} if compact else self._club_battle_detail_links(club_totals, days, window)
+        club_detail_links = {} if compact else self._club_battle_detail_links(club_totals, days, report_window)
         for position, (name, result) in enumerate(positive_clubs, 1):
             delta = result["delta"]
             score = (f"+{self.number_formatter(delta)} "
@@ -5186,7 +5203,7 @@ class CommunityFeatures:
         links[f"dash_t_2_{days}"] = (self._publish_inline_ranking(f"Trofei Globali 4 Club — {label}", trophy_lines)
                                       if compact else self._publish_telegraph(f"Trofei Globali 4 Club — {label}", trophy_lines))
         progression = self.coefficient_ranking_text(
-            chat_id, "global_clubs", days, window=window,
+            chat_id, "global_clubs", days, window=report_window,
             publish_player_details=not compact, inline_player_details=compact,
             trophy_delta_by_tag={tag: delta for club in club_totals.values()
                                  for tag, delta in club.get("delta_by_tag", {}).items()})
