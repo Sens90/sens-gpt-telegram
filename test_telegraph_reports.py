@@ -694,11 +694,17 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.periodic_report_text = Mock(return_value=("REPORT", [
             "REPORT", "Data", "", "👥 Ambito: quattro club", "🏆 CLASSIFICA TROFEI",
             "[[PLAYER:#GIOCATORE-2GU9UV2RG|1|Tony|+12 🏆]]", "🔥 CLASSIFICA PROGRESSIONE",
-            "📊 RESOCONTO", "", "👤 DETTAGLI GIOCATORI",
+            "📊 RESOCONTO", "👥 Giocatori monitorati: 2", "🎮 Battaglie analizzate: 3", "",
+            "👤 DETTAGLI GIOCATORI",
             "[[PLAYERHEADING:2GU9UV2RG|Tony]]", "🏆 Coppe: +12"], {
             "TITANI ABUSIVI": {"delta": 12, "players": 1, "roster": 2}}))
         obj.coefficient_ranking_text = Mock(return_value={"report_url": "https://telegra.ph/progressione"})
-        obj._direct_dashboard_snapshot(-1001, 7, None, compact=True)
+        result = obj._direct_dashboard_snapshot(-1001, 7, None, compact=True)
+        self.assertIn("👥 Giocatori monitorati: 2", result["text"])
+        self.assertIn("🎮 Battaglie analizzate: 3", result["text"])
+        self.assertNotIn("DETTAGLI GIOCATORI", result["text"])
+        self.assertNotIn("PLAYERHEADING", result["text"])
+        self.assertLess(len(result["text"]), 4096)
         trophies = published["Trofei Globali 4 Club — 7 GIORNI"]
         self.assertTrue(any("https://telegra.ph/page-" in row and "#GIOCATORE-2GU9UV2RG" in row
                             for row in trophies))
@@ -856,6 +862,24 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all("TA · Tony" in line for line in links))
         self.assertIn("🔥 Progressione: +13", links[1])
         self.assertNotIn("[[PLAYER:", summary)
+
+    @patch("community_features.requests.post")
+    def test_snapshot_gain_without_battle_log_is_labelled_observed(self, post):
+        obj = self.make_features()
+        obj.supabase_url, obj.supabase_key = "https://example.supabase.co", "test-key"
+        obj._get = Mock(side_effect=lambda table, params: [
+            {"player_tag": "2U9CJ0PG2C", "player_name": "Cannavacciuolo",
+             "club_name": "TITANI ABUSIVI"}
+        ] if table == "community_members" else [])
+        obj.history_fetcher = Mock(return_value=[{"trophies": 30595}])
+        obj.change_calculator = Mock(return_value={"today": 85})
+        post.return_value.raise_for_status.return_value = None
+        post.return_value.json.return_value = []
+        _summary, full, _clubs = obj.periodic_report_text(
+            123, "community", 0, return_full=True, publish=False,
+            inline_player_details=True)
+        self.assertIn("🎮 0 battaglie osservate", "\n".join(full))
+        self.assertIn("il log delle battaglie non copre questo intervallo", "\n".join(full))
 
     def test_each_period_index_contains_only_its_own_reports(self):
         from community_features import _DASHBOARD_CACHE

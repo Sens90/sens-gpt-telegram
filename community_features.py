@@ -4347,8 +4347,10 @@ class CommunityFeatures:
                 ratio = f"{progress.get('_coeff', 0):.4f}".replace(".", ",") if cups else "n.d."
                 full.extend([f"[[PLAYERHEADING:{tag}|{self._player_link_name(row['name'])}]]",
                              f"👤 {self._player_link_name(row['name'])} · 🏆 {self.number_formatter(row['current'])} trofei · 📈 {self.number_formatter(row['delta'])} saldo · "
-                             f"🎮 {int(progress.get('battle_count') or 0)} partite · 🏆 +{self.number_formatter(cups)} coppe · "
+                             f"🎮 {int(progress.get('battle_count') or 0)} battaglie osservate · 🏆 +{self.number_formatter(cups)} coppe · "
                              f"⚡ +{self.number_formatter(progress.get('_bonus') or 0)} bonus · 🔥 {self.number_formatter(value) if value is not None else 'n.d.'} · 🧮 {ratio}"])
+                if row["delta"] and not int(progress.get("battle_count") or 0):
+                    full.append("⚠️ Saldo dai rilevamenti Trofei; il log delle battaglie non copre questo intervallo.")
 
         report_url = self._publish_telegraph(title, full) if publish else None
         summary = [title, "", "🏆 CLASSIFICA TROFEI"]
@@ -5126,7 +5128,12 @@ class CommunityFeatures:
             if window:
                 raise RuntimeError("Scheduled dashboard Telegraph page is unavailable")
             return _report + "\n\n⚠️ Telegraph temporaneamente limitato; questo Resoconto è calcolato adesso."
-        resoconto = report_lines[report_lines.index("📊 RESOCONTO") + 1:]
+        resoconto_start = report_lines.index("📊 RESOCONTO") + 1
+        resoconto_end = next((i for i in range(resoconto_start, len(report_lines))
+                              if report_lines[i] == "👤 DETTAGLI GIOCATORI"), len(report_lines))
+        resoconto = report_lines[resoconto_start:resoconto_end]
+        while resoconto and not str(resoconto[-1]).strip():
+            resoconto.pop()
         return self._telegraph_reply([f"📊 {title.upper()}", lines[1], "", "📋 RESOCONTO", *resoconto], url, lines)
 
     def _build_rankings_dashboard_text(self, days=None, publish=True, include_today_reports=True):
