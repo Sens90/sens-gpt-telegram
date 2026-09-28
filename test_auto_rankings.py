@@ -34,6 +34,14 @@ class BattleLogWebhookTests(AsyncHTTPTestCase):
                 publish.assert_called_once()
                 invalid = self.fetch(uri.path + "?" + uri.query.replace("sig=", "sig=x"))
                 self.assertEqual(invalid.code, 403)
+            unicode_url = "https://telegra.ph/Battaglie-𝔸𝕟𝕟𝕒--1-09-28"
+            with patch.object(app.community, "player_battle_log_page", return_value=unicode_url):
+                response = self.fetch(uri.path + "?" + uri.query, follow_redirects=False)
+                self.assertEqual(response.code, 302)
+                self.assertIn("telegra.ph/Battaglie-", response.headers["Location"])
+            with patch.object(app.community, "player_battle_log_page",
+                              return_value="https://other.example/Battaglie"):
+                self.assertEqual(self.fetch(uri.path + "?" + uri.query).code, 503)
 
 
 class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
