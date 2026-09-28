@@ -1877,6 +1877,9 @@ class CommunityFeatures:
             value = str(raw or "").strip()
             if not value:
                 continue
+            if value == "[[BATTLEBREAK]]":
+                nodes.extend([{"tag": "p", "children": ["\u00a0"]} for _ in range(2)])
+                continue
             if is_dashboard and value.startswith("══ ") and value.endswith(" ══"):
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]}, {"tag": "h3", "children": [value.strip("═ ")]}])
                 continue
@@ -1985,8 +1988,8 @@ class CommunityFeatures:
             player_heading = re.fullmatch(r"\[\[PLAYERHEADING:([0289PYLQGRJCUV]{3,15})\|([^\[\]]+)\]\]", value)
             if player_heading:
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]},
-                              {"tag": "h3", "children": [f"GIOCATORE {player_heading.group(1)}"]},
-                              {"tag": "h3", "children": [f"👤 {player_heading.group(2)}"]}])
+                              {"tag": "h3", "children": [f"👤 {player_heading.group(2)}"]},
+                              {"tag": "h4", "children": [f"TAG {player_heading.group(1)}"]}])
                 continue
             club_heading = re.fullmatch(r"\[\[CLUBHEADING:([A-Z-]+)\|([^\[\]]+)\]\]", value)
             if club_heading:
@@ -3422,7 +3425,7 @@ class CommunityFeatures:
             for row in rows[:200]:
                 tag = str(row.get("player_tag") or "").lstrip("#").upper()
                 if re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
-                    detail_urls.setdefault(tag, f"#GIOCATORE-{tag}")
+                    detail_urls.setdefault(tag, f"#TAG-{tag}")
         for index, row in enumerate(rows[:200], 1):
             account_coefficient = f'{float(row["coefficient"]):.6f}'.replace(".", ",")
             value = int(row["value"])
@@ -4403,7 +4406,7 @@ class CommunityFeatures:
             for row in [*visible_trophy_rows, *visible_progression_rows]:
                 tag = str(row.get("tag") or row.get("player_tag") or "").lstrip("#").upper()
                 if re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag):
-                    detail_urls.setdefault(tag, f"#GIOCATORE-{tag}")
+                    detail_urls.setdefault(tag, f"#TAG-{tag}")
 
         title = f"🔥 REPORT {scope_label} — {'OGGI' if days == 0 else f'{days} GIORNI'}"
         full = [title, f"Data: {datetime.now(ROME):%d/%m/%Y %H:%M}", "", f"👥 Ambito: {scope_note}", ""]
@@ -4939,7 +4942,7 @@ class CommunityFeatures:
                           if band else "3000+ ×1,0000")
             outcome = self._progression_result_it(self._observed_battle_outcome(row), row.get("placement"))
             lines.extend([
-                "",
+                "[[BATTLEBREAK]]" if valid else "",
                 f"📅 {index}. {moment:%d/%m/%Y %H:%M}",
                 f"🦸 Brawler: {translate(row.get('brawler_name'))} · 🏆 {max(0, before + delta)} coppe dopo la battaglia",
                 f"🎮 Modalità: {self._progression_mode_it(row.get('mode'))}",
@@ -5086,7 +5089,7 @@ class CommunityFeatures:
                 counts[key] = counts.get(key, 0) + 1
             brawler = brawler_name_it(max(counts, key=counts.get)) if counts else "n.d."
             ratio = f"{(cups + bonus) / cups:.6f}".replace(".", ",") if cups else "n.d."
-            lines = [f"[[PLAYERHEADING:{tag}|{name}]]", f"🏷️ Tag: #{tag}",
+            lines = [f"[[PLAYERHEADING:{tag}|{name}]]",
                      f"⏱️ Tempo di gioco: {seconds // 3600}h {(seconds % 3600) // 60:02d}m",
                      f"🎮 Partite osservate: {len(observed) if battle_log_available else int(item.get('battle_count') or len(observed))}",
                      (f"✅ Vittorie: {wins} · ❌ Sconfitte: {losses}" if battle_log_available
@@ -5117,7 +5120,7 @@ class CommunityFeatures:
                 points = round(weighted_progression_delta(r))
                 outcome = self._progression_result_it(self._observed_battle_outcome(r), r.get("placement"))
                 lines.extend([
-                    "",
+                    "[[BATTLEBREAK]]" if index > max(1, len(observed) - 4) else "",
                     f"📅 {index}. {when:%d/%m/%Y %H:%M}",
                     f"🦸 Brawler: {brawler_name_it(r.get('brawler_name'))} · 🏆 {max(0, before + delta)} coppe dopo la battaglia",
                     f"🎮 Modalità: {self._progression_mode_it(r.get('mode'))}",
@@ -5151,7 +5154,7 @@ class CommunityFeatures:
             url = self._publish_telegraph(f"Dettagli giocatori — {start.astimezone(ROME):%d-%m} · {index}",
                                            ["DETTAGLI GIOCATORI", f"Periodo: {start.astimezone(ROME):%d/%m/%Y} – {end.astimezone(ROME):%d/%m/%Y}", *content])
             if url:
-                result.update({tag: f"{url}#GIOCATORE-{tag}" for tag in page_tags})
+                result.update({tag: f"{url}#TAG-{tag}" for tag in page_tags})
             else:
                 LOG.warning("PLAYER DETAIL PUBLISH STOPPED: remaining_pages=%s", len(pages) - index)
                 break
@@ -5289,8 +5292,10 @@ class CommunityFeatures:
             for section in group:
                 match = re.fullmatch(r"\[\[PLAYERHEADING:([0289PYLQGRJCUV]{3,15})\|[^\[\]]+\]\]", section[0])
                 if match:
-                    anchor = f"#GIOCATORE-{match.group(1)}"
+                    anchor = f"#TAG-{match.group(1)}"
+                    old_anchor = f"#GIOCATORE-{match.group(1)}"
                     ranking = [line.replace(f"[[PLAYER:{anchor}|", f"[[PLAYER:{page}{anchor}|")
+                               .replace(f"[[PLAYER:{old_anchor}|", f"[[PLAYER:{page}{anchor}|")
                                for line in ranking]
         return self._publish_telegraph(title, ranking)
 
