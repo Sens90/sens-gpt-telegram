@@ -1983,11 +1983,9 @@ class CommunityFeatures:
                 continue
             player_heading = re.fullmatch(r"\[\[PLAYERHEADING:([0289PYLQGRJCUV]{3,15})\|([^\[\]]+)\]\]", value)
             if player_heading:
-                nodes.extend(([{"tag": "h3", "children": [f"GIOCATORE {player_heading.group(1)}"]}]
-                              if is_ranking_report else
-                              [{"tag": "p", "children": ["\u00a0"]},
-                               {"tag": "h3", "children": [f"GIOCATORE {player_heading.group(1)}"]},
-                               {"tag": "p", "children": [{"tag": "strong", "children": [player_heading.group(2)]}]}]))
+                nodes.extend([{"tag": "p", "children": ["\u00a0"]},
+                              {"tag": "h3", "children": [f"GIOCATORE {player_heading.group(1)}"]},
+                              {"tag": "h3", "children": [f"👤 {player_heading.group(2)}"]}])
                 continue
             club_heading = re.fullmatch(r"\[\[CLUBHEADING:([A-Z-]+)\|([^\[\]]+)\]\]", value)
             if club_heading:
@@ -3445,9 +3443,12 @@ class CommunityFeatures:
                 seconds = int(row.get("play_seconds") or 0)
                 ratio = f"{row.get('_weighted', 0) / cups:.4f}".replace(".", ",") if cups else "n.d."
                 lines.extend([f"[[PLAYERHEADING:{tag}|{self._player_link_name(row['name'])}]]",
-                              f"👤 {self._player_link_name(row['name'])} · ⏱️ {seconds // 3600}h {(seconds % 3600) // 60:02d}m · "
-                              f"🎮 {int(row.get('battle_count') or 0)} partite · 🏆 +{self.number_formatter(cups)} coppe · "
-                              f"⚡ +{self.number_formatter(row.get('_bonus') or 0)} bonus · 🔥 +{self.number_formatter(value)} · 🧮 {ratio}"])
+                              f"⏱️ Tempo di gioco: {seconds // 3600}h {(seconds % 3600) // 60:02d}m",
+                              f"🎮 Partite osservate: {int(row.get('battle_count') or 0)}",
+                              f"🏆 Coppe positive: +{self.number_formatter(cups)}",
+                              f"⚡ Bonus Progressione: +{self.number_formatter(row.get('_bonus') or 0)}",
+                              f"🔥 Progressione: +{self.number_formatter(value)}",
+                              f"🧮 Coeff. Progressione: {ratio}"])
                 if window:
                     battle_link = self._battle_log_link(tag, *window)
                     if battle_link:
@@ -4462,14 +4463,18 @@ class CommunityFeatures:
                 value = progress.get("_value")
                 ratio = f"{progress.get('_coeff', 0):.4f}".replace(".", ",") if cups else "n.d."
                 full.extend([f"[[PLAYERHEADING:{tag}|{self._player_link_name(row['name'])}]]",
-                             f"👤 {self._player_link_name(row['name'])} · 🏆 {self.number_formatter(row['current'])} trofei · 📈 {self.number_formatter(row['delta'])} saldo · "
-                             f"🎮 {int(progress.get('battle_count') or 0)} battaglie osservate · 🏆 +{self.number_formatter(cups)} coppe · "
-                             f"⚡ +{self.number_formatter(progress.get('_bonus') or 0)} bonus · 🔥 {self.number_formatter(value) if value is not None else 'n.d.'} · 🧮 {ratio}"])
-                battle_link = self._battle_log_link(tag, period_start, period_end)
-                if battle_link:
-                    full.append(f"[[BATTLE:{battle_link}|Apri il log battaglie]]")
+                             f"🏆 Trofei attuali: {self.number_formatter(row['current'])}",
+                             f"📈 Saldo Trofei: {self.number_formatter(row['delta'])}",
+                             f"🎮 Battaglie osservate: {int(progress.get('battle_count') or 0)}",
+                             f"🏆 Coppe positive: +{self.number_formatter(cups)}",
+                             f"⚡ Bonus Progressione: +{self.number_formatter(progress.get('_bonus') or 0)}",
+                             f"🔥 Progressione: {self.number_formatter(value) if value is not None else 'n.d.'}",
+                             f"🧮 Coeff. Progressione: {ratio}"])
                 if row["delta"] and not int(progress.get("battle_count") or 0):
                     full.append("⚠️ Saldo dai rilevamenti Trofei; il log delle battaglie non copre questo intervallo.")
+                battle_link = self._battle_log_link(tag, period_start, period_end)
+                if battle_link:
+                    full.extend(["", f"[[BATTLE:{battle_link}|Apri il log battaglie]]"])
 
         report_url = self._publish_telegraph(title, full) if publish else None
         summary = [title, "", "🏆 CLASSIFICA TROFEI"]
