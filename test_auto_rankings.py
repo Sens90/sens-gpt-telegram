@@ -4,6 +4,8 @@ from datetime import datetime
 from threading import Barrier
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
+from urllib.parse import urlsplit
+from tornado.testing import AsyncHTTPTestCase
 
 os.environ.setdefault("TELEGRAM_TOKEN", "test-token")
 os.environ.setdefault("GEMINI_API_KEY", "test-key")
@@ -12,6 +14,26 @@ os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-role-key")
 
 with patch("google.genai.Client", return_value=Mock()):
     import app
+
+
+class BattleLogWebhookTests(AsyncHTTPTestCase):
+    def get_app(self):
+        return app.SensWebhookApp("/telegram", None, __import__("asyncio").Queue())
+
+    def test_live_webhook_server_handles_signed_player_link(self):
+        start = datetime.now(app.timezone.utc) - app.timedelta(hours=1)
+        end = datetime.now(app.timezone.utc) - app.timedelta(minutes=1)
+        with patch.dict(os.environ, {"TELEGRAPH_ACCESS_TOKEN": "unit-test-token"}):
+            link = app.community._battle_log_link("2GU9UV2RG", start, end)
+            uri = urlsplit(link)
+            with patch.object(app.community, "player_battle_log_page",
+                              return_value="https://telegra.ph/Battaglie-Giorgio") as publish:
+                response = self.fetch(uri.path + "?" + uri.query, follow_redirects=False)
+                self.assertEqual(response.code, 302)
+                self.assertEqual(response.headers["Location"], "https://telegra.ph/Battaglie-Giorgio")
+                publish.assert_called_once()
+                invalid = self.fetch(uri.path + "?" + uri.query.replace("sig=", "sig=x"))
+                self.assertEqual(invalid.code, 403)
 
 
 class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):

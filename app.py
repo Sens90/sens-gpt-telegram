@@ -22,6 +22,9 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlsplit, urlunsplit, quote
 
 from flask import Flask, request, redirect
+import tornado.web
+import telegram.ext._updater as ptb_updater_runtime
+from telegram.ext._utils.webhookhandler import WebhookAppClass
 from google import genai
 from telegram import Update
 from telegram.error import TelegramError, TimedOut, NetworkError, RetryAfter, BadRequest
@@ -3191,35 +3194,58 @@ community = CommunityFeatures(
 community.roster_refresher = refresh_rosters_for_rankings
 
 
-@app.route("/battaglie/<tag>")
-def player_battle_log_redirect(tag):
-    """Resolve an authenticated player log only when a reader opens it."""
+def resolve_player_battle_log(tag, params):
+    """Resolve a signed player log for both the webhook server and local tests."""
     tag = tag.upper()
     try:
-        start_epoch = int(request.args.get("s", ""))
-        end_epoch = int(request.args.get("e", ""))
-        page = int(request.args.get("p", ""))
+        start_epoch = int(params.get("s", ""))
+        end_epoch = int(params.get("e", ""))
+        page = int(params.get("p", ""))
         start = datetime.fromtimestamp(start_epoch, timezone.utc)
         end = datetime.fromtimestamp(end_epoch, timezone.utc)
     except (ValueError, OverflowError, OSError):
-        return "Link non valido", 400
+        return None, 400
     if (not re.fullmatch(r"[0289PYLQGRJCUV]{3,15}", tag)
             or page < 0 or page > 999 or end <= start
             or end - start > timedelta(days=32)
             or end > datetime.now(timezone.utc) + timedelta(minutes=2)):
-        return "Link non valido", 400
-    signature = request.args.get("sig", "")
+        return None, 400
+    signature = params.get("sig", "")
     expected = community._battle_log_signature(tag, start_epoch, end_epoch, page)
     if not expected or not hmac.compare_digest(expected, signature):
-        return "Link non valido", 403
+        return None, 403
     try:
         url = community.player_battle_log_page(tag, start, end, page)
     except Exception as error:
         print("BATTLE LOG PUBLISH ERROR", type(error).__name__, flush=True)
-        return "Log temporaneamente non disponibile", 503
+        return None, 503
     if not url or not re.fullmatch(r"https://telegra\.ph/[A-Za-z0-9_-]+", url):
-        return "Log temporaneamente non disponibile", 503
-    return redirect(url, code=302)
+        return None, 503
+    return url, 302
+
+
+@app.route("/battaglie/<tag>")
+def player_battle_log_redirect(tag):
+    url, status = resolve_player_battle_log(tag, request.args)
+    return redirect(url, code=302) if status == 302 else ("Link non disponibile", status)
+
+
+class BattleLogWebhookHandler(tornado.web.RequestHandler):
+    async def get(self, tag):
+        params = {key: self.get_query_argument(key, "") for key in ("s", "e", "p", "sig")}
+        url, status = await asyncio.to_thread(resolve_player_battle_log, tag, params)
+        if status == 302:
+            self.redirect(url, permanent=False)
+        else:
+            self.set_status(status)
+            self.write("Link non disponibile")
+
+
+class SensWebhookApp(WebhookAppClass):
+    """Keep PTB's Telegram handler and serve signed Telegraph log redirects."""
+    def __init__(self, webhook_path, bot, update_queue, secret_token=None):
+        super().__init__(webhook_path, bot, update_queue, secret_token)
+        self.add_handlers(r".*", [(r"/battaglie/([0289PYLQGRJCUV]{3,15})/?", BattleLogWebhookHandler)])
 
 
 async def telegram_report_send(operation, label):
@@ -6102,6 +6128,8 @@ def main():
         "https://sens-gpt-telegram.onrender.com"
     ).rstrip("/")
 
+    # PTB owns the public PORT; Flask is not started in the Render process.
+    ptb_updater_runtime.WebhookAppClass = SensWebhookApp
     application.run_webhook(
         listen="0.0.0.0",
         port=port,
