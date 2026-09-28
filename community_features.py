@@ -3268,6 +3268,8 @@ class CommunityFeatures:
                                  publish_player_details=True, inline_player_details=False,
                                  trophy_delta_by_tag=None):
         if days in (0, 7, 15, 30) and window is None and getattr(self, "supabase_url", None):
+            if trophy_delta_by_tag is None and getattr(self, "roster_refresher", None):
+                self.roster_refresher()
             end = datetime.now(ROME)
             start = (end.replace(hour=0, minute=0, second=0, microsecond=0)
                      if days == 0 else end - timedelta(days=days))
@@ -5137,6 +5139,8 @@ class CommunityFeatures:
         """Create direct detail links for one period; optional fixed scheduler window."""
         report_window = window
         if window is None:
+            if getattr(self, "roster_refresher", None):
+                self.roster_refresher()
             end = datetime.now(ROME)
             start = (end.replace(hour=0, minute=0, second=0, microsecond=0)
                      if days == 0 else end - timedelta(days=days))
