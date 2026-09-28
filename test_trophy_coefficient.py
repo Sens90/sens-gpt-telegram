@@ -5,7 +5,22 @@ from trophy_coefficient import (
     TROPHY_COEFFICIENT_BANDS,
     calculate_trophy_coefficient,
     score_brawler_trophies,
+    progression_reference_trophies,
+    weighted_progression_delta,
 )
+
+
+def test_progression_uses_highest_teammate_and_falls_back_to_own_brawler():
+    row = {"brawler_trophies_before": 1800, "team_max_brawler_trophies": 2000,
+           "trophy_change": 10}
+    assert progression_reference_trophies(row) == 2000
+    assert weighted_progression_delta(row) == Decimal("15.5")
+    row["trophy_change"] = -10
+    assert weighted_progression_delta(row) == 0
+    row["team_max_brawler_trophies"] = None
+    row["trophy_change"] = 10
+    assert progression_reference_trophies(row) == 1800
+    assert weighted_progression_delta(row) == Decimal("12.37")
 
 
 def test_formula_version_changes_when_band_weights_change():

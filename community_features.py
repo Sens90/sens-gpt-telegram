@@ -2630,7 +2630,8 @@ class CommunityFeatures:
 
     def _progression_detail_uncached(self, player_tag, days=0):
         """Detailed observed progression report for one monitored player."""
-        from trophy_coefficient import TROPHY_COEFFICIENT_BANDS, score_brawler_trophies
+        from trophy_coefficient import (TROPHY_COEFFICIENT_BANDS, progression_reference_trophies,
+                                        weighted_progression_delta)
         tag = str(player_tag or "").strip().lstrip("#").upper()
         if not tag:
             return "Giocatore non disponibile."
@@ -2663,11 +2664,7 @@ class CommunityFeatures:
 
         def weighted_delta(row):
             """Wins use the highest Brawler trophy value in the team; losses score zero."""
-            t0 = max(0, int(row.get("brawler_trophies_before") or 0))
-            d = int(row.get("trophy_change") or 0)
-            if d <= 0:
-                return 0.0
-            return float(score_brawler_trophies(t0 + d) - score_brawler_trophies(t0))
+            return float(weighted_progression_delta(row))
 
         def weight_at(trophies):
             value = max(0, int(trophies or 0))
@@ -2775,6 +2772,11 @@ class CommunityFeatures:
             losses = sum(self._observed_battle_outcome(r) == "defeat" for r in br)
             starts = [int(r.get("brawler_trophies_before") or 0) for r in br]
             ends = [max(0, int(r.get("brawler_trophies_before") or 0)+int(r.get("trophy_change") or 0)) for r in br]
+            played_bands = list(dict.fromkeys(
+                label for r in br if int(r.get("trophy_change") or 0) > 0
+                for label in band_labels(progression_reference_trophies(r),
+                                         progression_reference_trophies(r) + int(r["trophy_change"]))
+            ))
             first, last = dt_local(br[0]["battle_time"]), dt_local(br[-1]["battle_time"])
             lines += ["", f"🦸 {brawler_name_it(brawler)}", f"Orario: {first:%H:%M}–{last:%H:%M} | Partite: {len(br)}",
                       results_line(wins, losses),
@@ -2782,7 +2784,7 @@ class CommunityFeatures:
                       f"Coppe positive: +{self.number_formatter(positive)} | Coppe perse: {self.number_formatter(lost)} | Saldo: {'+' if raw > 0 else ''}{self.number_formatter(raw)}",
                       f"Bonus: +{self.number_formatter(bonus)} | Progressione osservata: {signed(raw + bonus)}",
                       f"Coeff. Progressione: {progression_coefficient:.6f}".replace(".", ","),
-                      "Fasce: " + " · ".join(band_labels(min(starts+ends), max(starts+ends)))]
+                      "Fasce: " + (" · ".join(played_bands) if played_bands else "n.d.")]
             sessions=[]; current=[]
             for r in br:
                 t=dt_local(r["battle_time"])
@@ -2809,7 +2811,7 @@ class CommunityFeatures:
             t1 = max(0, t0 + delta)
             mode_key = str(row.get("mode") or "").casefold()
             max_trophies, team = team_context(row)
-            reference = t0
+            reference = progression_reference_trophies(row)
             points = weighted_delta(row)
             lines += [
                 "",
@@ -3079,7 +3081,8 @@ class CommunityFeatures:
 
     def progression_brawler_text(self, player_tag, brawler_name, days=0):
         """Period battle-by-battle Progressione log for one Brawler."""
-        from trophy_coefficient import TROPHY_COEFFICIENT_BANDS, score_brawler_trophies
+        from trophy_coefficient import (TROPHY_COEFFICIENT_BANDS, progression_reference_trophies,
+                                        weighted_progression_delta)
         tag = str(player_tag or "").strip().lstrip("#").upper()
         wanted = str(brawler_name or "").strip()
         if not tag or not wanted:
@@ -3134,11 +3137,7 @@ class CommunityFeatures:
 
         def points(row):
             """Positive Progressione uses the highest Brawler trophy value in the team."""
-            t0 = max(0, int(row.get("brawler_trophies_before") or 0))
-            d = int(row.get("trophy_change") or 0)
-            if d <= 0:
-                return 0.0
-            return float(score_brawler_trophies(t0 + d) - score_brawler_trophies(t0))
+            return float(weighted_progression_delta(row))
 
         def team_context(row):
             """Use normalized team data, with a safe fallback to saved official evidence."""
@@ -3219,7 +3218,7 @@ class CommunityFeatures:
             t1 = max(0, t0 + d)
             p = points(row)
             max_t, team = team_context(row)
-            reference_trophies = t0
+            reference_trophies = progression_reference_trophies(row)
             w = weight_at(reference_trophies)
             expected = row.get("expected_base_delta")
             extra = row.get("observed_extra")
@@ -4896,14 +4895,14 @@ class CommunityFeatures:
 
     def player_battle_log_page(self, tag, start, end, page=0):
         """Publish one requested log slice without delaying the ranking index."""
-        from trophy_coefficient import TROPHY_COEFFICIENT_BANDS
+        from trophy_coefficient import TROPHY_COEFFICIENT_BANDS, progression_reference_trophies
         key = (tag, int(start.timestamp()), int(end.timestamp()), int(page))
         with _PLAYER_BATTLE_LOG_LOCK:
             cached = _PLAYER_BATTLE_LOG_CACHE.get(key)
             if cached and cached[0] > time.monotonic():
                 return cached[1]
         rows = self._get("observed_trophy_battles", {
-            "select": "player_name,battle_time,brawler_name,brawler_trophies_before,trophy_change,result,placement,mode,bonus_type",
+            "select": "player_name,battle_time,brawler_name,brawler_trophies_before,trophy_change,result,placement,mode,bonus_type,team_max_brawler_trophies,team_composition",
             "player_tag": f"eq.{tag}",
             "and": f"(battle_time.gte.{start.astimezone(timezone.utc).isoformat()},battle_time.lt.{end.astimezone(timezone.utc).isoformat()})",
             "order": "battle_time.desc", "limit": "101", "offset": str(int(page) * 100),
@@ -4924,14 +4923,29 @@ class CommunityFeatures:
                 continue
             if str(row.get("bonus_type") or "").startswith("excluded"):
                 continue
+            reference = progression_reference_trophies(row)
             band = next(((lo, hi, weight) for lo, hi, weight in TROPHY_COEFFICIENT_BANDS
-                         if lo <= before < hi), None)
+                         if lo <= reference < hi), None)
             band_label = (f"{band[0]}–{band[1] - 1} ×{band[2]:.4f}".replace(".", ",")
                           if band else "3000+ ×1,0000")
             lines.append(f"{index}. {moment:%d/%m %H:%M} · {translate(row.get('brawler_name'))} · "
                          f"{self._progression_result_it(self._observed_battle_outcome(row), row.get('placement'))} · "
                          f"{self._progression_mode_it(row.get('mode'))} · "
-                         f"🎯 {band_label} ({before} 🏆 prima) · {'+' if delta > 0 else ''}{delta} 🏆")
+                         f"🎯 {band_label} ({reference} 🏆 riferimento; {before} 🏆 propri) · "
+                         f"{'+' if delta > 0 else ''}{delta} 🏆")
+            team = row.get("team_composition")
+            if isinstance(team, list) and team:
+                lines.append("👥 Squadra:")
+                for member in sorted(team, key=lambda m: int(m.get("brawler_trophies") or 0), reverse=True):
+                    cups = member.get("brawler_trophies")
+                    lines.append(f"• {member.get('name') or member.get('tag') or 'Giocatore'} · "
+                                 f"{translate(member.get('brawler_name'))} · "
+                                 f"{cups if cups is not None else '?'} 🏆")
+            elif str(row.get("mode") or "").casefold() in {"soloshowdown", "solo"}:
+                lines.append("👤 Modalità Solo")
+            else:
+                lines.append("👥 Squadra non disponibile nel battle log")
+            lines.append("")
             valid += 1
         if not valid:
             lines.append("Nessuna battaglia osservata valida in questa pagina.")
@@ -4947,7 +4961,8 @@ class CommunityFeatures:
 
     def _player_detail_pages(self, rows, days, window=None):
         """Publish grouped player dossiers; a single page serves several links."""
-        from trophy_coefficient import score_brawler_trophies, TROPHY_COEFFICIENT_BANDS
+        from trophy_coefficient import (TROPHY_COEFFICIENT_BANDS, progression_reference_trophies,
+                                        weighted_progression_delta)
         end = window[1] if window else datetime.now(timezone.utc)
         start = window[0] if window else (
             end.astimezone(ROME).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -4984,7 +4999,7 @@ class CommunityFeatures:
             for offset in range(0, 100000, 1000):
                 try:
                     batch = self._get("observed_trophy_battles", {
-                        "select": "player_tag,battle_time,brawler_name,brawler_trophies_before,trophy_change,result,placement,mode,bonus_type",
+                        "select": "player_tag,battle_time,brawler_name,brawler_trophies_before,trophy_change,result,placement,mode,bonus_type,team_max_brawler_trophies",
                         "player_tag": f"in.({','.join(group)})",
                         "and": f"(battle_time.gte.{start.astimezone(timezone.utc).isoformat()},battle_time.lt.{end.astimezone(timezone.utc).isoformat()})",
                         "order": "battle_time.asc,player_tag.asc", "limit": "1000", "offset": str(offset),
@@ -5026,9 +5041,7 @@ class CommunityFeatures:
                              and r.get("placement") is not None for r in observed)
             other = len(observed) - wins - losses - placements
             trophies = sum(max(0, int(r["trophy_change"])) for r in observed)
-            progression = sum(max(0, score_brawler_trophies(int(r["brawler_trophies_before"]) + int(r["trophy_change"]))
-                                  - score_brawler_trophies(int(r["brawler_trophies_before"])))
-                              for r in observed if int(r["trophy_change"]) > 0)
+            progression = sum(weighted_progression_delta(r) for r in observed)
             bonus = int(item.get("_bonus") if item.get("_bonus") is not None else
                         round(progression) - trophies)
             value = int(item.get("_value") if item.get("_value") is not None else
@@ -5071,16 +5084,18 @@ class CommunityFeatures:
                 when = datetime.fromisoformat(str(r["battle_time"]).replace("Z", "+00:00")).astimezone(ROME)
                 delta = int(r["trophy_change"])
                 before = int(r["brawler_trophies_before"])
+                reference = progression_reference_trophies(r)
                 band = next(((start, end, weight) for start, end, weight in TROPHY_COEFFICIENT_BANDS
-                             if start <= before < end), None)
+                             if start <= reference < end), None)
                 band_label = (f"{band[0]}–{band[1] - 1} ×{band[2]:.4f}".replace(".", ",")
                               if band else "3000+ ×1,0000")
-                points = (round(score_brawler_trophies(before + delta) - score_brawler_trophies(before))
-                          if delta > 0 else 0)
+                points = round(weighted_progression_delta(r))
+                reference_note = (f"{before} 🏆 prima" if reference == before else
+                                  f"team {reference} 🏆; propri {before} 🏆 prima")
                 lines.append(f"{index}. {when:%d/%m %H:%M} · {brawler_name_it(r.get('brawler_name'))} · "
                              f"{self._progression_result_it(self._observed_battle_outcome(r), r.get('placement'))} · "
                              f"{self._progression_mode_it(r.get('mode'))} · "
-                             f"🎯 Fascia iniziale: {band_label} ({before} 🏆 prima) · "
+                             f"🎯 Fascia iniziale: {band_label} ({reference_note}) · "
                              f"{'+' if delta > 0 else ''}{delta} 🏆 · +{points} 🔥")
             if not battle_log_available:
                 lines.append("Battaglie temporaneamente non disponibili o incomplete.")
@@ -5124,7 +5139,7 @@ class CommunityFeatures:
 
     def _club_battle_detail_links(self, club_totals, days, window=None, publish=True):
         """Publish each complete roster's observed results for the selected period."""
-        from trophy_coefficient import score_brawler_trophies
+        from trophy_coefficient import weighted_progression_delta
         end = window[1] if window else datetime.now(timezone.utc)
         start = window[0] if window else (
             end.astimezone(ROME).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -5144,7 +5159,7 @@ class CommunityFeatures:
                 group = tags[index:index + 20]
                 for offset in range(0, 100000, 1000):
                     rows = self._get("observed_trophy_battles", {
-                        "select": "player_tag,brawler_trophies_before,trophy_change,result,placement,bonus_type",
+                        "select": "player_tag,brawler_trophies_before,team_max_brawler_trophies,trophy_change,result,placement,bonus_type",
                         "player_tag": f"in.({','.join(group)})",
                         "and": f"(battle_time.gte.{start.astimezone(timezone.utc).isoformat()},battle_time.lt.{end.astimezone(timezone.utc).isoformat()})",
                         "order": "battle_time.asc,player_tag.asc",
@@ -5167,8 +5182,7 @@ class CommunityFeatures:
                             continue
                         if change > 0:
                             stats["cups"] += change
-                            stats["progression"] += max(0, round(
-                                score_brawler_trophies(before + change) - score_brawler_trophies(before)))
+                            stats["progression"] += round(weighted_progression_delta(row))
                     if len(rows) < 1000:
                         break
                     if offset == 99000:
