@@ -100,6 +100,24 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("[[BATTLE:https://" in line for line in lines))
         obj._get.assert_called_once()
 
+    def test_compact_player_detail_renders_prominent_name_and_clickable_battle_log(self):
+        obj = self.make_features()
+        start = datetime.now(timezone.utc) - timedelta(hours=1)
+        end = datetime.now(timezone.utc) - timedelta(minutes=1)
+        with patch.dict(os.environ, {"TELEGRAPH_ACCESS_TOKEN": "unit-test-token"}):
+            link = obj._battle_log_link("2GU9UV2RG", start, end)
+            nodes = obj._telegraph_nodes([
+                "👤 DETTAGLI GIOCATORI", "[[PLAYERHEADING:2GU9UV2RG|Tony]]",
+                "🏆 Trofei attuali: 10.000", "📈 Saldo Trofei: +12", "",
+                f"[[BATTLE:{link}|Apri il log battaglie]]",
+            ])
+        self.assertTrue(any(node.get("tag") == "h3" and node.get("children") == ["👤 Tony"]
+                            for node in nodes))
+        self.assertEqual(sum(node.get("tag") == "p" and "Trofei attuali" in str(node)
+                             for node in nodes), 1)
+        self.assertTrue(any(node.get("tag") == "p" and node.get("children", [{}])[0].get("attrs", {}).get("href") == link
+                            for node in nodes if isinstance(node.get("children", [None])[0], dict)))
+
     @patch("community_features.time.sleep")
     @patch("community_features.requests.get")
     def test_transient_supabase_read_retries_before_returning_rows(self, get, sleep):
@@ -832,7 +850,10 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any("PLAYERHEADING:" in row for row in lines))
         details = obj._publish_telegraph.call_args_list[0].args[1]
         self.assertIn("[[PLAYERHEADING:2GU9UV2RG|Tony]]", details)
-        self.assertTrue(any("🏆 +12 coppe · ⚡ +3 bonus · 🔥 +15 · 🧮 1,2500" in row for row in details))
+        self.assertIn("🏆 Coppe positive: +12", details)
+        self.assertIn("⚡ Bonus Progressione: +3", details)
+        self.assertIn("🔥 Progressione: +15", details)
+        self.assertIn("🧮 Coeff. Progressione: 1,2500", details)
 
     def test_direct_trophy_ranking_links_names_without_showing_marker_in_telegram(self):
         obj = self.make_features()
@@ -915,7 +936,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         _summary, full, _clubs = obj.periodic_report_text(
             123, "community", 0, return_full=True, publish=False,
             inline_player_details=True)
-        self.assertIn("🎮 0 battaglie osservate", "\n".join(full))
+        self.assertIn("🎮 Battaglie osservate: 0", full)
         self.assertIn("il log delle battaglie non copre questo intervallo", "\n".join(full))
 
     def test_each_period_index_contains_only_its_own_reports(self):
