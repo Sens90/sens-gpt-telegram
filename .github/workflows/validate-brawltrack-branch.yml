@@ -17,3 +17,8 @@ jobs:
           TELEGRAM_TOKEN: dummy
           GEMINI_API_KEY: dummy
           TAVILY_API_KEY: dummy
+      - run: python -m unittest test_auto_rankings.PrivateCommandStartTests -q
+        env:
+          TELEGRAM_TOKEN: dummy
+          GEMINI_API_KEY: dummy
+          TAVILY_API_KEY: dummy

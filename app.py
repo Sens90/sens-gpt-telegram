@@ -27,7 +27,7 @@ import telegram.ext._updater as ptb_updater_runtime
 from telegram.ext._utils.webhookhandler import WebhookAppClass
 from google import genai
 from telegram import Update
-from telegram.error import TelegramError, TimedOut, NetworkError, RetryAfter, BadRequest
+from telegram.error import TelegramError, TimedOut, NetworkError, RetryAfter, BadRequest, Forbidden
 from telegram.ext import Application, MessageHandler, CommandHandler, ContextTypes, filters
 from community_features import CommunityFeatures
 from profile_card_generator import build_profile_card
@@ -3498,24 +3498,53 @@ def _manual_command_reply_chat_id(message):
     return int(message.chat_id)
 
 
-async def _ensure_private_command_delivery(message, context):
+def _private_start_payload(command):
+    """Resume a short deterministic group command when the user opens the bot."""
+    normalized = str(command or "").strip().casefold()
+    if normalized == "classifica oggi":
+        return "cmd_classifica_oggi"
+    if not _is_manual_deterministic_command(normalized) or _is_public_group_command(normalized):
+        return ""
+    encoded = base64.urlsafe_b64encode(normalized.encode("utf-8")).decode("ascii").rstrip("=")
+    payload = "run_" + encoded
+    return payload if len(payload) <= 64 else ""
+
+
+async def _ensure_private_command_delivery(message, context, command=""):
     """Return a group-scoped message whose interactive replies go to the requester privately."""
     if getattr(message.chat, "type", None) not in {"group", "supergroup"}:
         return message
     try:
         await context.bot.send_chat_action(chat_id=message.from_user.id, action="typing")
         return _PrivateCommandMessage(message, context.bot)
-    except Exception:
+    except (Forbidden, BadRequest) as exc:
+        print("MANUAL COMMAND PRIVATE CHAT UNAVAILABLE:", repr(command), type(exc).__name__, flush=True)
+        now = time.monotonic()
+        previous_prompt = context.user_data.get("_private_start_prompt_at")
+        if previous_prompt is not None and now - previous_prompt < 120:
+            return None
+        payload = _private_start_payload(command)
+        username = str(getattr(context.bot, "username", None) or "SensGPT_TitaniAbusiviBot").lstrip("@")
+        url = f"https://t.me/{username}" + (f"?start={payload}" if payload else "")
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         await message.reply_text(
-            "Per usare i comandi senza intasare il gruppo, apri @SensGPT_TitaniAbusiviBot in privato e premi Avvia una volta."
+            "Non posso ancora scriverti in privato. Tocca il pulsante e premi Avvia: "
+            "preparerò il comando richiesto direttamente nella chat privata.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔒 Apri in privato", url=url)]]),
         )
+        context.user_data["_private_start_prompt_at"] = now
         return None
+    except TelegramError as exc:
+        # A temporary typing-action failure does not prove that the bot cannot
+        # send the actual private response. Let the normal delivery retry run.
+        print("MANUAL COMMAND PRIVATE TYPING ERROR:", type(exc).__name__, flush=True)
+        return _PrivateCommandMessage(message, context.bot)
 
 
 async def _private_group_command(message, context, command):
     """Keep the group for data access, delete its command, deliver replies privately."""
     original = message
-    routed = await _ensure_private_command_delivery(original, context)
+    routed = await _ensure_private_command_delivery(original, context, command)
     if getattr(original.chat, "type", None) in {"group", "supergroup"}:
         try:
             await context.bot.delete_message(chat_id=original.chat_id, message_id=original.message_id)
@@ -5622,7 +5651,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Registrati prima nel gruppo TITANI ABUSIVI collegando il tuo tag Brawl Stars."
             )
             return
-        payload = (context.args[0] if getattr(context, "args", None) else "").strip().casefold()
+        raw_payload = (context.args[0] if getattr(context, "args", None) else "").strip()
+        payload = raw_payload.casefold()
         deep_commands = {
             "cmd_progressione": "progressione",
             "cmd_progressione_oggi": "progressione oggi",
@@ -5637,6 +5667,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "cmd_stats": "stats",
             "cmd_skin": "skin",
             "cmd_classifica": "classifica",
+            "cmd_classifica_oggi": "classifica oggi",
             "cmd_comandi": "comandi",
             "cmd_draft_ranked": "draft ranked",
         }
@@ -5648,7 +5679,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text("Questa voce del dashboard non è disponibile in questo momento.")
             return
         if payload.startswith("run_"):
-            encoded = payload[4:]
+            encoded = raw_payload[4:]
             try:
                 padding = "=" * (-len(encoded) % 4)
                 command = base64.urlsafe_b64decode(encoded + padding).decode("utf-8").strip()
