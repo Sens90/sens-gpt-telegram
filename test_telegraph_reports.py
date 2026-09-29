@@ -98,6 +98,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
                     {"player_tag": "2LVRCLV8LV", "ranked_current_elo": 1000,
                      "recorded_at": (start - timedelta(minutes=10)).isoformat()},
                     {"player_tag": "2LVRCLV8LV", "ranked_current_elo": 1040, "ranked_current": "Mythic 2",
+                     "ranked_season_peak": "Mythic 3", "ranked_career_peak": "Legendary 1",
                      "recorded_at": (end - timedelta(minutes=9)).isoformat()},
                     {"player_tag": "2LVRCLV8LV", "ranked_current_elo": 1090,
                      "recorded_at": (end + timedelta(minutes=10)).isoformat()},
@@ -111,6 +112,8 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[[PLAYER:#TAG-%232LVRCLV8LV|1|Giorgio|🏅 Mito II · 1.040 ELO attuali · +40 ELO]]", rendered)
         self.assertIn("[[PLAYERHEADING:2LVRCLV8LV|Giorgio]]", rendered)
         self.assertIn("🛡️ Club: TAMARRI ABUSIVI", rendered)
+        self.assertIn("📅 Grado massimo stagione: Mito III", rendered)
+        self.assertIn("👑 Grado massimo carriera: Leggenda I", rendered)
         self.assertEqual(sum("🛡️ Club:" in row for row in lines), 1)
         self.assertEqual(CommunityFeatures._ranked_label_it("Epic 2"), "Epico II")
         self.assertNotIn("Tony —", rendered)
@@ -122,6 +125,20 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(url, "https://telegra.ph/ranked-2")
         self.assertTrue(any("[[PLAYER:https://telegra.ph/ranked-1#TAG-%232LVRCLV8LV|1|Giorgio|" in row
                             for row in published[1][1]))
+
+    def test_ranked_club_detail_keeps_peak_grades_off_ranking_line(self):
+        obj = self.make_features()
+        obj.ranked_elo_ranking = Mock(return_value=[{
+            "tag": "2LVRCLV8LV", "name": "Giorgio", "club": "TAMARRI ABUSIVI",
+            "current": 7400, "delta": 120, "rank": "Mito 2",
+            "season_peak": "Mito 3", "career_peak": "Leggenda 1",
+            "previous_rank": "Mito 1",
+        }])
+        lines = obj.ranked_elo_ranking_text(123, 7, "TAMARRI ABUSIVI").splitlines()
+        self.assertIn("[[PLAYER:#TAG-%232LVRCLV8LV|1|Giorgio|🏅 Mito II · 7.400 ELO attuali · +120 ELO]]", lines)
+        self.assertIn("📅 Grado massimo stagione: Mito III", lines)
+        self.assertIn("👑 Grado massimo carriera: Leggenda I", lines)
+        self.assertFalse(any("Club:" in row for row in lines[:lines.index("👤 DETTAGLI GIOCATORI")]))
 
     async def test_ranked_yesterday_command_opens_direct_telegraph(self):
         obj = self.make_features()
@@ -225,6 +242,9 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(node.get("tag") == "h4" and node.get("children") == [
             {"tag": "code", "children": ["TAG #2GU9UV2RG"]}]
                             for node in nodes))
+        tag_index = next(i for i, node in enumerate(nodes) if node.get("tag") == "h4"
+                         and "TAG #2GU9UV2RG" in str(node))
+        self.assertEqual(nodes[tag_index + 1], {"tag": "h3", "children": ["👤 Tony"]})
         self.assertFalse(any(node.get("tag") == "h3" and "GIOCATORE 2GU9UV2RG" in str(node)
                              for node in nodes))
         self.assertEqual(sum(node.get("tag") == "p" and "Trofei attuali" in str(node)

@@ -1989,9 +1989,9 @@ class CommunityFeatures:
             player_heading = re.fullmatch(r"\[\[PLAYERHEADING:([0289PYLQGRJCUV]{3,15})\|([^\[\]]+)\]\]", value)
             if player_heading:
                 nodes.extend([{"tag": "p", "children": ["\u00a0"]},
-                              {"tag": "h3", "children": [f"👤 {player_heading.group(2)}"]},
                               {"tag": "h4", "children": [{"tag": "code", "children": [
-                                  f"TAG #{player_heading.group(1)}"]}]}])
+                                  f"TAG #{player_heading.group(1)}"]}]},
+                              {"tag": "h3", "children": [f"👤 {player_heading.group(2)}"]}])
                 continue
             club_heading = re.fullmatch(r"\[\[CLUBHEADING:([A-Z-]+)\|([^\[\]]+)\]\]", value)
             if club_heading:
@@ -2499,6 +2499,9 @@ class CommunityFeatures:
                 "current": current,
                 "delta": delta,
                 "rank": player.get("ranked_current") or member.get("ranked_current"),
+                "season_peak": player.get("ranked_season_peak") or member.get("ranked_season_peak"),
+                "career_peak": (player.get("ranked_career_peak") or player.get("ranked_peak")
+                                or member.get("ranked_career_peak") or member.get("ranked_peak")),
                 "previous_rank": (baseline or {}).get("rank"),
             })
         rows.sort(key=lambda x: (
@@ -2533,6 +2536,8 @@ class CommunityFeatures:
                             f"🏅 Grado attuale: {rank_now}",
                             f"🏅 ELO attuale: {self.number_formatter(row['current'])}",
                             f"📈 Variazione ELO: {delta_text}",
+                            f"📅 Grado massimo stagione: {self._ranked_label_it(row.get('season_peak'))}",
+                            f"👑 Grado massimo carriera: {self._ranked_label_it(row.get('career_peak'))}",
                             *([f"🏅 Grado precedente: {rank_before}"] if rank_before else [])])
         lines.extend(["", "👤 DETTAGLI GIOCATORI", *details])
         return "\n".join(lines)
@@ -2565,7 +2570,7 @@ class CommunityFeatures:
         history = []
         for offset in range(0, 100000, 1000):
             page = self._get("ranked_history", {
-                "select": "player_tag,ranked_current,ranked_current_elo,recorded_at",
+                "select": "player_tag,ranked_current,ranked_current_elo,ranked_season_peak,ranked_career_peak,recorded_at",
                 "player_tag": f"in.({','.join(names)})", "ranked_current_elo": "not.is.null",
                 "recorded_at": f"gte.{season_start.isoformat()}",
                 "order": "recorded_at.asc", "limit": "1000", "offset": str(offset),
@@ -2586,7 +2591,8 @@ class CommunityFeatures:
             except (KeyError, TypeError, ValueError):
                 continue
             if instant <= end.astimezone(timezone.utc):
-                samples[tag].append((instant, elo, row.get("ranked_current")))
+                samples[tag].append((instant, elo, row.get("ranked_current"),
+                                     row.get("ranked_season_peak"), row.get("ranked_career_peak")))
         ranked = []
         for tag, observations in samples.items():
             if not observations:
@@ -2616,6 +2622,8 @@ class CommunityFeatures:
                               f"🏅 Grado attuale: {self._ranked_label_it(final[2])}",
                               f"🏅 ELO attuale: {self.number_formatter(current)}",
                               f"📈 Variazione ELO: +{self.number_formatter(delta)}",
+                              f"📅 Grado massimo stagione: {self._ranked_label_it(final[3])}",
+                              f"👑 Grado massimo carriera: {self._ranked_label_it(final[4])}",
                               f"🕒 Rilevamenti: {baseline[0].astimezone(ROME):%d/%m %H:%M} → "
                               f"{final[0].astimezone(ROME):%d/%m %H:%M}"])
         return lines
