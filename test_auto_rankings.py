@@ -44,6 +44,53 @@ class BattleLogWebhookTests(AsyncHTTPTestCase):
                 self.assertEqual(self.fetch(uri.path + "?" + uri.query).code, 503)
 
 
+class PrivateCommandStartTests(unittest.IsolatedAsyncioTestCase):
+    async def test_group_classifica_oggi_offers_one_tap_resume_when_dm_is_closed(self):
+        from telegram.error import Forbidden
+        message = SimpleNamespace(chat_id=-100123, message_id=42,
+                                  chat=SimpleNamespace(type="supergroup"),
+                                  from_user=SimpleNamespace(id=456), reply_text=AsyncMock())
+        bot = SimpleNamespace(username="SensGPT_TitaniAbusiviBot",
+                              send_chat_action=AsyncMock(side_effect=Forbidden("bot can't initiate conversation")),
+                              delete_message=AsyncMock())
+        context = SimpleNamespace(bot=bot, user_data={})
+        routed = await app._private_group_command(message, context, "classifica oggi")
+        self.assertIsNone(routed)
+        bot.delete_message.assert_awaited_once_with(chat_id=-100123, message_id=42)
+        button = message.reply_text.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
+        self.assertEqual(button.url,
+                         "https://t.me/SensGPT_TitaniAbusiviBot?start=cmd_classifica_oggi")
+        await app._private_group_command(message, context, "classifica oggi")
+        message.reply_text.assert_awaited_once()
+
+    async def test_private_start_runs_classifica_oggi_without_retyping(self):
+        message = SimpleNamespace(chat_id=456, chat=SimpleNamespace(type="private"),
+                                  from_user=SimpleNamespace(id=456), reply_text=AsyncMock())
+        context = SimpleNamespace(args=["cmd_classifica_oggi"], user_data={}, bot=SimpleNamespace())
+        with (patch.object(app.community, "get_registered_user", return_value={"player_tag": "2GU9UV2RG"}),
+              patch.object(app.community, "handle_command", new=AsyncMock(return_value=True)) as handler):
+            await app.start_command(SimpleNamespace(effective_message=message), context)
+        handler.assert_awaited_once_with(message, context, "classifica oggi")
+
+    async def test_temporary_typing_failure_keeps_private_route(self):
+        from telegram.error import NetworkError
+        message = SimpleNamespace(chat_id=-100123, message_id=42,
+                                  chat=SimpleNamespace(type="supergroup"),
+                                  from_user=SimpleNamespace(id=456), reply_text=AsyncMock())
+        bot = SimpleNamespace(send_chat_action=AsyncMock(side_effect=NetworkError("temporary")),
+                              delete_message=AsyncMock())
+        routed = await app._private_group_command(message, SimpleNamespace(bot=bot, user_data={}), "classifica oggi")
+        self.assertEqual(routed.chat_id, -100123)
+        message.reply_text.assert_not_awaited()
+
+    def test_generic_resume_payload_keeps_base64_case(self):
+        payload = app._private_start_payload("Progressione oggi")
+        self.assertTrue(payload.startswith("run_"))
+        encoded = payload[4:]
+        self.assertEqual(__import__("base64").urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)),
+                         b"progressione oggi")
+
+
 class AutomaticRankingSlotTests(unittest.IsolatedAsyncioTestCase):
     def test_progressi_oggi_alias_is_a_private_deterministic_command(self):
         for text in ("Progressi oggi", "Progressi pggi", "Progressione oggi"):
