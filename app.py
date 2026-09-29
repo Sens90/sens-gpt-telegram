@@ -3520,7 +3520,8 @@ async def _ensure_private_command_delivery(message, context, command=""):
     except (Forbidden, BadRequest) as exc:
         print("MANUAL COMMAND PRIVATE CHAT UNAVAILABLE:", repr(command), type(exc).__name__, flush=True)
         now = time.monotonic()
-        if now - context.user_data.get("_private_start_prompt_at", 0) < 120:
+        previous_prompt = context.user_data.get("_private_start_prompt_at")
+        if previous_prompt is not None and now - previous_prompt < 120:
             return None
         payload = _private_start_payload(command)
         username = str(getattr(context.bot, "username", None) or "SensGPT_TitaniAbusiviBot").lstrip("@")
