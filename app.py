@@ -5114,13 +5114,15 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         _memory_context = await asyncio.to_thread(load_user_conversation_memory, message.from_user.id if message.from_user else None)
         if _memory_context:
-            instructions += ("\n\nMEMORIA CONVERSAZIONALE PRIVATA DELL'UTENTE:\n"+_memory_context+"\n\nUsa questa memoria solo per continuità, tono e rapporto personale. Non citarla come database e non inventare ricordi mancanti. Dai sempre priorità al messaggio corrente.\n")
+            instructions += ("\n\nMEMORIA CONVERSAZIONALE PRIVATA DELL'UTENTE:\n"+_memory_context+"\n\nUsa questa memoria solo quando è direttamente pertinente al messaggio corrente. Non riprendere spontaneamente vecchi argomenti, skin, acquisti o fatti personali per rispondere a battute brevi. Non dedurre inattività o altre condizioni amministrative dai ricordi: quelle richiedono dati verificati. Non citarla come database e non inventare ricordi mancanti. Rispondi al messaggio corrente e al messaggio a cui l'utente replica, senza cambiare argomento.\n")
 
         # Keep a final hard ceiling even if a future Tavily response contains
         # unexpectedly large fields. The normal context builder stays well
         # below this value; this is only a last-resort safety net.
         if len(instructions) > 235000:
             instructions = compact_source_text(instructions, 235000)
+        if _is_group_chat:
+            logger.info("GROUP AI REQUEST: chat=%s user=%s trigger=%s", message.chat.id, message.from_user.id if message.from_user else None, "mention" if _explicit_bot_mention else "reply_to_bot")
         print(
             "GEMINI INPUT CARATTERI:",
             len(instructions),
