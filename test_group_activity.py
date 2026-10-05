@@ -100,3 +100,33 @@ class GroupActivityTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(app.community.track_activity(message))
             self.assertIsNone(member['last_warning_at'])
             self.assertEqual(app.community.inactivity_rows(-100123), [])
+
+
+class PresenceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_only_notice_owner_can_confirm(self):
+        from types import SimpleNamespace
+        query = SimpleNamespace(from_user=User(42, "Andre", False), data="presence:-1001:99", answer=AsyncMock())
+        context = SimpleNamespace(bot=SimpleNamespace(get_chat_member=AsyncMock()))
+        with patch.object(app.community, "track_activity") as track:
+            await app.confirm_group_presence(SimpleNamespace(callback_query=query), context)
+        track.assert_not_called()
+        context.bot.get_chat_member.assert_not_awaited()
+
+    async def test_success_records_original_group_not_private_chat(self):
+        from types import SimpleNamespace
+        query = SimpleNamespace(from_user=User(42, "Andre", False), data="presence:-1001:42", answer=AsyncMock())
+        context = SimpleNamespace(bot=SimpleNamespace(get_chat_member=AsyncMock(return_value=SimpleNamespace(status="member"))))
+        with patch.object(app.community, "track_activity", return_value=True) as track, patch.object(app, "census_telegram_member"):
+            await app.confirm_group_presence(SimpleNamespace(callback_query=query), context)
+        self.assertEqual(track.call_args.args[0].chat_id, -1001)
+        self.assertEqual(track.call_args.args[0].from_user.id, 42)
+        self.assertIn("azzerato", query.answer.call_args.args[0])
+
+    async def test_failed_save_does_not_confirm(self):
+        from types import SimpleNamespace
+        query = SimpleNamespace(from_user=User(42, "Andre", False), data="presence:-1001:42", answer=AsyncMock())
+        context = SimpleNamespace(bot=SimpleNamespace(get_chat_member=AsyncMock(return_value=SimpleNamespace(status="member"))))
+        with patch.object(app.community, "track_activity", return_value=False), patch.object(app, "census_telegram_member") as census:
+            await app.confirm_group_presence(SimpleNamespace(callback_query=query), context)
+        census.assert_not_called()
+        self.assertIn("non riuscito", query.answer.call_args.args[0])
