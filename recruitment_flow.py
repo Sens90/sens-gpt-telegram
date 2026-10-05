@@ -9,6 +9,18 @@ from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
 CLUBS = ('TITANI ABUSIVI', 'TAMARRI ABUSIVI', 'TORNADI ABUSIVI', 'TALENTI ABUSIVI')
 CODE = re.compile(r'CAND-([1-9][0-9]*)', re.I)
 
+def profile_stats(profile):
+    fields = [('trophies', 'Trofei'), ('brawlers', 'Brawler'), ('level', 'Livello esperienza'),
+              ('victories_3v3', 'Vittorie 3 contro 3'), ('wins_solo', 'Vittorie solitario'),
+              ('wins_duo', 'Vittorie duo'), ('ranked_current', 'Ranked attuale'),
+              ('ranked_current_elo', 'Punti ranked'), ('ranked_season_peak', 'Ranked massimo stagionale'),
+              ('ranked_career_peak', 'Ranked massimo carriera'), ('prestige', 'Prestigio'), ('fame', 'Fama'),
+              ('gadgets_owned', 'Gadget'), ('star_powers_owned', 'Abilità stellari'),
+              ('gears_owned', 'Equipaggiamenti'), ('hypercharges_owned', 'Hypercariche'),
+              ('buffies_owned', 'Buffies'), ('skins_owned', 'Skin'),
+              ('account_created_year', 'Anno creazione account'), ('estimated_hours', 'Ore stimate')]
+    return '\n'.join(f'{label}: {profile.get(key) if profile.get(key) is not None else "Non disponibile"}' for key, label in fields)
+
 class RecruitmentFlow:
     def __init__(self, community):
         self.community = community
@@ -24,14 +36,38 @@ class RecruitmentFlow:
         raise ValueError('Recruitment community destination must be configured')
 
     async def begin(self, message, context):
+        if await self.registered_guard(message, context):
+            return
         context.user_data['candidate_stage'] = 'tag'
         context.user_data.pop('candidate_player', None)
         await message.reply_text('Benvenuto nel reclutamento dei club Abusivi!\nInviami il tuo tag Brawl Stars completo, per esempio #2LVRCLV8LV.\nIl bot leggerà il profilo e assocerà la candidatura al tuo ID Telegram. Scrivi annulla per interrompere.', reply_markup=ReplyKeyboardRemove())
+
+    async def registered_guard(self, message, context):
+        try:
+            rows = await asyncio.to_thread(self.community._get, 'community_members', {
+                'select': 'player_tag', 'telegram_user_id': f'eq.{message.from_user.id}',
+                'player_tag': 'not.is.null', 'limit': 1,
+            })
+        except Exception:
+            await message.reply_text('Non riesco a verificare la tua registrazione. Riprova tra poco.')
+            return True
+        if not rows:
+            return False
+        context.user_data.pop('candidate_stage', None)
+        context.user_data.pop('candidate_player', None)
+        await message.reply_text('Il tuo ID Telegram è già registrato. Non puoi avviare una nuova candidatura o cambiare il tag da questo percorso. Per correggere il collegamento contatta lo staff.', reply_markup=ReplyKeyboardRemove())
+        return True
 
     async def handle(self, message, context):
         if not message.from_user:
             return False
         text = (message.text or '').strip()
+        username = getattr(context.bot, 'username', None)
+        if username:
+            text = re.sub(r'@' + re.escape(username) + r'\b', '', text, flags=re.I).strip()
+        if text.casefold() == 'id gruppo' and getattr(message.chat, 'type', None) != 'private':
+            await message.reply_text(f'ID gruppo: {message.chat_id}')
+            return True
         if await self.staff_command(message, context, text):
             return True
         private = getattr(message.chat, 'type', None) == 'private'
@@ -52,6 +88,8 @@ class RecruitmentFlow:
             context.user_data.pop('candidate_player', None)
             await message.reply_text('Candidatura interrotta.', reply_markup=ReplyKeyboardRemove())
             return True
+        if await self.registered_guard(message, context):
+            return True
         if stage == 'tag':
             if not re.fullmatch(r'#?[0289PYLQGRJCUV]{3,15}', text, re.I):
                 await message.reply_text('Tag non valido. Copialo dal tuo profilo Brawl Stars e riprova.')
@@ -69,9 +107,11 @@ class RecruitmentFlow:
             if isinstance(club, dict):
                 club = club.get('name')
             summary = {'tag': tag, 'name': player.get('name'), 'trophies': player.get('trophies'), 'club': club, 'brawlers': player.get('brawlers'), 'ranked_current': player.get('ranked_current'), 'victories_3v3': player.get('3vs3Victories', player.get('wins_3v3', player.get('victories_3v3')))}
+            for key in ('level', 'wins_solo', 'wins_duo', 'ranked_current_elo', 'ranked_season_peak', 'ranked_season_peak_elo', 'ranked_career_peak', 'ranked_career_peak_elo', 'prestige', 'fame', 'fame_tier', 'gadgets_owned', 'star_powers_owned', 'gears_owned', 'hypercharges_owned', 'buffies_owned', 'skins_owned', 'account_created_year', 'estimated_hours', 'power_levels', 'prestige_levels', 'brawler_trophies'):
+                summary[key] = player.get(key)
             context.user_data['candidate_player'] = summary
             context.user_data['candidate_stage'] = 'club'
-            await message.reply_text(f"Profilo trovato: {summary['name']}\nTag: #{tag}\nTrofei: {summary['trophies']}\nClub attuale: {club or 'Non disponibile'}\n\nScegli il club per cui vuoi candidarti:", reply_markup=ReplyKeyboardMarkup([[c] for c in CLUBS], one_time_keyboard=True, resize_keyboard=True))
+            await message.reply_text(f"Profilo trovato: {summary['name']}\nTag: #{tag}\n{profile_stats(summary)}\nClub attuale: {club or 'Non disponibile'}\n\nScegli il club per cui vuoi candidarti:", reply_markup=ReplyKeyboardMarkup([[c] for c in CLUBS], one_time_keyboard=True, resize_keyboard=True))
             return True
         if stage == 'club':
             club = text.upper()
@@ -106,12 +146,18 @@ class RecruitmentFlow:
                     return True
                 context.user_data.pop('candidate_stage', None)
                 context.user_data.pop('candidate_player', None)
-                await message.reply_text(f"{label}\nCodice: CAND-{row['id']}\nLo staff verificherà che il profilo ti appartenga e valuterà l'ammissione. Riceverai qui gli aggiornamenti.", reply_markup=ReplyKeyboardRemove())
+                await message.reply_text(f"{label}\nCodice: CAND {row['id']}\nLo staff verificherà che il profilo ti appartenga e valuterà l'ammissione. Riceverai qui gli aggiornamenti.", reply_markup=ReplyKeyboardRemove())
+                staff_chat = os.getenv('RECRUITMENT_STAFF_CHAT_ID', '').strip()
+                if not pending and staff_chat:
+                    try:
+                        await context.bot.send_message(chat_id=int(staff_chat), text=f"NUOVA CANDIDATURA — CAND {row['id']}\n{player.get('name')} | #{player['tag']}\nClub richiesto: {club}\nID Telegram: {message.from_user.id}\n{profile_stats(player)}\n\nDopo la verifica: approva cand {row['id']} verificato\nPer rifiutare: rifiuta cand {row['id']}")
+                    except Exception as exc:
+                        print('RECRUITMENT STAFF NOTIFICATION FAILED:', type(exc).__name__, flush=True)
             return True
         return False
 
     async def staff_command(self, message, context, text):
-        command = re.fullmatch(r'(approva|rifiuta)\s+(CAND-[1-9][0-9]*)(?:\s+(verificato))?', text, re.I)
+        command = re.fullmatch(r'(approva|rifiuta|annulla)\s+CAND[\s-]*([1-9][0-9]*)(?:\s+(verificato))?', text, re.I)
         if text.casefold() != 'candidature' and not command:
             return False
         try:
@@ -132,19 +178,24 @@ class RecruitmentFlow:
                     detail = {}
                 profile = detail.get('profile', {}) if isinstance(detail, dict) else {}
                 club = detail.get('requested_club', 'Non indicato') if isinstance(detail, dict) else 'Non indicato'
-                lines.append(f"CAND-{row['id']} | {profile.get('name') or row.get('display_name')} | #{row['player_tag']} | {club} | Trofei: {profile.get('trophies', 'n/d')} | ID Telegram: {row['telegram_user_id']}")
-            lines.append("Prima di approvare verifica che il candidato possieda il profilo. Poi: approva CAND-numero verificato. Per rifiutare: rifiuta CAND-numero.")
+                lines.append(f"CAND {row['id']} | {profile.get('name') or row.get('display_name')} | #{row['player_tag']} | {club} | Trofei: {profile.get('trophies', 'n/d')} | ID Telegram: {row['telegram_user_id']}")
+                lines[-1] += '\n' + profile_stats(profile)
+            lines.append("Prima di approvare verifica che il candidato possieda il profilo. Poi: approva cand numero verificato. Per rifiutare: rifiuta cand numero.")
             # Candidate details are delivered privately to the verified administrator.
             try:
-                await context.bot.send_message(chat_id=message.from_user.id, text='\n\n'.join(lines))
+                for line in lines:
+                    await context.bot.send_message(chat_id=message.from_user.id, text=line)
             except Exception:
                 await message.reply_text('Apri prima il bot in privato, poi ripeti candidature.')
             return True
         action, code, ownership = command.groups()
+        if action.casefold() == 'annulla':
+            action = 'rifiuta'
         if action.casefold() == 'approva' and not ownership:
-            await message.reply_text('Dopo aver verificato il possesso del profilo usa: approva CAND-numero verificato.')
+            await message.reply_text('Dopo aver verificato il possesso del profilo usa: approva cand numero verificato.')
             return True
-        candidate_id = int(CODE.fullmatch(code).group(1))
+        candidate_id = int(code)
+        code = f'CAND-{candidate_id}'
         rows = await asyncio.to_thread(self.community._get, 'community_recruitments', {'select': '*', 'id': f'eq.{candidate_id}', 'chat_id': f'eq.{destination}', 'limit': 1})
         if not rows:
             await message.reply_text('Codice candidatura non trovato.')

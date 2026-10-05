@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace as S
 from unittest.mock import Mock, AsyncMock
-from recruitment_flow import RecruitmentFlow, CLUBS
+from recruitment_flow import RecruitmentFlow, CLUBS, profile_stats
 
 class RecruitmentTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
@@ -31,8 +31,15 @@ class RecruitmentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload['player_tag'],'2LVRCLV8LV')
         self.assertIn('TORNADI ABUSIVI',payload['notes'])
         self.assertIn('42',payload['notes'])
-        self.assertIn('CAND-17',self.message.reply_text.call_args.args[0])
+        self.assertIn('CAND 17',self.message.reply_text.call_args.args[0])
         self.assertNotIn('candidate_stage',self.context.user_data)
+
+    def test_stats_include_wins_and_missing_values_without_inventing(self):
+        result = profile_stats({'victories_3v3':42,'wins_solo':0,'ranked_career_peak':'Masters'})
+        self.assertIn('Vittorie 3 contro 3: 42',result)
+        self.assertIn('Vittorie solitario: 0',result)
+        self.assertIn('Ranked massimo carriera: Masters',result)
+        self.assertIn('Skin: Non disponibile',result)
 
     async def test_storage_failure_keeps_retry_and_no_false_confirmation(self):
         self.community._post.return_value = []
@@ -41,10 +48,38 @@ class RecruitmentTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('CAND-',self.message.reply_text.call_args.args[0])
 
     async def test_duplicate_reuses_code_without_insert(self):
-        self.community._get.return_value = [{'id':12}]
+        self.community._get.side_effect = lambda table, params: [] if table == 'community_members' else [{'id':12}]
         await self.submit()
         self.community._post.assert_not_called()
-        self.assertIn('CAND-12',self.message.reply_text.call_args.args[0])
+        self.assertIn('CAND 12',self.message.reply_text.call_args.args[0])
+
+    async def test_registered_id_cannot_start_or_continue(self):
+        self.community._get.return_value = [{'player_tag':'PYLQGR'}]
+        await self.flow.begin(self.message,self.context)
+        self.assertNotIn('candidate_stage',self.context.user_data)
+        self.context.user_data.update(candidate_stage='club',candidate_player={'tag':'2LVRCLV8LV'})
+        self.message.text = CLUBS[0]
+        await self.flow.handle(self.message,self.context)
+        self.community._post.assert_not_called()
+        self.assertNotIn('candidate_stage',self.context.user_data)
+
+    async def test_registration_lookup_failure_blocks_start(self):
+        self.community._get.side_effect = RuntimeError('unavailable')
+        await self.flow.begin(self.message,self.context)
+        self.assertNotIn('candidate_stage',self.context.user_data)
+
+    async def test_group_id_with_bot_mention(self):
+        self.message.chat.type = 'supergroup'
+        self.message.chat_id = -100456
+        self.message.text = '@SensGPT_TitaniAbusiviBot id gruppo'
+        self.assertTrue(await self.flow.handle(self.message,self.context))
+        self.message.reply_text.assert_awaited_once_with('ID gruppo: -100456')
+
+    async def test_commands_without_hyphen_are_not_sent_to_ai(self):
+        for text in ('rifiuta cand 1', 'annulla cand 1', 'approva cand 1 verificato'):
+            self.message.text = text
+            self.assertTrue(await self.flow.handle(self.message,self.context))
+        self.community._patch.assert_not_called()
 
     async def test_invalid_or_wrong_tag_does_not_advance(self):
         await self.flow.begin(self.message,self.context)
