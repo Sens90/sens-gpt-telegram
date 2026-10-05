@@ -29,8 +29,9 @@ from telegram.ext._utils.webhookhandler import WebhookAppClass
 from google import genai
 from telegram import Update
 from telegram.error import TelegramError, TimedOut, NetworkError, RetryAfter, BadRequest, Forbidden
-from telegram.ext import Application, MessageHandler, CommandHandler, ContextTypes, CallbackQueryHandler, filters
+from telegram.ext import Application, MessageHandler, CommandHandler, ContextTypes, CallbackQueryHandler, ChatJoinRequestHandler, filters
 from community_features import CommunityFeatures
+from recruitment_flow import RecruitmentFlow
 from profile_card_generator import build_profile_card
 from ai_profile_experience import build_visual_prompt, choose_scene
 from ai_profile_generator import generate_scene, overlay_stats, quota_status, consume_quota
@@ -3193,6 +3194,7 @@ community = CommunityFeatures(
     save_trophy_snapshot,
 )
 community.roster_refresher = refresh_rosters_for_rankings
+recruitment = RecruitmentFlow(community)
 
 
 def resolve_player_battle_log(tag, params):
@@ -3616,6 +3618,9 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message or not message.text:
         return
 
+    if await recruitment.handle(message, context):
+        return
+
     # First-line production trace for every text update accepted by MessageHandler.
     # Keep it free of user IDs and other private metadata.
     print(
@@ -4030,7 +4035,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not registered_user:
             await message.reply_text(
                 "La chat privata di Sens GPT è riservata ai membri registrati della community. "
-                "Registrati prima nel gruppo TITANI ABUSIVI collegando il tuo tag Brawl Stars."
+                "Per candidarti scrivi reclutamento. Se sei già membro, registrati nel gruppo collegando il tuo tag Brawl Stars."
             )
             return
 
@@ -5696,6 +5701,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.from_user:
         return
+    payload = (context.args[0] if getattr(context, "args", None) else "").strip().casefold()
+    if payload == "reclutamento" and getattr(message.chat, "type", None) == "private":
+        await recruitment.begin(message, context)
+        return
     message = await _private_group_command(message, context, "/start")
     if message is None:
         return
@@ -5705,7 +5714,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not registered_user:
             await message.reply_text(
                 "La chat privata di Sens GPT è riservata ai membri registrati della community. "
-                "Registrati prima nel gruppo TITANI ABUSIVI collegando il tuo tag Brawl Stars."
+                "Per candidarti scrivi reclutamento. Se sei già membro, registrati nel gruppo collegando il tuo tag Brawl Stars."
             )
             return
         raw_payload = (context.args[0] if getattr(context, "args", None) else "").strip()
@@ -6190,6 +6199,7 @@ def main():
 
     install_group_activity_handler(application)
     application.add_handler(CallbackQueryHandler(confirm_group_presence, pattern=r"^presence:"))
+    application.add_handler(ChatJoinRequestHandler(recruitment.join_request))
     application.add_handler(
         CommandHandler("start", start_command)
     )
