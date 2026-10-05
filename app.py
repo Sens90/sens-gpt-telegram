@@ -3554,6 +3554,33 @@ async def _private_group_command(message, context, command):
     return routed
 
 
+async def observe_group_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Count member messages before silent chat or command handlers can return."""
+    message = update.effective_message
+    user = getattr(message, "from_user", None)
+    if (not message or not user or getattr(user, "is_bot", False)
+            or getattr(message, "sender_chat", None)
+            or getattr(message.chat, "type", None) not in {"group", "supergroup"}):
+        return
+    try:
+        saved = await asyncio.to_thread(community.track_activity, message)
+        if saved:
+            print("GROUP ACTIVITY SAVED: chat=%s user=%s message=%s" % (
+                message.chat_id, user.id, message.message_id), flush=True)
+    except Exception as exc:
+        print("GROUP ACTIVITY ERROR:", type(exc).__name__, flush=True)
+    await asyncio.to_thread(census_telegram_member, message)
+
+
+def install_group_activity_handler(application):
+    # A separate, blocking handler group also observes commands and media;
+    # it never replies and never treats joins/pins or private use as activity.
+    application.add_handler(MessageHandler(
+        filters.ChatType.GROUPS & filters.UpdateType.MESSAGE & ~filters.StatusUpdate.ALL,
+        observe_group_activity,
+    ), group=-1)
+
+
 async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.text:
@@ -3952,8 +3979,6 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # the persistent /voce preference instead of forcing text.
         context.user_data.pop("_request_voice_mode", None)
 
-    community.track_activity(message)
-    await asyncio.to_thread(census_telegram_member, message)
     # Admin mentions are useful for immediately seeding the census with existing members.
     try:
         _cm = await context.bot.get_chat_member(message.chat_id, message.from_user.id) if getattr(message.chat, "type", None) in {"group", "supergroup"} else None
@@ -6131,6 +6156,7 @@ def main():
                 flush=True,
             )
 
+    install_group_activity_handler(application)
     application.add_handler(
         CommandHandler("start", start_command)
     )
