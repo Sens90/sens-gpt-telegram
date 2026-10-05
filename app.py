@@ -6200,6 +6200,7 @@ def main():
     install_group_activity_handler(application)
     application.add_handler(CallbackQueryHandler(confirm_group_presence, pattern=r"^presence:"))
     application.add_handler(ChatJoinRequestHandler(recruitment.join_request))
+    application.add_handler(CommandHandler("idgruppo", recruitment.group_id_command))
     application.add_handler(
         CommandHandler("start", start_command)
     )

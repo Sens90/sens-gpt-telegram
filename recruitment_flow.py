@@ -26,6 +26,11 @@ class RecruitmentFlow:
         self.community = community
         self.locks = {}
 
+    async def group_id_command(self, update, context):
+        message = update.effective_message
+        if message:
+            await message.reply_text(f'ID gruppo: {message.chat_id}')
+
     def destination(self):
         configured = os.getenv('RECRUITMENT_COMMUNITY_CHAT_ID', '').strip()
         if configured:
