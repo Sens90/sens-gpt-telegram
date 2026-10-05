@@ -1679,9 +1679,11 @@ class CommunityFeatures:
 
     def track_activity(self, message):
         if not self.ready or not message or not message.from_user:
-            return
+            return False
         if getattr(message.chat, "type", None) not in ("group", "supergroup"):
-            return
+            return False
+        if getattr(message.from_user, "is_bot", False) or getattr(message, "sender_chat", None):
+            return False
         user = message.from_user
         payload = {
             "chat_id": int(message.chat_id),
@@ -1689,6 +1691,7 @@ class CommunityFeatures:
             "telegram_username": user.username,
             "display_name": user.full_name,
             "last_seen_at": self._now_iso(),
+            "last_warning_at": None,
             "is_active": True,
         }
         try:
@@ -1706,6 +1709,8 @@ class CommunityFeatures:
             )
         except Exception as exc:
             print("ERRORE TRACK ATTIVITA:", repr(exc), flush=True)
+            return False
+        return True
 
     def members(self, chat_id, active_only=True):
         params = {
