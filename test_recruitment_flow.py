@@ -2,7 +2,7 @@ import ast
 import unittest
 from pathlib import Path
 from types import SimpleNamespace as S
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import Mock, AsyncMock, patch
 from recruitment_flow import RecruitmentFlow, CLUBS, profile_stats
 
 class RecruitmentTests(unittest.IsolatedAsyncioTestCase):
@@ -80,6 +80,18 @@ class RecruitmentTests(unittest.IsolatedAsyncioTestCase):
             self.message.text = text
             self.assertTrue(await self.flow.handle(self.message,self.context))
         self.community._patch.assert_not_called()
+
+    async def test_list_stays_in_direction_and_private_elsewhere(self):
+        self.community.is_admin.return_value = True
+        self.message.chat.type = 'supergroup'
+        self.message.chat_id = -100456
+        with patch.dict('os.environ', {'RECRUITMENT_STAFF_CHAT_ID':'-100456'}):
+            await self.flow.candidates_command(S(effective_message=self.message),self.context)
+            self.assertTrue(all(c.kwargs['chat_id']==-100456 for c in self.context.bot.send_message.await_args_list))
+            self.context.bot.send_message.reset_mock()
+            self.message.chat_id = -100789
+            await self.flow.candidates_command(S(effective_message=self.message),self.context)
+            self.assertTrue(all(c.kwargs['chat_id']==42 for c in self.context.bot.send_message.await_args_list))
 
     async def test_invalid_or_wrong_tag_does_not_advance(self):
         await self.flow.begin(self.message,self.context)

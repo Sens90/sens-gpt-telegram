@@ -31,6 +31,10 @@ class RecruitmentFlow:
         if message:
             await message.reply_text(f'ID gruppo: {message.chat_id}')
 
+    async def candidates_command(self, update, context):
+        if update.effective_message:
+            await self.staff_command(update.effective_message, context, 'candidature')
+
     def destination(self):
         configured = os.getenv('RECRUITMENT_COMMUNITY_CHAT_ID', '').strip()
         if configured:
@@ -176,6 +180,8 @@ class RecruitmentFlow:
         if not command:
             rows = await asyncio.to_thread(self.community._get, 'community_recruitments', {'select': '*', 'chat_id': f'eq.{destination}', 'status': 'in.(pending,approved_delivery_pending)', 'order': 'created_at.desc', 'limit': 20})
             lines = ['CANDIDATURE IN ATTESA']
+            if not rows:
+                lines.append('Nessuna candidatura in attesa.')
             for row in rows:
                 try:
                     detail = json.loads(row.get('notes') or '{}')
@@ -186,12 +192,15 @@ class RecruitmentFlow:
                 lines.append(f"CAND {row['id']} | {profile.get('name') or row.get('display_name')} | #{row['player_tag']} | {club} | Trofei: {profile.get('trophies', 'n/d')} | ID Telegram: {row['telegram_user_id']}")
                 lines[-1] += '\n' + profile_stats(profile)
             lines.append("Prima di approvare verifica che il candidato possieda il profilo. Poi: approva cand numero verificato. Per rifiutare: rifiuta cand numero.")
-            # Candidate details are delivered privately to the verified administrator.
+            # Only the configured staff group can receive candidate details in-group.
+            staff_chat = os.getenv('RECRUITMENT_STAFF_CHAT_ID', '').strip()
+            in_direction = bool(staff_chat and str(message.chat_id) == staff_chat and getattr(message.chat, 'type', None) in ('group', 'supergroup'))
+            reply_chat = message.chat_id if in_direction else message.from_user.id
             try:
                 for line in lines:
-                    await context.bot.send_message(chat_id=message.from_user.id, text=line)
+                    await context.bot.send_message(chat_id=reply_chat, text=line)
             except Exception:
-                await message.reply_text('Apri prima il bot in privato, poi ripeti candidature.')
+                await message.reply_text('Non riesco a consegnare l’elenco. Controlla i permessi del bot in Direzione oppure apri il bot in privato e ripeti candidature.')
             return True
         action, code, ownership = command.groups()
         if action.casefold() == 'annulla':
