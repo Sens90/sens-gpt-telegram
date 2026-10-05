@@ -28,7 +28,7 @@ from telegram.ext._utils.webhookhandler import WebhookAppClass
 from google import genai
 from telegram import Update
 from telegram.error import TelegramError, TimedOut, NetworkError, RetryAfter, BadRequest, Forbidden
-from telegram.ext import Application, MessageHandler, CommandHandler, ContextTypes, filters
+from telegram.ext import Application, MessageHandler, CommandHandler, ContextTypes, CallbackQueryHandler, filters
 from community_features import CommunityFeatures
 from profile_card_generator import build_profile_card
 from ai_profile_experience import build_visual_prompt, choose_scene
@@ -3572,6 +3572,35 @@ async def observe_group_activity(update: Update, context: ContextTypes.DEFAULT_T
     await asyncio.to_thread(census_telegram_member, message)
 
 
+
+async def confirm_group_presence(update, context):
+    query = update.callback_query
+    if not query or not query.from_user:
+        return
+    match = re.fullmatch(r"presence:(-\d+):(\d+)", query.data or "")
+    if not match or int(match.group(2)) != query.from_user.id:
+        await query.answer("Questo pulsante è riservato al destinatario dell'avviso.", show_alert=True)
+        return
+    chat_id = int(match.group(1))
+    try:
+        member = await context.bot.get_chat_member(chat_id, query.from_user.id)
+        if member.status in {"left", "kicked"} or (member.status == "restricted" and not member.is_member):
+            await query.answer("Non risulti membro del gruppo.", show_alert=True)
+            return
+        from types import SimpleNamespace
+        observed = SimpleNamespace(chat_id=chat_id, chat=SimpleNamespace(type="supergroup"),
+                                   from_user=query.from_user, sender_chat=None)
+        saved = await asyncio.to_thread(community.track_activity, observed)
+        if not saved:
+            await query.answer("Salvataggio non riuscito. Riprova.", show_alert=True)
+            return
+        await asyncio.to_thread(census_telegram_member, observed)
+        logger.info("GROUP PRESENCE CONFIRMED: chat=%s user=%s", chat_id, query.from_user.id)
+        await query.answer("Presenza confermata: contatore azzerato.", show_alert=True)
+    except Exception as exc:
+        logger.warning("GROUP PRESENCE ERROR: %s", type(exc).__name__)
+        await query.answer("Non riesco a verificare la presenza. Riprova.", show_alert=True)
+
 def install_group_activity_handler(application):
     # A separate, blocking handler group also observes commands and media;
     # it never replies and never treats joins/pins or private use as activity.
@@ -6159,6 +6188,7 @@ def main():
             )
 
     install_group_activity_handler(application)
+    application.add_handler(CallbackQueryHandler(confirm_group_presence, pattern=r"^presence:"))
     application.add_handler(
         CommandHandler("start", start_command)
     )

@@ -7447,26 +7447,31 @@ class CommunityFeatures:
                 for member, days, risk in inactive:
                     last_warning = self._parse_dt(member.get("last_warning_at"))
                     if days >= warn_days and (not last_warning or now_utc - last_warning >= timedelta(hours=24)):
+                        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
                         from telegram.helpers import mention_html
                         from telegram.error import TelegramError
                         user_id = int(member["telegram_user_id"])
                         name = member.get("display_name") or member.get("telegram_username") or "Membro"
                         mention = mention_html(user_id, str(name))
+                        presence_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sono presente", callback_data=f"presence:{chat_id}:{user_id}")]])
                         await context.bot.send_message(
                             chat_id=chat_id,
-                            text=(f"⚠️ Avviso inattività: {mention}, il bot non rileva attività nel gruppo "
-                                  f"da {days} giorni. Soglia kick: {kick_days} giorni."),
+                            text=(f"⚠️ {mention}, non rileviamo tue interazioni nel gruppo "
+                                  f"da {days} giorni. Soglia kick: {kick_days} giorni. "
+                                  "Il bot non può sapere se leggi i messaggi. Tocca ✅ Sono presente per confermare la presenza."),
                             parse_mode="HTML",
+                            reply_markup=presence_keyboard,
                         )
                         try:
                             await context.bot.send_message(
                                 chat_id=user_id,
-                                text=(f"⚠️ Ciao {name}, abbiamo notato che il bot non rileva tuoi messaggi "
+                                text=(f"⚠️ Ciao {name}, non rileviamo tue interazioni "
                                       f"nel gruppo da {days} giorni. La soglia di inattività è {kick_days} giorni: "
                                       "superandola potresti essere rimosso dal gruppo. "
-                                      "Scrivi nel gruppo per aggiornare la tua attività; se sei assente, "
+                                      "Tocca ✅ Sono presente oppure scrivi nel gruppo per aggiornare la tua attività; se sei assente, "
                                       "puoi segnalare l'assenza con il comando 'assenza N'. "
-                                      "Il bot misura i messaggi che vede nel gruppo, non i tuoi accessi a Telegram."),
+                                      "Il bot non può sapere se leggi i messaggi né vedere i tuoi accessi a Telegram."),
+                                reply_markup=presence_keyboard,
                             )
                         except TelegramError as exc:
                             LOG.info("INACTIVITY PRIVATE NOTICE UNAVAILABLE: chat=%s user=%s error=%s",
