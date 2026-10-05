@@ -74,6 +74,9 @@ class RecruitmentFlow:
         username = getattr(context.bot, 'username', None)
         if username:
             text = re.sub(r'@' + re.escape(username) + r'\b', '', text, flags=re.I).strip()
+        staff_chat = os.getenv('RECRUITMENT_STAFF_CHAT_ID', '').strip()
+        if text.casefold() == 'candidati' and staff_chat and str(message.chat_id) == staff_chat:
+            text = 'candidature'
         if text.casefold() == 'id gruppo' and getattr(message.chat, 'type', None) != 'private':
             await message.reply_text(f'ID gruppo: {message.chat_id}')
             return True

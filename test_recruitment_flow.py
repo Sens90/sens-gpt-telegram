@@ -93,6 +93,15 @@ class RecruitmentTests(unittest.IsolatedAsyncioTestCase):
             await self.flow.candidates_command(S(effective_message=self.message),self.context)
             self.assertTrue(all(c.kwargs['chat_id']==42 for c in self.context.bot.send_message.await_args_list))
 
+    async def test_plain_candidates_alias_in_direction(self):
+        self.community.is_admin.return_value = True
+        self.message.chat.type = 'supergroup'
+        self.message.chat_id = -100456
+        self.message.text = 'candidati'
+        with patch.dict('os.environ', {'RECRUITMENT_STAFF_CHAT_ID':'-100456'}):
+            self.assertTrue(await self.flow.handle(self.message,self.context))
+        self.assertTrue(all(c.kwargs['chat_id']==-100456 for c in self.context.bot.send_message.await_args_list))
+
     async def test_invalid_or_wrong_tag_does_not_advance(self):
         await self.flow.begin(self.message,self.context)
         self.message.text = 'garbage #2LVRCLV8LV'
