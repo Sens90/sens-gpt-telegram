@@ -3595,10 +3595,10 @@ async def confirm_group_presence(update, context):
             await query.answer("Salvataggio non riuscito. Riprova.", show_alert=True)
             return
         await asyncio.to_thread(census_telegram_member, observed)
-        logger.info("GROUP PRESENCE CONFIRMED: chat=%s user=%s", chat_id, query.from_user.id)
+        logging.getLogger(__name__).info("GROUP PRESENCE CONFIRMED: chat=%s user=%s", chat_id, query.from_user.id)
         await query.answer("Presenza confermata: contatore azzerato.", show_alert=True)
     except Exception as exc:
-        logger.warning("GROUP PRESENCE ERROR: %s", type(exc).__name__)
+        logging.getLogger(__name__).warning("GROUP PRESENCE ERROR: %s", type(exc).__name__)
         await query.answer("Non riesco a verificare la presenza. Riprova.", show_alert=True)
 
 def install_group_activity_handler(application):
@@ -5151,7 +5151,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(instructions) > 235000:
             instructions = compact_source_text(instructions, 235000)
         if _is_group_chat:
-            logger.info("GROUP AI REQUEST: chat=%s user=%s trigger=%s", message.chat.id, message.from_user.id if message.from_user else None, "mention" if _explicit_bot_mention else "reply_to_bot")
+            logging.getLogger(__name__).info("GROUP AI REQUEST: chat=%s user=%s trigger=%s", message.chat.id, message.from_user.id if message.from_user else None, "mention" if _explicit_bot_mention else "reply_to_bot")
         print(
             "GEMINI INPUT CARATTERI:",
             len(instructions),
