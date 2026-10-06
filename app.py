@@ -5823,6 +5823,8 @@ async def _send_auto_ranking_slot(context, slot, frozen_only=False):
     sent = 0
     for row in settings_rows or []:
         chat_id = int(row["chat_id"])
+        if str(chat_id) == os.getenv("RECRUITMENT_STAFF_CHAT_ID", "").strip():
+            continue
         flight_key = (chat_id, key)
         if flight_key in _AUTO_RANKING_IN_FLIGHT:
             print("CLASSIFICA OGGI AUTO IN FLIGHT:", chat_id, key, flush=True)
@@ -6068,7 +6070,8 @@ async def automatic_today_ranking_catchup_job(context):
                 print("CLASSIFICA OGGI AUTO CATCHUP CHECK ERROR:", repr(exc), flush=True)
                 return
             if not any(
-                isinstance(row.get("auto_ranking_pending"), dict)
+                str(row.get("chat_id")) != os.getenv("RECRUITMENT_STAFF_CHAT_ID", "").strip()
+                and isinstance(row.get("auto_ranking_pending"), dict)
                 and row["auto_ranking_pending"].get("slot") == key
                 and row.get("last_auto_ranking_slot") != key
                 for row in rows or []
@@ -6091,7 +6094,8 @@ async def automatic_today_ranking_catchup_job(context):
     except Exception as exc:
         print("CLASSIFICA OGGI AUTO CATCHUP CHECK ERROR:", repr(exc), flush=True)
         return
-    if not any(row.get("last_auto_ranking_slot") != key for row in (rows or [])):
+    if not any(str(row.get("chat_id")) != os.getenv("RECRUITMENT_STAFF_CHAT_ID", "").strip()
+               and row.get("last_auto_ranking_slot") != key for row in (rows or [])):
         return
     print("CLASSIFICA OGGI AUTO CATCHUP: slot=%s local=%s" % (
         latest.strftime("%Y-%m-%d %H:%M"), now.strftime("%Y-%m-%d %H:%M:%S")
@@ -6200,6 +6204,7 @@ def main():
     install_group_activity_handler(application)
     application.add_handler(CallbackQueryHandler(confirm_group_presence, pattern=r"^presence:"))
     application.add_handler(ChatJoinRequestHandler(recruitment.join_request))
+    application.add_handler(CallbackQueryHandler(recruitment.decision_callback, pattern=r"^recruit:"))
     application.add_handler(CommandHandler("idgruppo", recruitment.group_id_command))
     application.add_handler(CommandHandler("candidature", recruitment.candidates_command))
     application.add_handler(

@@ -102,6 +102,39 @@ class RecruitmentTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(await self.flow.handle(self.message,self.context))
         self.assertTrue(all(c.kwargs['chat_id']==-100456 for c in self.context.bot.send_message.await_args_list))
 
+    async def test_buttons_deny_non_admin(self):
+        query = S(data='recruit:confirm_approve:17',message=self.message,from_user=self.message.from_user,
+                  answer=AsyncMock(),edit_message_reply_markup=AsyncMock())
+        await self.flow.decision_callback(S(callback_query=query),self.context)
+        query.answer.assert_awaited_once()
+        self.community._patch.assert_not_called()
+
+    async def test_direction_admin_is_authorized_without_community_admin(self):
+        self.community.is_admin.side_effect = lambda ctx, chat, user: chat == -100456
+        with patch.dict('os.environ', {'RECRUITMENT_STAFF_CHAT_ID':'-100456'}):
+            self.assertTrue(await self.flow.authorized_admin(self.context,-100123,77))
+
+    async def test_approve_button_requires_explicit_confirmation(self):
+        self.community.is_admin.return_value = True
+        query = S(data='recruit:approve:17',message=self.message,from_user=self.message.from_user,
+                  answer=AsyncMock(),edit_message_reply_markup=AsyncMock())
+        await self.flow.decision_callback(S(callback_query=query),self.context)
+        self.community._patch.assert_not_called()
+        markup = query.edit_message_reply_markup.call_args.kwargs['reply_markup']
+        self.assertEqual(markup.inline_keyboard[0][0].callback_data,'recruit:confirm_approve:17')
+
+    async def test_confirm_button_uses_clicking_admin_and_clears_finished_buttons(self):
+        self.community.is_admin.return_value = True
+        self.community._get.return_value = [{'status':'rejected'}]
+        self.flow.staff_command = AsyncMock()
+        query = S(data='recruit:confirm_reject:17',message=self.message,from_user=S(id=77),
+                  answer=AsyncMock(),edit_message_reply_markup=AsyncMock())
+        await self.flow.decision_callback(S(callback_query=query),self.context)
+        proxy,ctx,command = self.flow.staff_command.call_args.args
+        self.assertEqual(proxy.from_user.id,77)
+        self.assertEqual(command,'rifiuta cand 17')
+        query.edit_message_reply_markup.assert_awaited_once_with(reply_markup=None)
+
     async def test_invalid_or_wrong_tag_does_not_advance(self):
         await self.flow.begin(self.message,self.context)
         self.message.text = 'garbage #2LVRCLV8LV'

@@ -4,7 +4,8 @@ import json
 import os
 import re
 from datetime import datetime, timedelta, timezone
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
+from types import SimpleNamespace
 
 CLUBS = ('TITANI ABUSIVI', 'TAMARRI ABUSIVI', 'TORNADI ABUSIVI', 'TALENTI ABUSIVI')
 CODE = re.compile(r'CAND-([1-9][0-9]*)', re.I)
@@ -25,6 +26,58 @@ class RecruitmentFlow:
     def __init__(self, community):
         self.community = community
         self.locks = {}
+
+    @staticmethod
+    def decision_buttons(candidate_id):
+        return InlineKeyboardMarkup([[
+            InlineKeyboardButton('✅ Approva', callback_data=f'recruit:approve:{candidate_id}'),
+            InlineKeyboardButton('❌ Rifiuta', callback_data=f'recruit:reject:{candidate_id}'),
+        ]])
+
+    async def authorized_admin(self, context, destination, user_id):
+        if await self.community.is_admin(context, destination, user_id):
+            return True
+        staff_chat = os.getenv('RECRUITMENT_STAFF_CHAT_ID', '').strip()
+        return bool(staff_chat and await self.community.is_admin(context, int(staff_chat), user_id))
+
+    async def decision_callback(self, update, context):
+        query = update.callback_query
+        match = re.fullmatch(r'recruit:(approve|reject|confirm_approve|confirm_reject|back):([1-9][0-9]*)', query.data or '')
+        if not match or not query.message:
+            await query.answer()
+            return
+        action, candidate_id = match.groups()
+        try:
+            destination = await asyncio.to_thread(self.destination)
+            allowed = await self.authorized_admin(context, destination, query.from_user.id)
+        except Exception:
+            await query.answer('Verifica dei permessi non riuscita. Riprova.', show_alert=True)
+            return
+        if not allowed:
+            await query.answer('Riservato agli amministratori di Direzione o della Community.', show_alert=True)
+            return
+        await query.answer()
+        if action == 'back':
+            await query.edit_message_reply_markup(reply_markup=self.decision_buttons(candidate_id))
+            return
+        if action in ('approve', 'reject'):
+            label = '✅ Confermo: profilo verificato' if action == 'approve' else '❌ Confermo il rifiuto'
+            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(label, callback_data=f'recruit:confirm_{action}:{candidate_id}')],
+                [InlineKeyboardButton('Indietro', callback_data=f'recruit:back:{candidate_id}')],
+            ]))
+            return
+        proxy = SimpleNamespace(from_user=query.from_user, chat=query.message.chat,
+                                chat_id=query.message.chat_id, reply_text=query.message.reply_text)
+        command = f'approva cand {candidate_id} verificato' if action == 'confirm_approve' else f'rifiuta cand {candidate_id}'
+        await self.staff_command(proxy, context, command)
+        rows = await asyncio.to_thread(self.community._get, 'community_recruitments', {
+            'select':'status', 'id':f'eq.{candidate_id}', 'chat_id':f'eq.{destination}', 'limit':1,
+        })
+        if rows and rows[0]['status'] in ('approved', 'rejected', 'joined'):
+            await query.edit_message_reply_markup(reply_markup=None)
+        else:
+            await query.edit_message_reply_markup(reply_markup=self.decision_buttons(candidate_id))
 
     async def group_id_command(self, update, context):
         message = update.effective_message
@@ -162,7 +215,7 @@ class RecruitmentFlow:
                 staff_chat = os.getenv('RECRUITMENT_STAFF_CHAT_ID', '').strip()
                 if not pending and staff_chat:
                     try:
-                        await context.bot.send_message(chat_id=int(staff_chat), text=f"NUOVA CANDIDATURA — CAND {row['id']}\n{player.get('name')} | #{player['tag']}\nClub richiesto: {club}\nID Telegram: {message.from_user.id}\n{profile_stats(player)}\n\nDopo la verifica: approva cand {row['id']} verificato\nPer rifiutare: rifiuta cand {row['id']}")
+                        await context.bot.send_message(chat_id=int(staff_chat), text=f"NUOVA CANDIDATURA — CAND {row['id']}\n{player.get('name')} | #{player['tag']}\nClub richiesto: {club}\nID Telegram: {message.from_user.id}\n{profile_stats(player)}", reply_markup=self.decision_buttons(row['id']))
                     except Exception as exc:
                         print('RECRUITMENT STAFF NOTIFICATION FAILED:', type(exc).__name__, flush=True)
             return True
@@ -177,12 +230,13 @@ class RecruitmentFlow:
         except Exception:
             await message.reply_text('Destinazione reclutamento non configurata.')
             return True
-        if not await self.community.is_admin(context, destination, message.from_user.id):
-            await message.reply_text('Questo comando è riservato agli amministratori della Community.')
+        if not await self.authorized_admin(context, destination, message.from_user.id):
+            await message.reply_text('Questo comando è riservato agli amministratori di Direzione o della Community.')
             return True
         if not command:
             rows = await asyncio.to_thread(self.community._get, 'community_recruitments', {'select': '*', 'chat_id': f'eq.{destination}', 'status': 'in.(pending,approved_delivery_pending)', 'order': 'created_at.desc', 'limit': 20})
             lines = ['CANDIDATURE IN ATTESA']
+            keyboards = {}
             if not rows:
                 lines.append('Nessuna candidatura in attesa.')
             for row in rows:
@@ -194,14 +248,15 @@ class RecruitmentFlow:
                 club = detail.get('requested_club', 'Non indicato') if isinstance(detail, dict) else 'Non indicato'
                 lines.append(f"CAND {row['id']} | {profile.get('name') or row.get('display_name')} | #{row['player_tag']} | {club} | Trofei: {profile.get('trophies', 'n/d')} | ID Telegram: {row['telegram_user_id']}")
                 lines[-1] += '\n' + profile_stats(profile)
+                keyboards[len(lines)-1] = self.decision_buttons(row['id'])
             lines.append("Prima di approvare verifica che il candidato possieda il profilo. Poi: approva cand numero verificato. Per rifiutare: rifiuta cand numero.")
             # Only the configured staff group can receive candidate details in-group.
             staff_chat = os.getenv('RECRUITMENT_STAFF_CHAT_ID', '').strip()
             in_direction = bool(staff_chat and str(message.chat_id) == staff_chat and getattr(message.chat, 'type', None) in ('group', 'supergroup'))
             reply_chat = message.chat_id if in_direction else message.from_user.id
             try:
-                for line in lines:
-                    await context.bot.send_message(chat_id=reply_chat, text=line)
+                for index, line in enumerate(lines):
+                    await context.bot.send_message(chat_id=reply_chat, text=line, reply_markup=keyboards.get(index))
             except Exception:
                 await message.reply_text('Non riesco a consegnare l’elenco. Controlla i permessi del bot in Direzione oppure apri il bot in privato e ripeti candidature.')
             return True
