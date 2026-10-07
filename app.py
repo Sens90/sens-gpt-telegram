@@ -3445,6 +3445,7 @@ def _is_public_group_command(command):
     value = str(command or "").strip()
     return bool(
         re.match(r"^(?:registrami|tegistrami)\b", value, re.I)
+        or re.fullmatch(r"registra\s+(?:utente\s+)?(?:@[A-Za-z0-9_]{3,32}|id\s+\d+)\s+#?[A-Z0-9]{3,15}", value, re.I)
         or re.fullmatch(
             r"(?:elenco utenti|elenco registrati|registrati|membri registrati|account registrati|"
             r"elenco inattivi|elenco utenti inattivi|inattivi|inattivita|inattività)",
@@ -6424,3 +6425,4 @@ if __name__ == "__main__":
     ).start()
 
     main()
+
