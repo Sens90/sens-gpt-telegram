@@ -4897,7 +4897,7 @@ class CommunityFeatures:
             "slot": f"eq.daily:2359:{yesterday}", "limit": "1",
         })
         payload = saved[0].get("payload") if saved else None
-        if isinstance(payload, dict) and payload.get("report_url") and payload.get("text"):
+        if isinstance(payload, dict) and payload.get("text"):
             # Older frozen closures contain three direct links. Present their
             # existing pages alongside a new Ranked page without rewriting the
             # sent message, its checkpoint, or the frozen payload.
@@ -5503,6 +5503,29 @@ class CommunityFeatures:
             chat_id, "global_clubs", days, window=report_window, return_full=True, publish=False,
             link_players=not compact, inline_player_details=compact,
         )
+        def telegraph_fallback():
+            if window is None:
+                return _report + "\n\n⚠️ Telegraph temporaneamente limitato; questo Resoconto è calcolato adesso."
+            # These figures were already calculated with report_window. Keep
+            # the exact period and any published pages when Telegraph fails.
+            period = (f"Periodo: {report_window[0].astimezone(ROME):%d/%m/%Y %H:%M} – "
+                      f"{report_window[1].astimezone(ROME):%d/%m/%Y %H:%M}")
+            summary = [f"📊 CLASSIFICHE — {label}", period, "", _report,
+                       "", "🏆 CLASSIFICA 4 CLUB"]
+            for position, (name, result) in enumerate(sorted(
+                    club_totals.items(), key=lambda item: item[1]["delta"], reverse=True), 1):
+                delta = result["delta"]
+                summary.append(f"{position}. {name} — {'+' if delta > 0 else ''}{self.number_formatter(delta)}")
+            names = {f"dash_t_1_{days}": "4 Club", f"dash_t_2_{days}": "Trofei",
+                     f"dash_p_2_{days}": "Progressione", f"dash_k_2_{days}": "Ranked"}
+            for key, url in links.items():
+                if url:
+                    summary.extend(["", f"{names[key]}: {url}"])
+            summary.extend(["", "⚠️ Telegraph temporaneamente non disponibile: "
+                            "riepilogo del periodo; alcune pagine complete non sono disponibili."])
+            text = "\n".join(summary)
+            return {"text": text, "fallback": text, "report_url": None}
+
         club_lines = [f"CLASSIFICA 4 CLUB — {label}",
                       "Roster completi dei quattro club ABUSIVI.", ""]
         ranked_clubs = sorted(club_totals.items(), key=lambda item: (item[1]["delta"], item[1]["players"]), reverse=True)
@@ -5543,7 +5566,7 @@ class CommunityFeatures:
                                                     ["🛡️ DETTAGLI DEI 4 CLUB", *club_lines[first_detail:]])
                 if not club_url:
                     LOG.warning("CLASSIFICHE LIVE TELEGRAPH UNAVAILABLE: days=%s stage=club_details", days)
-                    return _report + "\n\n⚠️ Telegraph temporaneamente limitato; questo Resoconto è calcolato adesso."
+                    return telegraph_fallback()
                 club_lines = [re.sub(r"\[\[PLAYER:#(CLUB-[A-Z0-9-]+)\|",
                                      lambda match: f"[[PLAYER:{club_url}#{match.group(1)}|", row)
                               for row in club_lines[:first_detail]]
@@ -5564,16 +5587,12 @@ class CommunityFeatures:
         links[f"dash_p_2_{days}"] = progression.get("report_url") if isinstance(progression, dict) else None
         if not links[f"dash_p_2_{days}"]:
             LOG.warning("CLASSIFICHE LIVE TELEGRAPH UNAVAILABLE: days=%s stage=progression", days)
-            if window:
-                raise RuntimeError("The global progression page is unavailable")
-            return _report + "\n\n⚠️ Telegraph temporaneamente limitato; questo Resoconto è calcolato adesso."
+            return telegraph_fallback()
         ranked_lines = self.ranked_window_ranking_text(*report_window, label)
         links[f"dash_k_2_{days}"] = self._publish_inline_ranking(f"Ranked Globale 4 Club — {label}", ranked_lines)
         if any(not url for url in links.values()):
             LOG.warning("CLASSIFICHE LIVE TELEGRAPH UNAVAILABLE: days=%s stage=rankings", days)
-            if window:
-                raise RuntimeError("A global dashboard Telegraph page is unavailable")
-            return _report + "\n\n⚠️ Telegraph temporaneamente limitato; questo Resoconto è calcolato adesso."
+            return telegraph_fallback()
         for i, line in enumerate(lines):
             match = re.fullmatch(r"\[\[DASH:(dash_[prtk]_(?:[0-9]|10)_(?:0|7|15|30))\|Apri\]\]", line)
             if match:
@@ -5585,9 +5604,7 @@ class CommunityFeatures:
         url = self._publish_telegraph(title, lines)
         if not url:
             LOG.warning("CLASSIFICHE LIVE TELEGRAPH UNAVAILABLE: days=%s stage=index", days)
-            if window:
-                raise RuntimeError("Scheduled dashboard Telegraph page is unavailable")
-            return _report + "\n\n⚠️ Telegraph temporaneamente limitato; questo Resoconto è calcolato adesso."
+            return telegraph_fallback()
         resoconto_start = report_lines.index("📊 RESOCONTO") + 1
         resoconto_end = next((i for i in range(resoconto_start, len(report_lines))
                               if report_lines[i] == "👤 DETTAGLI GIOCATORI"), len(report_lines))
@@ -7490,4 +7507,5 @@ class CommunityFeatures:
                         )
             except Exception as exc:
                 print("ERRORE JOB INATTIVITA:", repr(exc), flush=True)
+
 

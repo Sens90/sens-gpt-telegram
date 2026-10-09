@@ -5846,7 +5846,7 @@ async def _send_auto_ranking_slot(context, slot, frozen_only=False):
                         chat_id, key, pending.get("next_index", 0)
                     ), flush=True)
             if pending is None:
-                if frozen_only:
+                if frozen_only and (slot.hour, slot.minute) != (23, 59):
                     print("CLASSIFICA OGGI AUTO FROZEN PAYLOAD MISSING:", chat_id, key, flush=True)
                     continue
                 # Freeze every payload before the first send. A failed 23:59
@@ -6057,8 +6057,8 @@ async def automatic_today_ranking_catchup_job(context):
     latest = max(candidates) if candidates else None
     if latest is None or (now-latest).total_seconds() > 10800:
         return
-    # Across midnight, retry only a payload frozen during the original 23:59
-    # attempt. Never rebuild it against the new calendar day.
+    # Across midnight, reuse saved payloads or rebuild the exact historical
+    # 23:59 window if publishing failed before a payload could be saved.
     if latest.date() != now.date():
         key = latest.strftime("%Y-%m-%d-%H%M")
         if not any(slot_key == key for _chat_id, slot_key in _AUTO_RANKING_PENDING):
@@ -6072,8 +6072,6 @@ async def automatic_today_ranking_catchup_job(context):
                 return
             if not any(
                 str(row.get("chat_id")) != os.getenv("RECRUITMENT_STAFF_CHAT_ID", "").strip()
-                and isinstance(row.get("auto_ranking_pending"), dict)
-                and row["auto_ranking_pending"].get("slot") == key
                 and row.get("last_auto_ranking_slot") != key
                 for row in rows or []
             ):
@@ -6425,4 +6423,5 @@ if __name__ == "__main__":
     ).start()
 
     main()
+
 
