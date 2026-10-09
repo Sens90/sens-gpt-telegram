@@ -264,7 +264,7 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(get.call_count, 2)
         sleep.assert_called_once()
 
-    def test_period_index_rejects_missing_progression_page(self):
+    def test_period_index_falls_back_when_progression_page_is_missing(self):
         obj = self.make_features()
         obj._publish_telegraph = Mock(return_value="https://telegra.ph/trophies")
         obj.periodic_report_text = Mock(return_value=("REPORT", [
@@ -274,8 +274,11 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
         obj.coefficient_ranking_text = Mock(return_value="Progressione non disponibile")
         result = obj._direct_dashboard_snapshot(-1001, 15, None)
         self.assertIn("questo Resoconto è calcolato adesso", result)
-        with self.assertRaisesRegex(RuntimeError, "progression page is unavailable"):
-            obj._direct_dashboard_snapshot(-1001, 15, (datetime.now(timezone.utc) - timedelta(days=15), datetime.now(timezone.utc)))
+        result = obj._direct_dashboard_snapshot(-1001, 15, (datetime.now(timezone.utc) - timedelta(days=15), datetime.now(timezone.utc)))
+        self.assertIsNone(result["report_url"])
+        self.assertIn("REPORT", result["text"])
+        self.assertIn("Periodo:", result["text"])
+        self.assertIn("temporaneamente non disponibile", result["text"])
 
     @patch("community_features.requests.post")
     def test_daily_report_lists_only_positive_players_but_preserves_totals(self, post):
@@ -2550,3 +2553,4 @@ class TelegraphReportTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
