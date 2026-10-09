@@ -568,3 +568,83 @@ class GroupVoiceExceptionsTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class DailyRankingRecoveryTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        app._AUTO_RANKING_IN_FLIGHT.clear()
+        app._AUTO_RANKING_PENDING.clear()
+
+    async def test_midnight_recovers_missing_payload_with_original_window(self):
+        slot = datetime(2026, 10, 9, 23, 59, tzinfo=app.ROME)
+        now = Mock()
+        now.now.return_value = datetime(2026, 10, 10, 0, 40, tzinfo=app.ROME)
+        rows = [{"chat_id": -100123, "last_auto_ranking_slot": "2026-10-09-1800"}]
+        response = Mock()
+        response.json.return_value = rows
+        payload = {"text": "RIEPILOGO 09/10", "report_url": None}
+        with (patch.object(app, "datetime", now),
+              patch.object(app.community, "_get", return_value=rows),
+              patch.object(app.community, "scheduled_dashboard_snapshot", return_value=payload) as build,
+              patch.object(app.community, "_send_ranking_message", new=AsyncMock(return_value=True)) as send,
+              patch.object(app.community, "_post") as archive,
+              patch.object(app, "_persist_auto_ranking_pending") as checkpoint,
+              patch.object(app.requests, "patch", return_value=response),
+              patch.object(app, "refresh_rosters_for_rankings") as refresh):
+            await app.automatic_today_ranking_catchup_job(SimpleNamespace(bot=SimpleNamespace()))
+        build.assert_called_once_with(-100123, 0, (slot.replace(hour=0, minute=0), slot))
+        refresh.assert_not_called()
+        send.assert_awaited_once()
+        self.assertEqual(checkpoint.call_args_list[0].args[2]["slot"], "2026-10-09-2359")
+        self.assertEqual(archive.call_args.args[1]["slot"], "daily:2359:2026-10-09")
+        self.assertEqual(archive.call_args.args[1]["payload"], payload)
+
+    async def test_midnight_does_not_repeat_completed_slot(self):
+        now = Mock()
+        now.now.return_value = datetime(2026, 10, 10, 0, 40, tzinfo=app.ROME)
+        rows = [{"chat_id": -100123, "last_auto_ranking_slot": "2026-10-09-2359"}]
+        with (patch.object(app, "datetime", now),
+              patch.object(app.community, "_get", return_value=rows),
+              patch.object(app, "_send_auto_ranking_slot", new=AsyncMock()) as send):
+            await app.automatic_today_ranking_catchup_job(SimpleNamespace())
+        send.assert_not_awaited()
+
+    def test_telegraph_failure_preserves_period_stats_and_available_pages(self):
+        from community_features import CommunityFeatures
+        start = datetime(2026, 10, 9, tzinfo=app.ROME)
+        end = start.replace(hour=23, minute=59)
+        for failed_stage in ("club_details", "progression", "rankings", "index"):
+            with self.subTest(stage=failed_stage):
+                obj = CommunityFeatures.__new__(CommunityFeatures)
+                obj.number_formatter = str
+                obj._player_link_name = str
+                obj._build_rankings_dashboard_text = Mock(return_value=["CLASSIFICHE", "live"])
+                full = ["REPORT", "", "", "PERIODO", "🏆 CLASSIFICA TROFEI",
+                        "1. Tony +100", "🔥 CLASSIFICA PROGRESSIONE", "📊 RESOCONTO", "Battaglie: 20"]
+                obj.periodic_report_text = Mock(return_value=("Trofei: +100\nBattaglie: 20", full,
+                    {"TITANI": {"delta": 100, "players": 1, "roster": 1}}))
+                obj._club_battle_detail_links = Mock(return_value={})
+                obj._club_average_progression_line = Mock(return_value="Coefficiente: 1,2")
+                obj.ranked_window_ranking_text = Mock(return_value=["RANKED"])
+                obj._publish_inline_ranking = Mock(return_value="https://telegra.ph/ranked")
+                obj.coefficient_ranking_text = Mock(return_value={"report_url":
+                    None if failed_stage == "progression" else "https://telegra.ph/progression"})
+                def publish(title, lines):
+                    if ((failed_stage == "club_details" and title.startswith("Dettagli 4 Club"))
+                            or (failed_stage == "rankings" and title.startswith("Classifica 4 Club"))
+                            or (failed_stage == "index" and title == "Classifiche — OGGI")):
+                        return None
+                    return "https://telegra.ph/published"
+                obj._publish_telegraph = Mock(side_effect=publish)
+                result = obj.scheduled_dashboard_snapshot(-100123, 0, (start, end))
+                self.assertIsNone(result["report_url"])
+                self.assertIn("09/10/2026 00:00 – 09/10/2026 23:59", result["text"])
+                self.assertIn("Trofei: +100", result["text"])
+                self.assertIn("Battaglie: 20", result["text"])
+                self.assertIn("1. TITANI — +100", result["text"])
+                self.assertNotIn("[[", result["text"])
+                self.assertNotIn("calcolato adesso", result["text"])
+                self.assertLessEqual(len(result["text"]), 4096)
+                obj.periodic_report_text.assert_called_once()
+                self.assertEqual(obj.periodic_report_text.call_args.kwargs["window"], (start, end))
