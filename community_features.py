@@ -3680,6 +3680,10 @@ class CommunityFeatures:
     def _complete_roster_daily_rows(self, start_date, end_date):
         """Read complete-roster daily snapshots for [start_date, end_date)."""
         try:
+            # PostgREST AND expressions need explicit column predicates.
+            # Passing snapshot_date separately and then an AND expression that
+            # starts with snapshot_date.lt produced an invalid/empty request in
+            # production, making the complete roster appear to have 0 players.
             return self._get("club_roster_daily", {
                 "select": "snapshot_date,club_name,club_tag,player_tag,player_name,first_trophies,last_trophies,first_seen_at,last_seen_at,source",
                 "and": f"(snapshot_date.gte.{start_date.isoformat()},snapshot_date.lt.{end_date.isoformat()})",
